@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WAYPOINTS, MAP_SCALE, ROAD, REAL_ROUTE_KM, FUEL_STATIONS, UTURN_SPACING, UTURN_GAP } from './config.js';
+import { REST_STOPS, WAYPOINTS, MAP_SCALE, ROAD, REAL_ROUTE_KM, FUEL_STATIONS, UTURN_SPACING, UTURN_GAP } from './config.js';
 
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
@@ -84,6 +84,13 @@ export class Route {
       let sc = f.f * this.length;
       while (this.bridgeAt(sc) || this.bridgeAt(sc - 80) || this.bridgeAt(sc + 80) || Math.abs(sc - this.tollS) < 200) sc += 120;
       return { ...f, sc, s0: sc - 45, s1: sc + 45, dIn: ROAD.half, dOut: ROAD.half + 30 };
+    });
+    // rest stops: a big paved lot with a restaurant, kept clear of bridges, the toll and fuel stations
+    this.rests = REST_STOPS.map((r) => {
+      let sc = r.f * this.length;
+      const busy = (x) => this.bridgeAt(x) || this.bridgeAt(x - 120) || this.bridgeAt(x + 120) || Math.abs(x - this.tollS) < 300 || this.stations.some((st) => Math.abs(x - st.sc) < 260);
+      while (busy(sc)) sc += 120;
+      return { ...r, sc, s0: sc - 75, s1: sc + 75, dIn: ROAD.half, dOut: ROAD.half + 42 };
     });
     // U-turn openings in the median
     this.uturns = [];
@@ -176,6 +183,15 @@ export class Route {
     return null;
   }
 
+  restAt(s, d) {
+    for (const r of this.rests) {
+      if (s > r.s0 && s < r.s1 && Math.sign(d) === Math.sign(r.side) && Math.abs(d) > ROAD.half - 1 && Math.abs(d) < r.dOut) return r;
+    }
+    return null;
+  }
+  // paved ground beside the road (fuel forecourt or rest-stop lot)
+  paved(s, d) { return this.stationAt(s, d) || this.restAt(s, d); }
+
   bridgeAt(s) {
     for (const b of this.bridges) if (s > b.s0 && s < b.s1) return b;
     return null;
@@ -198,7 +214,7 @@ export class Route {
     const ad = Math.abs(d);
     if (ad <= ROAD.half) return h;
     if (this.bridgeAt(s)) return h; // off the deck there is nothing, the walls keep you on
-    if (this.stationAt(s, d)) return h; // paved forecourt
+    if (this.paved(s, d)) return h; // paved forecourt / rest-stop lot
     const t = (ad - ROAD.half) / ROAD.embank;
     return t >= 1 ? 0 : h * (1 - t);
   }

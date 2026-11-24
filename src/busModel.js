@@ -749,7 +749,6 @@ function addInterior(bus, r) {
   const plastic = std(0x34363a, 0.6);
   const trim = std(0x18191b, 0.6);
   const wall = std(0xcfcac0, 0.85);
-  const cream = std(0xd8ccb0, 0.7);                          // AK1J cab pillars and window frames
   const ceilingMat = std(0xe4e1da, 0.9);
   const floorY = s.eye - 1.25;
   const dX = s.driverX;
@@ -1011,7 +1010,7 @@ function addInterior(bus, r) {
     cap.rotation.x = Math.PI / 2 - Math.atan2(a.y - b.y, b.z - a.z);
     g.add(cap);
   }
-  plane(s.W - 0.1, L, s.cockpit === 'ak' ? new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.7 }) : std(0x5a5d62, 0.9), 0, floorY, zc, 0, -Math.PI / 2);
+  plane(s.W - 0.1, L, std(0x5a5d62, 0.9), 0, floorY, zc, 0, -Math.PI / 2);
   plane(0.6, L - 2.2, std(0x7d2430, 0.95), 0, floorY + 0.005, zc - 1.1, 0, -Math.PI / 2);   // aisle carpet
   const roofIn = s.H - s.bevel - 0.03;            // top of the flat side walls
   const lowH = s.winBot - floorY, upH = Math.max(0.05, roofIn - s.winTop);
@@ -1032,7 +1031,7 @@ function addInterior(bus, r) {
     curGeo.computeVertexNormals();
     for (let k = 0; k <= s.pillars; k++) {
       const z = s.front - 1.25 - ((s.front - 1.25 - (s.rear + 0.35)) / s.pillars) * k;
-      add(new THREE.BoxGeometry(0.08, s.winTop - s.winBot, 0.1), s.cockpit === 'ak' ? cream : trim, sx * (s.W / 2 - 0.08), (s.winTop + s.winBot) / 2, z);
+      add(new THREE.BoxGeometry(0.08, s.winTop - s.winBot, 0.1), trim, sx * (s.W / 2 - 0.08), (s.winTop + s.winBot) / 2, z);
       if (z < s.front - 1.6) {
         const c = add(curGeo, cur, sx * (s.W / 2 - 0.16), (s.winTop + s.winBot) / 2 + 0.02, z);
         c.rotation.y = ry;
@@ -1052,7 +1051,7 @@ function addInterior(bus, r) {
   plane(s.W - 2 * s.bevel, Math.max(0.05, s.H - s.roofR - 0.05 - s.winTop), wall, 0, s.winTop + Math.max(0.05, s.H - s.roofR - 0.05 - s.winTop) / 2, s.rear + 0.15);
   // driver's side window frame (right side): posts, rails, sliding divider and one glass pane
   if (s.cockpit === 'ak') {
-    const fx = -(s.W / 2 - 0.07), frameMat = cream;
+    const fx = -(s.W / 2 - 0.07), frameMat = std(0x3a3c3f, 0.5);
     const zA = s.front - 0.34, zB = s.front - 1.62, yB = s.winBot - 0.12, yT = s.winTop;
     add(new THREE.BoxGeometry(0.04, yT - yB, 0.04), std(0x8f8a80, 0.6), fx, (yT + yB) / 2, zA);
     add(new THREE.BoxGeometry(0.06, yT - yB, 0.08), frameMat, fx, (yT + yB) / 2, zB);

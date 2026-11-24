@@ -198,7 +198,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
   const smokes = [];
   const smokeMat = new THREE.SpriteMaterial({ map: smokeTexture(), transparent: true, depthWrite: false, fog: true });
   const town = (s) => route.places.find((p) => p.town && Math.abs(s - p.s) < p.town / 2);
-  const nearStation = (s, d, m = 0) => route.stations.some((st) => s > st.s0 - m - 20 && s < st.s1 + m + 20 && Math.sign(d) === st.side && Math.abs(d) < st.dOut + m + 8);
+  const nearStation = (s, d, m = 0) => [...route.stations, ...route.rests].some((st) => s > st.s0 - m - 20 && s < st.s1 + m + 20 && Math.sign(d) === st.side && Math.abs(d) < st.dOut + m + 8);
   const p = new THREE.Vector3();
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), col = new THREE.Color();
   const n = Math.ceil(route.length / CHUNK);

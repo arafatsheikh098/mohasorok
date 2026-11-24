@@ -19,7 +19,8 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **Dhaka → Chatt
   - live rear-view mirrors and working indicators
   - realistic collisions and a top speed of 140 km/h
   - **AI traffic cameras** on poles over the road. They flash for every vehicle that passes and fine you above 80 km/h. Each one has an "এআই ক্যামেরা" warning sign 150 m before it.
-- **Time of day:** morning, noon, evening and night with headlights.
+- **Rest stops:** four highway restaurants (near Cumilla and Mirsharai, both directions) with bus bays, tea stalls and parked buses. Stop in the lot and press **F** for a 20-minute passenger break. After 3 hours on the road the passengers ask for one.
+- **Time of day:** you choose the start time (morning, noon, afternoon, evening or night), then the clock keeps running while you drive (12 game minutes per real minute). The sun moves across the sky through dawn, noon, the golden evening and dusk into night, and the headlights and street lights come on by themselves.
 
 ## Controls
 | | PC | Phone (landscape) |

@@ -43,7 +43,7 @@ function flareTexture() {
 export function buildAICams(route, scene, chunks) {
   const spots = [];
   const ok = (s) => s > 150 && s < route.length - 150 && !route.bridgeAt(s) && !route.bridgeAt(s + 40) && !route.bridgeAt(s - 40) &&
-    Math.abs(s - route.tollS) > 200 && !route.uturnAt(s) && !route.stations.some((st) => Math.abs(s - st.sc) < 100);
+    Math.abs(s - route.tollS) > 200 && !route.uturnAt(s) && ![...route.stations, ...route.rests].some((st) => Math.abs(s - st.sc) < 140);
   // every town gets one on each carriageway at its entry; plus one every ~2.2 km in between
   for (const p of route.places) {
     if (!p.town) continue;

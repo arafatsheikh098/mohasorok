@@ -11,6 +11,8 @@ import { resolveImpulse } from './collide.js';
 import { loadCustomSkins, openSkinEditor, deleteSkin } from './skins.js';
 import { setMaxAnisotropy, makeCanvas, toBn } from './textures.js';
 import { SkySystem, TIMES, TIME_ORDER } from './world/sky.js';
+import { REST_MINUTES } from './config.js';
+const presetMinutes = (k) => { const [h, m] = TIMES[k].clock.split(':').map(Number); return h * 60 + m; };
 import { buildRoad, streetGlowMat } from './world/road.js';
 import { buildScenery } from './world/scenery.js';
 import { OPERATORS, paintSide } from './operators.js';
@@ -94,13 +96,25 @@ function applyQuality() {
   }
 }
 
+// starting time (menu, T key); after that the clock runs while you drive and the sky follows it
 function setTime(key) {
   settings.time = key;
+  player.clockMin = presetMinutes(key);
   sky.set(key);
-  const night = TIMES[key].night;
-  streetGlowMat.emissiveIntensity = night ? 4 : 0;
-  player.lights = night || key === 'evening';
+  applyNight(true);
 }
+// street lights and headlights follow dusk and dawn
+function applyNight(force = false) {
+  const night = sky.night, dim = sky.hour > 17.4 || sky.hour < 6.4;
+  if (!force && night === player.wasNight && dim === player.wasDim) return;
+  streetGlowMat.emissiveIntensity = night ? 4 : 0;
+  if (force || dim !== player.wasDim) {
+    player.lights = dim;
+    if (!force && state === 'drive') hud.toast(dim ? (sky.hour > 12 ? '🌇 Getting dark — headlights on' : '🌌 Before sunrise — headlights on') : '🌅 Morning — headlights off', '', 2500);
+  }
+  player.wasNight = night; player.wasDim = dim;
+}
+const clockText = (mins) => `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(Math.floor(mins % 60)).padStart(2, '0')}`;
 
 function createPlayerBus() {
   if (player.bus) scene.remove(player.bus.root);
@@ -140,6 +154,40 @@ function restartTrip() {
     fuel: TANK_LITRES * START_FUEL, fuelCost: 0, tollCost: 0, refuelling: false, fuelWarn: 0 });
   for (const g of facilities.gates) { g.holdPlayer = false; g.openT = 0; }
   traffic.init(player.s);
+  setTime(settings.time);                       // clock back to the chosen start time
+  Object.assign(player, { sinceBreak: 0, breaks: 0, breakWarned: false, resting: 0, restPrompt: false });
+}
+
+// rest stops: stop in the lot and press F for a 20-minute passenger break (clock moves on, passengers happier)
+function restLogic(dt) {
+  player.sinceBreak += dt / 5;
+  if (player.sinceBreak > 180 && !player.breakWarned) {
+    player.breakWarned = true;
+    hud.toast('😴 3 hours on the road — passengers want a break. Stop at the next 🍛 rest stop', 'bad', 5000);
+  }
+  if (player.resting > 0) {
+    player.resting -= dt;
+    if (player.resting <= 0) {
+      $('restfade').classList.remove('on');
+      hud.toast(`Break over (${REST_MINUTES} min) — passengers are back on board ★`, 'good', 3500);
+    }
+    return;
+  }
+  const r = route.restAt(player.s, player.d);
+  const stopped = r && Math.abs(player.phys.v) < 0.5;
+  if (stopped) {
+    player.restPrompt = true;
+    $('prompt').style.display = 'block';
+    $('prompt').innerHTML = `🍛 <b>${r.en}</b> — press <kbd>F</kbd> for a ${REST_MINUTES}-minute break`;
+    if (input.hit('KeyF')) {
+      player.resting = 2.2;
+      player.clockMin += REST_MINUTES;
+      player.sinceBreak = 0; player.breakWarned = false; player.breaks++;
+      player.rating = Math.min(5, player.rating + 0.5);
+      $('restfade').classList.add('on');
+      $('prompt').style.display = 'none';
+    }
+  } else if (player.restPrompt) { player.restPrompt = false; $('prompt').style.display = 'none'; }
 }
 
 // ---------- road constraints / placement ----------
@@ -228,7 +276,7 @@ function constrain(dt) {
   // ends of the route
   if (s < 3) { phys.pos.x += tx * (3 - s); phys.pos.z += tz * (3 - s); s = 3; }
   if (s > route.length - 3) { const m = s - (route.length - 3); phys.pos.x -= tx * m; phys.pos.z -= tz * m; s = route.length - 3; }
-  phys.offroad = Math.abs(d) > ROAD.half + 0.6 && !route.stationAt(s, d) ? 1 : 0;
+  phys.offroad = Math.abs(d) > ROAD.half + 0.6 && !route.paved(s, d) ? 1 : 0;
   player.s = s; player.d = d; player.v = phys.v;
   player.vs = phys.v * Math.cos(rel);
   player.heading = Math.cos(rel) >= 0 ? 1 : -1;
@@ -519,7 +567,7 @@ function handleKeys() {
   if (input.hit('KeyT')) {
     const k = TIME_ORDER[(TIME_ORDER.indexOf(settings.time) + 1) % TIME_ORDER.length];
     setTime(k);
-    hud.toast(`Time: ${TIMES[k].label}`);
+    hud.toast(`Time: ${TIMES[k].label} (${TIMES[k].clock}) — the clock keeps running as you drive`);
   }
   if (input.hit('KeyX')) {
     const ph = player.phys;
@@ -706,20 +754,25 @@ function frame(now) {
   touch.show(state === 'drive');
   handleKeys();
   if (state === 'drive') autoPerf(dt);
-  const night = TIMES[settings.time].night;
+  const night = sky.night;
   const ph = player.phys;
 
   if (state === 'drive') {
     player.elapsed += dt;
     player.crashCool -= dt;
+    // game clock: 12 minutes per real minute, so a full Dhaka–Chattogram run takes most of a day
+    player.clockMin += dt / 5;
+    const hr = player.clockMin / 60;
+    if (Math.abs(((hr % 24) + 24) % 24 - sky.hour) > 0.02) { sky.setHour(hr); applyNight(); }
     // two physics substeps for stability
     for (let k = 0; k < 2; k++) {
-      ph.update(dt / 2, { throttle: player.fuel > 0 && !player.refuelling ? input.throttle : 0, brake: input.brake, steer: input.steer, handbrake: input.handbrake || player.refuelling });
+      ph.update(dt / 2, { throttle: player.fuel > 0 && !player.refuelling && !(player.resting > 0) ? input.throttle : 0, brake: input.brake, steer: input.steer, handbrake: input.handbrake || player.refuelling || player.resting > 0 });
       constrain(dt / 2);
     }
     placeBusModel(dt);
     tollLogic(dt);
     fuelLogic(dt);
+    restLogic(dt);
     indicatorLogic(dt);
     facilities.update(dt);
     updatePlayerBox();
@@ -744,9 +797,7 @@ function frame(now) {
     if (hudT <= 0) {
       hudT = 1 / 15;
       const kmh = Math.abs(ph.v) * 3.6;
-      const t0 = TIMES[settings.time].clock.split(':').map(Number);
-      const mins = t0[0] * 60 + t0[1] + player.elapsed / 5;
-      const clock = `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(Math.floor(mins % 60)).padStart(2, '0')}`;
+      const clock = clockText(player.clockMin);
       const st = {
         s: player.s, x: ph.pos.x, z: ph.pos.z, yaw: ph.yaw, kmh, rpm: ph.rpm, gear: ph.gearLabel(),
         elapsed: player.elapsed, fines: player.fines, crashes: player.crashes, rating: player.rating,

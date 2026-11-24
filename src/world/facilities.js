@@ -6,6 +6,8 @@ import { ROAD, TOLL_FEE, DIESEL_PRICE } from '../config.js';
 import { makeCanvas, canvasTexture, concreteTexture, grassTexture, curbTexture, BN_FONT, EN_FONT, toBn } from '../textures.js';
 import { ribbon } from './road.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { buildBus } from '../busModel.js';
+import { OPERATORS } from '../operators.js';
 
 // toll lane geometry (|d| values); the plaza uses the paved shoulder so lanes are wider
 export const TOLL = { islandA: 6.0, islandB: 10.3, islandW: 0.6, laneFast: 3.65, laneSlow: 8.15, half: 10, gateOff: 5 };
@@ -326,6 +328,9 @@ export function buildFacilities(route, scene, chunks) {
     chunks.register(mesh, (a + b) / 2, (b - a) / 2 + 50);
   }
 
+  // ------------------------------------------------------------ rest stops (highway restaurants)
+  route.rests.forEach((r, ri) => buildRestStop(route, scene, chunks, obstacles, mats, r, ri));
+
   // ------------------------------------------------------------ runtime
   return {
     obstacles, gates,
@@ -339,6 +344,157 @@ export function buildFacilities(route, scene, chunks) {
       }
     },
   };
+}
+
+// restaurant front: two floors, shop windows below, balcony windows above
+function restFacade(col) {
+  const [c, x] = makeCanvas(1024, 256);
+  x.fillStyle = '#efe6d2'; x.fillRect(0, 0, 1024, 256);
+  x.fillStyle = col; x.fillRect(0, 118, 1024, 14);                       // floor band
+  for (let k = 0; k < 8; k++) {
+    const wx = 20 + k * 126;
+    x.fillStyle = '#2c3e48'; x.fillRect(wx, 22, 96, 70);                  // upper windows
+    x.fillStyle = 'rgba(255,255,255,0.25)'; x.fillRect(wx + 6, 26, 30, 62);
+    x.fillStyle = '#d7d2c6'; x.fillRect(wx - 4, 92, 104, 8);
+    x.fillStyle = k === 3 || k === 4 ? '#6b4f2e' : '#33505e';              // glass shop front, wooden doors in the middle
+    x.fillRect(wx, 146, 104, 106);
+    x.fillStyle = 'rgba(255,240,200,0.35)'; x.fillRect(wx + 8, 152, 88, 40);
+  }
+  return canvasTexture(c, { repeat: false });
+}
+
+function buildRestStop(route, scene, chunks, obstacles, mats, r, ri) {
+  const sd = r.side, h = route.roadHeight(r.sc);
+  const grp = new THREE.Group();
+  const lot = sd < 0
+    ? [{ d: -r.dOut, y: R(0.03), u: 0 }, { d: -ROAD.half + 0.3, y: R(0.03), u: 5 }]
+    : [{ d: ROAD.half - 0.3, y: R(0.03), u: 0 }, { d: r.dOut, y: R(0.03), u: 5 }];
+  const lm = new THREE.Mesh(ribbon(route, r.s0, r.s1, 3, lot, 10), mats.pave);
+  lm.receiveShadow = true;
+  grp.add(lm);
+  const skirt = sd < 0
+    ? [{ d: -(r.dOut + 6), y: G(0), u: 0 }, { d: -r.dOut, y: R(0.03), u: 1 }]
+    : [{ d: r.dOut, y: R(0.03), u: 0 }, { d: r.dOut + 6, y: G(0), u: 1 }];
+  grp.add(new THREE.Mesh(ribbon(route, r.s0, r.s1, 3, skirt, 4), mats.grass));
+
+  const dc = sd * (ROAD.half + 21);
+  const local = new THREE.Group();
+  const p = route.pointAt(r.sc, dc);
+  local.position.set(p.x, h, p.z);
+  local.rotation.y = route.yawAt(r.sc);
+  const X = (d) => -(d - dc);
+  const away = X(sd * (ROAD.half + 30)) > 0 ? 1 : -1;      // local x direction pointing away from the road
+  const colMat = new THREE.MeshStandardMaterial({ color: r.col, roughness: 0.6 });
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xf4f4f0 });
+
+  // bus bays: white lines along the lot, a separator every 15 m
+  const bayIn = sd * (ROAD.half + 12.5), bayOut = sd * (ROAD.half + 24);
+  for (const d of [bayIn, bayOut]) {
+    const l = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 130), lineMat);
+    l.rotation.x = -Math.PI / 2; l.position.set(X(d), 0.05, 0);
+    local.add(l);
+  }
+  for (let z = -60; z <= 60; z += 15) {
+    const l = new THREE.Mesh(new THREE.PlaneGeometry(Math.abs(bayOut - bayIn), 0.15), lineMat);
+    l.rotation.x = -Math.PI / 2; l.position.set(X((bayIn + bayOut) / 2), 0.05, z);
+    local.add(l);
+  }
+
+  // two-storey restaurant facing the lot
+  const bD = sd * (ROAD.half + 34), bx = X(bD);
+  const facade = new THREE.MeshStandardMaterial({ map: restFacade(r.col), roughness: 0.7 });
+  const wall = new THREE.MeshStandardMaterial({ color: 0xefe6d2, roughness: 0.8 });
+  const bld = new THREE.Mesh(new THREE.BoxGeometry(10, 7.2, 46), [wall, wall, colMat, wall, wall, wall]);
+  bld.position.set(bx, 3.6, 0);
+  bld.castShadow = true; bld.receiveShadow = true;
+  local.add(bld);
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(46, 7.2), facade);
+  front.position.set(bx - away * 5.01, 3.6, 0);
+  front.rotation.y = -away * Math.PI / 2;
+  local.add(front);
+  // awning over the front with tables under it
+  const awn = new THREE.Mesh(new THREE.BoxGeometry(4, 0.15, 44), colMat);
+  awn.position.set(bx - away * 7, 3.3, 0); awn.rotation.z = away * 0.12; awn.castShadow = true;
+  local.add(awn);
+  for (const z of [-20, 20]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.1, 8), mats.white);
+    post.position.set(bx - away * 8.8, 1.55, z);
+    local.add(post);
+  }
+  const tableMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 });
+  const chairMat = new THREE.MeshStandardMaterial({ color: [0xd32f2f, 0x1976d2, 0x388e3c][ri % 3], roughness: 0.6 });
+  for (let k = 0; k < 7; k++) {
+    const z = -18 + k * 6;
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.06, 14), tableMat);
+    t.position.set(bx - away * 7, 0.75, z);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.75, 6), tableMat);
+    leg.position.set(bx - away * 7, 0.37, z);
+    local.add(t, leg);
+    for (const dz of [-0.8, 0.8]) {
+      const ch = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.9, 0.45), chairMat);
+      ch.position.set(bx - away * 7, 0.45, z + dz);
+      local.add(ch);
+    }
+  }
+  // big name board on the roof
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(30, 2.6), new THREE.MeshStandardMaterial({ map: textPanel(2048, 180, r.col, (x, w, hh) => {
+    x.fillStyle = '#fff'; x.font = `bold 120px ${BN_FONT}`; x.fillText(r.bn, w * 0.36, hh / 2 + 6);
+    x.font = `bold 64px ${EN_FONT}`; x.fillText(r.en.toUpperCase(), w * 0.8, hh / 2 + 2);
+  }), roughness: 0.5, emissive: 0x222222 }));
+  board.position.set(bx - away * 4.6, 8.6, 0);
+  board.rotation.y = -away * Math.PI / 2;
+  local.add(board);
+  const boardBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.8, 30.4), mats.dark);
+  boardBack.position.set(bx - away * 4.4, 8.6, 0);
+  local.add(boardBack);
+  // tea stall with a tin roof at the far end
+  const stall = new THREE.Mesh(new THREE.BoxGeometry(4, 2.6, 5), new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.9 }));
+  stall.position.set(bx, 1.3, 30);
+  const tin = new THREE.Mesh(new THREE.BoxGeometry(5, 0.08, 6.2), new THREE.MeshStandardMaterial({ color: 0x9aa3a8, metalness: 0.6, roughness: 0.5 }));
+  tin.position.set(bx, 2.75, 30); tin.rotation.z = away * 0.15;
+  const stallSign = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 0.7), new THREE.MeshBasicMaterial({ map: textPanel(512, 80, '#fdd835', (x, w, hh) => {
+    x.fillStyle = '#b71c1c'; x.font = `bold 54px ${BN_FONT}`; x.fillText('চা · পান · বিস্কুট', w / 2, hh / 2 + 4);
+  }) }));
+  stallSign.position.set(bx - away * 2.05, 2.3, 30); stallSign.rotation.y = -away * Math.PI / 2;
+  local.add(stall, tin, stallSign);
+  local.traverse((o) => { if (o.isMesh && o !== lm) o.castShadow = true; });
+  obstacles.push({ s0: r.sc - 23, s1: r.sc + 23, d0: Math.min(bD - 5, bD + 5), d1: Math.max(bD - 5, bD + 5) });
+  obstacles.push({ s0: r.sc + 27.5, s1: r.sc + 32.5, d0: Math.min(bD - 2, bD + 2), d1: Math.max(bD - 2, bD + 2) });
+
+  // buses already parked for their break
+  const ops = OPERATORS.filter((o) => !o.custom);
+  for (const [k, z] of [[0, -45], [1, 15]]) {
+    const op = ops[(ri * 3 + k * 5) % ops.length];
+    const b = buildBus(k ? 'local' : 'ak1j', op, { texScale: 0.5, seed: 300 + ri * 7 + k });
+    const pd = sd * (ROAD.half + 18.2);
+    b.root.position.set(X(pd), 0, z);
+    b.root.rotation.y = 0;
+    local.add(b.root);
+    obstacles.push({ s0: r.sc + z - b.spec.rearOH - 0.2, s1: r.sc + z + b.spec.front + 0.2, d0: pd - 1.35, d1: pd + 1.35 });
+  }
+  grp.add(local);
+
+  // tall pylon at the entrance and advance signs, facing traffic on this side
+  const signTex = (dist) => textPanel(512, 512, '#0d47a1', (x, w) => {
+    x.strokeStyle = '#fff'; x.lineWidth = 12; x.strokeRect(12, 12, w - 24, w - 24);
+    x.fillStyle = '#fff'; x.font = `bold 140px ${EN_FONT}`; x.fillText('🍛', w / 2, 170);
+    x.font = `bold 64px ${BN_FONT}`; x.fillText('যাত্রা বিরতি', w / 2, 300);
+    x.font = `bold 46px ${EN_FONT}`; x.fillText(`REST STOP ${dist}`, w / 2, 400);
+  });
+  const entryS = sd < 0 ? r.s0 + 6 : r.s1 - 6;
+  addSign(grp, null, route, entryS, sd * (ROAD.half + 3), sd > 0, textPanel(512, 640, r.col, (x, w) => {
+    x.fillStyle = '#fff'; x.font = `bold 60px ${BN_FONT}`;
+    const words = r.bn.split(' ');
+    words.forEach((wd, i) => x.fillText(wd, w / 2, 120 + i * 90));
+    x.font = `bold 40px ${EN_FONT}`; x.fillText('RESTAURANT', w / 2, 470);
+    x.fillText('☕ 🍛 🕌 🚻', w / 2, 560);
+  }), 2.4, 3.0, 5.0);
+  for (const dist of [1000, 300]) {
+    const advS = sd < 0 ? r.s0 - dist : r.s1 + dist;
+    addSign(grp, null, route, advS, sd * (ROAD.half + 2), sd > 0, signTex(dist === 1000 ? '1 km' : '300 m'), 2.3, 2.3);
+  }
+  scene.add(grp);
+  chunks.register(grp, r.sc, 1100);
 }
 
 function addSign(parent, chunks, route, s, d, flip, tex, w, h, lift = 1.8) {

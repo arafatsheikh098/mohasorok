@@ -20,6 +20,7 @@ export class HUD {
     this.rivers = water.rivers.map((r) => ({ pts: r.pts.map((p) => [p.x, p.z]), w: r.width }));
     this.markers = [
       ...route.stations.map((st) => ({ p: route.pointAt(st.sc, st.side * 16), icon: '⛽', col: '#ffb300' })),
+      ...route.rests.map((r) => ({ p: route.pointAt(r.sc, r.side * 20), icon: '🍛', col: '#ff7043' })),
       ...route.uturns.map((u) => ({ p: route.pointAt(u.s, 0), icon: 'U', col: '#4aa3ff' })),
       ...(route.tollS > 0 ? [{ p: route.pointAt(route.tollS, 0), icon: '৳', col: '#ff5252' }] : []),
     ];

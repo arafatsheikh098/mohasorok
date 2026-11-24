@@ -58,6 +58,15 @@ export const TANK_LITRES = 300;
 export const START_FUEL = 0.32;       // fraction of the tank at the start of a trip
 export const BUS_KM_PER_LITRE = 3.4;
 // fuel stations: s as a fraction of the route, side -1 = towards Chattogram (left), +1 = towards Dhaka
+// roadside rest stops with a highway restaurant (buses stop ~20 min); side -1 = towards Chattogram
+export const REST_STOPS = [
+  { f: 0.455, side: -1, bn: 'হাইওয়ে ইন রেস্তোরাঁ', en: 'Highway Inn Restaurant', col: '#b71c1c' },
+  { f: 0.47, side: 1, bn: 'যাত্রা বিরতি হোটেল', en: 'Jatra Biroti Hotel', col: '#1b5e20' },
+  { f: 0.665, side: -1, bn: 'মীরসরাই ফুড ভিলেজ', en: 'Mirsharai Food Village', col: '#e65100' },
+  { f: 0.68, side: 1, bn: 'সবুজ বাংলা রেস্তোরাঁ', en: 'Sobuj Bangla Restaurant', col: '#004d40' },
+];
+export const REST_MINUTES = 20;
+
 export const FUEL_STATIONS = [
   { f: 0.085, side: -1, bn: 'কাঁচপুর ফিলিং স্টেশন', en: 'Kanchpur Filling Station' },
   { f: 0.26, side: 1, bn: 'দাউদকান্দি ফিলিং স্টেশন', en: 'Daudkandi Filling Station' },
