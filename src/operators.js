@@ -634,7 +634,7 @@ export function paintHeader(ctx, W, H, op, inside = false) {
   ctx.clearRect(0, 0, W, H);
   if (inside) {
     // seen from the cab: the vinyl band is a dark see-through tint with the letters showing as colour
-    ctx.fillStyle = 'rgba(14,26,26,0.5)'; ctx.fillRect(0, 0, W, H * 0.86);
+    ctx.fillStyle = 'rgba(14,26,26,0.12)'; ctx.fillRect(0, 0, W, H * 0.86);
   } else if (op.headerBg) {
     // solid printed band (e.g. Marsa: white band, blue letters)
     ctx.fillStyle = op.headerBg; ctx.fillRect(0, 0, W, H * 0.86);
@@ -654,7 +654,7 @@ export function paintHeader(ctx, W, H, op, inside = false) {
     ctx.fillStyle = '#ffffff'; rr(ctx, W * 0.2, H * 0.06, W * 0.6, H * 0.58, H * 0.12); ctx.fill();
     ctx.fillStyle = '#2d3a8c'; ctx.beginPath(); ctx.moveTo(W * 0.21, H * 0.6); ctx.lineTo(W * 0.33, H * 0.1); ctx.lineTo(W * 0.31, H * 0.6); ctx.fill();
   }
-  ctx.fillStyle = inside ? 'rgba(40,120,110,0.85)' : op.headerBadge ? '#e0201a' : (op.headerColor || '#ffffff');
+  ctx.fillStyle = inside ? 'rgba(60,140,130,0.45)' : op.headerBadge ? '#e0201a' : (op.headerColor || '#ffffff');
   const parts = main.split('★');
   const y = H * (hasSub ? 0.36 : 0.45);
   if (parts.length === 3) {

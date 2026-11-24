@@ -847,10 +847,12 @@ function addInterior(bus, r) {
   const lean = Math.atan2(s.rake, s.glassTop - s.wsBot);
   const pillarLen = wsA.distanceTo(wsB) + 0.1;
   for (const sx of [-1, 1]) {
-    const pw = s.cockpit === 'ak' ? 0.07 : 0.12;
-    // AK1J pillars are painted in the body colour, so no dark frame shows through the glass
-    const pillarMat = s.cockpit === 'ak' ? std(new THREE.Color(bus.op.roof || bus.op.base).getHex(), 0.5) : trim;
-    const p = add(new RoundedBoxGeometry(pw, pillarLen, 0.1, 2, 0.03), pillarMat, sx * (s.W / 2 - s.bevel * 0.55), (wsA.y + wsB.y) / 2, (wsA.z + wsB.z) / 2 - 0.06);
+    const ak = s.cockpit === 'ak';
+    const pw = ak ? 0.045 : 0.12;
+    // AK1J: slim dark pillar just beyond the edge of the windshield glass, so from outside the body hides it
+    const glassHalf = s.W / 2 - s.bevel * 0.7;
+    const px = ak ? glassHalf + pw / 2 + 0.005 : s.W / 2 - s.bevel * 0.55;
+    const p = add(new RoundedBoxGeometry(pw, pillarLen, 0.06, 2, 0.015), ak ? std(0x2a2c2f, 0.5) : trim, sx * px, (wsA.y + wsB.y) / 2, (wsA.z + wsB.z) / 2 - 0.05);
     p.rotation.x = -lean;
   }
   if (s.framed) {
@@ -858,8 +860,9 @@ function addInterior(bus, r) {
     c.rotation.x = -lean;
   }
   const inW = s.W - 2 * s.bevel - 0.12;   // inner width that stays inside the rounded body edges
-  add(new THREE.BoxGeometry(inW, s.cockpit === 'ak' ? 0.16 : 0.3, 0.5), std(s.cockpit === 'ak' ? 0x1c1d1f : 0x3b2a24, 0.7), 0, s.glassTop - (s.cockpit === 'ak' ? 0.03 : 0.12), wsB.z - 0.32);
-  for (const x of [dX, -dX * 0.6]) {
+  if (s.cockpit === 'ak') add(new THREE.BoxGeometry(inW, 0.06, 0.4), ceilingMat, 0, s.glassTop + 0.06, wsB.z - 0.3);
+  else add(new THREE.BoxGeometry(inW, 0.3, 0.5), std(0x3b2a24, 0.7), 0, s.glassTop - 0.12, wsB.z - 0.32);
+  if (s.cockpit !== 'ak') for (const x of [dX, -dX * 0.6]) {   // sun visors (coach cabs only; the AK1J view stays open)
     const v = add(new RoundedBoxGeometry(0.62, 0.03, 0.26, 2, 0.01), std(0x55524c, 0.8), x, s.glassTop - 0.08, wsB.z - 0.22);
     v.rotation.x = 0.35;
   }
@@ -880,8 +883,10 @@ function addInterior(bus, r) {
     add(new THREE.BoxGeometry(s.W - 0.3, 0.035, 0.02), std(0xc62828, 0.6), 0, fy + 0.06, wsZ(s, fy) - 0.1);
   }
   // interior rear-view mirror
-  const irm = add(new RoundedBoxGeometry(0.42, 0.13, 0.04, 2, 0.02), trim, 0.1, s.glassTop - 0.35, wsZ(s, s.glassTop - 0.35) - 0.25);
-  irm.lookAt(eye);
+  if (s.cockpit !== 'ak') {
+    const irm = add(new RoundedBoxGeometry(0.42, 0.13, 0.04, 2, 0.02), trim, 0.1, s.glassTop - 0.35, wsZ(s, s.glassTop - 0.35) - 0.25);
+    irm.lookAt(eye);
+  }
 
   // ---- saloon shell ----
   const L = s.L - 0.3, zc = s.center;
@@ -929,7 +934,7 @@ function addInterior(bus, r) {
   if (s.cockpit === 'ak') {
     const fx = -(s.W / 2 - 0.07), frameMat = std(0x3a3c3f, 0.5);
     const zA = s.front - 0.34, zB = s.front - 1.62, yB = s.winBot - 0.12, yT = s.winTop;
-    add(new THREE.BoxGeometry(0.06, yT - yB, 0.08), frameMat, fx, (yT + yB) / 2, zA);
+    add(new THREE.BoxGeometry(0.04, yT - yB, 0.04), std(0x8f8a80, 0.6), fx, (yT + yB) / 2, zA);
     add(new THREE.BoxGeometry(0.06, yT - yB, 0.08), frameMat, fx, (yT + yB) / 2, zB);
     add(new THREE.BoxGeometry(0.06, yT - yB, 0.05), frameMat, fx, (yT + yB) / 2, (zA + zB) / 2);
     add(new THREE.BoxGeometry(0.06, 0.06, zA - zB), frameMat, fx, yT, (zA + zB) / 2);
