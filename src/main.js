@@ -761,7 +761,7 @@ async function boot() {
   requestAnimationFrame(frame);
   console.info(`[mohasorok] route ${(route.length / 1000).toFixed(1)} km game, ${route.places.length} places, ${route.bridges.length} bridges`);
   window.__game = { route, player, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
-    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); traffic.init(s); }, get facilities() { return facilities; }, get mirrors() { return mirrors; } };
+    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); traffic.init(s); }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; } };
 }
 let mirrors_defaultOff = false;
 function applyQualityBase() {

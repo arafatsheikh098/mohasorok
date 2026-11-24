@@ -530,9 +530,9 @@ export function paintFront(ctx, W, H, spec, op, plate) {
   ctx.quadraticCurveTo(W / 2, Y(spec.floor + 0.57), W, Y(spec.floor + 0.82));
   ctx.stroke();
   }
-  // black band under the windshield (wiper well)
-  ctx.fillStyle = '#121416';
-  ctx.fillRect(0, Y(ws + 0.02), W, Y(ws - 0.16) - Y(ws + 0.02));
+  // thin rubber seal under the windshield
+  ctx.fillStyle = '#2a2d30';
+  ctx.fillRect(0, Y(ws + 0.02), W, Y(ws - 0.02) - Y(ws + 0.02));
   // grille (kept clear of the windshield on short-nosed AK bodies)
   const ak = spec.cockpit === 'ak';
   const akTop = Math.min(spec.floor + 0.88, ws - 0.38);

@@ -45,7 +45,7 @@ export class CameraRig {
       this.orbitYaw -= m.dx * 0.005;
       this.orbitPitch = THREE.MathUtils.clamp(this.orbitPitch + m.dy * 0.003, 0.02, 1.2);
       this.dist = THREE.MathUtils.clamp(this.dist * (1 + m.wheel * 0.001), 9, 60);
-      if (!m.down) this.orbitYaw *= Math.pow(0.35, dt); // drift back behind the bus
+      if (!m.down && !this.hold) this.orbitYaw *= Math.pow(0.35, dt); // drift back behind the bus
       // heading lags behind the bus a little (ETS2-like)
       let dy = phys.yaw - this.smoothYaw;
       dy = Math.atan2(Math.sin(dy), Math.cos(dy));

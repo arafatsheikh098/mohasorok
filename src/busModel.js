@@ -194,7 +194,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   const mk = (map) => new THREE.MeshPhysicalMaterial({ map, ...paint });
   const y0 = s.floor + s.r, y1 = s.H - s.r, z0 = s.front - s.r, z1 = s.rear + s.r;
   const sidePanel = (left) => {
-    const g = new THREE.ShapeGeometry(profileShape(s, bev * 0.55, left ? -1 : 1), 10);
+    const g = new THREE.ShapeGeometry(profileShape(s, bev + 0.01, left ? -1 : 1), 10);   // only on the flat part of the side
     g.rotateY(left ? Math.PI / 2 : -Math.PI / 2);
     const p = g.attributes.position, uv = g.attributes.uv;
     for (let i = 0; i < p.count; i++) {
@@ -277,9 +277,11 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   }
 
   // bumpers & chassis
-  const bumper = new THREE.Mesh(new RoundedBoxGeometry(s.W - 2 * bev * 0.5 + 0.04, 0.34, 0.2, 2, 0.06), M.dark);
+  const bumperMat = s.cockpit === 'ak' && op.frontBumper
+    ? new THREE.MeshPhysicalMaterial({ color: op.frontBumper, roughness: 0.45, clearcoat: 0.3 }) : M.dark;
+  const bumper = new THREE.Mesh(new RoundedBoxGeometry(s.W - 2 * bev * 0.5 + 0.04, 0.34, 0.2, 2, 0.06), bumperMat);
   bumper.position.set(0, s.floor + 0.12, s.front + 0.04);
-  const rbumper = bumper.clone();
+  const rbumper = new THREE.Mesh(bumper.geometry, M.dark);
   rbumper.position.z = s.rear - 0.04;
   const chassis = new THREE.Mesh(new THREE.BoxGeometry(s.W - 0.5, 0.3, s.L - 1.4), M.dark);
   chassis.position.set(0, 0.32, s.center);
@@ -427,14 +429,6 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   // Bangladeshi touches on the AK1J body
   if (s.cockpit === 'ak') {
     const glassMat = interior ? M.glassPlayer : M.glassAI;
-    // wrap-around windshield: corner glass on the rounded front corners
-    for (const sx of [-1, 1]) {
-      const qg = new THREE.Mesh(new THREE.PlaneGeometry(bev * 0.95, s.glassTop - s.wsBot - 0.05), glassMat);
-      qg.position.set(sx * (s.W / 2 - bev * 0.32), (s.glassTop + s.wsBot) / 2, s.front - bev * 0.32 - s.rake * 0.5);
-      qg.rotation.y = sx * Math.PI / 4;
-      qg.renderOrder = 2;
-      exterior.add(qg);
-    }
     // real entrance door on the left: black frame + two glass leaves
     const dz0 = s.front - 0.28, dz1 = s.front - 1.18, dh = s.winTop - s.floor - 0.05;
     const frame = new THREE.Mesh(new THREE.BoxGeometry(0.03, dh, dz0 - dz1), M.dark);
@@ -656,7 +650,7 @@ function addInterior(bus, r) {
   dashShape.lineTo(dz - 0.47, floorY + 0.25);
   dashShape.lineTo(dz - 0.03, floorY + 0.2);
   dashShape.lineTo(dz - 0.03, dy - 0.02);
-  add(extrudeAcross(dashShape, -s.W / 2 + 0.06, s.W / 2 - 0.06, 0.02), dashBlack);
+  add(extrudeAcross(dashShape, -(s.W / 2 - s.bevel * 0.95), s.W / 2 - s.bevel * 0.95, 0.02), dashBlack);
   // red floral cloth on the dash top (every BD bus has one)
   const matTex = floralTexture();
   add(new THREE.BoxGeometry(s.W - 1.25, 0.012, 0.46), new THREE.MeshStandardMaterial({ map: matTex, roughness: 0.95 }), 0.42, dy + 0.02, dz - 0.27);
@@ -754,7 +748,7 @@ function addInterior(bus, r) {
   dashShape.quadraticCurveTo(dz - 0.5, floorY + 0.35, dz - 0.4, floorY + 0.25);
   dashShape.lineTo(dz - 0.02, floorY + 0.2);
   dashShape.lineTo(dz - 0.02, dy - 0.02);
-  add(extrudeAcross(dashShape, -s.W / 2 + 0.06, s.W / 2 - 0.06, 0.02), dashMat);
+  add(extrudeAcross(dashShape, -(s.W / 2 - s.bevel * 0.95), s.W / 2 - s.bevel * 0.95, 0.02), dashMat);
   // AC vents across the fascia
   for (const x of [0.15, 0.55, 0.95]) {
     const v = add(new RoundedBoxGeometry(0.28, 0.09, 0.03, 2, 0.02), trim, x, dy - 0.16, dz - 0.72);
@@ -837,14 +831,17 @@ function addInterior(bus, r) {
   const pillarLen = wsA.distanceTo(wsB) + 0.1;
   for (const sx of [-1, 1]) {
     const pw = s.cockpit === 'ak' ? 0.07 : 0.12;
-    const p = add(new RoundedBoxGeometry(pw, pillarLen, 0.1, 2, 0.03), trim, sx * (s.W / 2 - s.bevel * 0.55), (wsA.y + wsB.y) / 2, (wsA.z + wsB.z) / 2 - 0.06);
+    // AK1J pillars are painted in the body colour, so no dark frame shows through the glass
+    const pillarMat = s.cockpit === 'ak' ? std(new THREE.Color(bus.op.roof || bus.op.base).getHex(), 0.5) : trim;
+    const p = add(new RoundedBoxGeometry(pw, pillarLen, 0.1, 2, 0.03), pillarMat, sx * (s.W / 2 - s.bevel * 0.55), (wsA.y + wsB.y) / 2, (wsA.z + wsB.z) / 2 - 0.06);
     p.rotation.x = -lean;
   }
   if (s.framed) {
     const c = add(new THREE.BoxGeometry(0.06, pillarLen, 0.06), trim, 0, (wsA.y + wsB.y) / 2, (wsA.z + wsB.z) / 2 - 0.04);
     c.rotation.x = -lean;
   }
-  add(new THREE.BoxGeometry(s.W - 0.1, 0.36, 0.55), std(s.cockpit === 'ak' ? 0x1c1d1f : 0x3b2a24, 0.7), 0, s.H - 0.22, wsB.z - 0.3);
+  const inW = s.W - 2 * s.bevel - 0.12;   // inner width that stays inside the rounded body edges
+  add(new THREE.BoxGeometry(inW, 0.3, 0.5), std(s.cockpit === 'ak' ? 0x1c1d1f : 0x3b2a24, 0.7), 0, s.glassTop - 0.12, wsB.z - 0.32);
   for (const x of [dX, -dX * 0.6]) {
     const v = add(new RoundedBoxGeometry(0.62, 0.03, 0.26, 2, 0.01), std(0x55524c, 0.8), x, s.glassTop - 0.08, wsB.z - 0.22);
     v.rotation.x = 0.35;
@@ -871,10 +868,11 @@ function addInterior(bus, r) {
 
   // ---- saloon shell ----
   const L = s.L - 0.3, zc = s.center;
-  plane(s.W - 0.1, L, ceilingMat, 0, s.H - 0.1, zc, 0, Math.PI / 2);
+  plane(s.W - 2 * s.bevel * 0.7, L - 2 * s.bevel, ceilingMat, 0, s.H - 0.14, zc, 0, Math.PI / 2);
   plane(s.W - 0.1, L, std(0x5a5d62, 0.9), 0, floorY, zc, 0, -Math.PI / 2);
   plane(0.6, L - 2.2, std(0x7d2430, 0.95), 0, floorY + 0.005, zc - 1.1, 0, -Math.PI / 2);   // aisle carpet
-  const lowH = s.winBot - floorY, upH = s.H - 0.1 - s.winTop;
+  const roofIn = s.H - s.bevel - 0.03;            // top of the flat side walls
+  const lowH = s.winBot - floorY, upH = Math.max(0.05, roofIn - s.winTop);
   const tint = new THREE.MeshBasicMaterial({ color: 0x203038, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
   for (const sx of [-1, 1]) {
     const ry = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
@@ -909,7 +907,7 @@ function addInterior(bus, r) {
   bus.cabinLed = led.material;
   // rear wall
   plane(s.W - 0.1, lowH, wall, 0, floorY + lowH / 2, s.rear + 0.15);
-  plane(s.W - 0.1, upH, wall, 0, s.winTop + upH / 2, s.rear + 0.15);
+  plane(s.W - 2 * s.bevel, Math.max(0.05, s.H - s.roofR - 0.05 - s.winTop), wall, 0, s.winTop + Math.max(0.05, s.H - s.roofR - 0.05 - s.winTop) / 2, s.rear + 0.15);
   // driver-side lower wall + window frame
   add(new THREE.BoxGeometry(0.06, s.winBot - floorY - 0.15, 1.3), wall, -(s.W / 2 - 0.06), (s.winBot + floorY - 0.15) / 2, s.front - 0.95);
   // entrance door (left): glass panel and steps
