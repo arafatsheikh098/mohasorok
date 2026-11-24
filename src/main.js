@@ -829,7 +829,16 @@ async function boot() {
   requestAnimationFrame(frame);
   console.info(`[mohasorok] route ${(route.length / 1000).toFixed(1)} km game, ${route.places.length} places, ${route.bridges.length} bridges`);
   window.__game = { route, player, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
-    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); traffic.init(s); }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; } };
+    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); traffic.init(s); }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; },
+    // debug: which meshes are under screen pixel (px, py)
+    pick(px, py) {
+      const rc = new THREE.Raycaster(), cam = rig.camera;
+      rc.setFromCamera(new THREE.Vector2(px / innerWidth * 2 - 1, -(py / innerHeight) * 2 + 1), cam);
+      return rc.intersectObject(scene, true).filter((h) => h.object.isMesh || h.object.isLine).slice(0, 4).map((h) => {
+        const o = h.object, gp = o.geometry.parameters || {};
+        return `${h.distance.toFixed(2)} ${o.geometry.type}${JSON.stringify(gp).slice(0, 60)} col=${o.material.color?.getHexString()} side=${o.material.side} vis=${o.visible} parent=${o.parent === player.bus.interior ? 'interior' : o.parent?.type} type=${o.type} name=${o.name}`;
+      });
+    } };
 }
 let mirrors_defaultOff = false;
 function applyQualityBase() {

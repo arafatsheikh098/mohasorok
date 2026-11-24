@@ -530,9 +530,11 @@ export function paintFront(ctx, W, H, spec, op, plate) {
   ctx.quadraticCurveTo(W / 2, Y(spec.floor + 0.57), W, Y(spec.floor + 0.82));
   ctx.stroke();
   }
-  // thin rubber seal under the windshield
-  ctx.fillStyle = '#2a2d30';
-  ctx.fillRect(0, Y(ws + 0.02), W, Y(ws - 0.02) - Y(ws + 0.02));
+  // thin rubber seal under the windshield (coaches only; the AK1J nose stays clean)
+  if (spec.cockpit !== 'ak') {
+    ctx.fillStyle = '#2a2d30';
+    ctx.fillRect(0, Y(ws + 0.02), W, Y(ws - 0.02) - Y(ws + 0.02));
+  }
   // grille (kept clear of the windshield on short-nosed AK bodies)
   const ak = spec.cockpit === 'ak';
   const akTop = Math.min(spec.floor + 0.88, ws - 0.38);
@@ -633,8 +635,7 @@ export function paintRear(ctx, W, H, spec, op, plate) {
 export function paintHeader(ctx, W, H, op, inside = false) {
   ctx.clearRect(0, 0, W, H);
   if (inside) {
-    // seen from the cab: the vinyl band is a dark see-through tint with the letters showing as colour
-    ctx.fillStyle = 'rgba(14,26,26,0.12)'; ctx.fillRect(0, 0, W, H * 0.86);
+    // seen from the cab: clear glass, only the (mirrored) letters show
   } else if (op.headerBg) {
     // solid printed band (e.g. Marsa: white band, blue letters)
     ctx.fillStyle = op.headerBg; ctx.fillRect(0, 0, W, H * 0.86);

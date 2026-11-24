@@ -87,7 +87,7 @@ const M = {
   acUnit: new THREE.MeshStandardMaterial({ color: 0xe6e6e6, roughness: 0.4, metalness: 0.2 }),
   rack: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.5, metalness: 0.6 }),
   glassAI: new THREE.MeshPhysicalMaterial({ color: 0x0c1418, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.86, envMapIntensity: 1.2 }),
-  glassPlayer: new THREE.MeshPhysicalMaterial({ color: 0x0c1418, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.45, envMapIntensity: 1.2, depthWrite: false }),
+  glassPlayer: new THREE.MeshPhysicalMaterial({ color: 0x1a2a30, roughness: 0.04, metalness: 0.2, transparent: true, opacity: 0.28, envMapIntensity: 1.0, depthWrite: false }),
 };
 const wheelGeo = {};
 function getWheelGeo(R, wid) {
@@ -616,9 +616,14 @@ function seatCoverTexture(op) {
   x.font = `bold 18px ${EN_FONT}`; x.fillText(op.en, 128, 120, 220);
   return canvasTexture(c, { repeat: false });
 }
-function tintTexture() {
+function tintTexture(clear = false) {
   const [c, x] = makeCanvas(8, 256);
   const g = x.createLinearGradient(0, 0, 0, 256);
+  if (clear) {       // clean glass: just a whisper of tint, no sun strip
+    g.addColorStop(0, 'rgba(30,40,45,0.04)'); g.addColorStop(1, 'rgba(30,40,45,0.04)');
+    x.fillStyle = g; x.fillRect(0, 0, 8, 256);
+    return canvasTexture(c, { repeat: false });
+  }
   g.addColorStop(0, 'rgba(20,70,60,0.85)');
   g.addColorStop(0.16, 'rgba(20,70,60,0.55)');
   g.addColorStop(0.2, 'rgba(30,40,45,0.10)');
@@ -841,7 +846,7 @@ function addInterior(bus, r) {
   const wsA = new THREE.Vector3(0, s.wsBot + 0.02, s.front);
   const wsB = new THREE.Vector3(0, s.glassTop, wsZ(s, s.glassTop));
   const inner = quadAlong(wsA, wsB, s.W - 0.14, -0.01);
-  inner.material = new THREE.MeshBasicMaterial({ map: tintTexture(), transparent: true, side: THREE.BackSide, depthWrite: false });
+  inner.material = new THREE.MeshBasicMaterial({ map: tintTexture(s.cockpit === 'ak'), transparent: true, side: THREE.BackSide, depthWrite: false });
   inner.renderOrder = 3;
   g.add(inner);
   const lean = Math.atan2(s.rake, s.glassTop - s.wsBot);
@@ -852,7 +857,8 @@ function addInterior(bus, r) {
     // AK1J: slim dark pillar just beyond the edge of the windshield glass, so from outside the body hides it
     const glassHalf = s.W / 2 - s.bevel * 0.7;
     const px = ak ? glassHalf + pw / 2 + 0.005 : s.W / 2 - s.bevel * 0.55;
-    const p = add(new RoundedBoxGeometry(pw, pillarLen, 0.06, 2, 0.015), ak ? std(0x2a2c2f, 0.5) : trim, sx * px, (wsA.y + wsB.y) / 2, (wsA.z + wsB.z) / 2 - 0.05);
+    if (ak) continue;   // AK1J: clean windshield, no pillar frame
+    const p = add(new RoundedBoxGeometry(pw, pillarLen, 0.06, 2, 0.015), trim, sx * px, (wsA.y + wsB.y) / 2, (wsA.z + wsB.z) / 2 - 0.05);
     p.rotation.x = -lean;
   }
   if (s.framed) {
@@ -860,8 +866,7 @@ function addInterior(bus, r) {
     c.rotation.x = -lean;
   }
   const inW = s.W - 2 * s.bevel - 0.12;   // inner width that stays inside the rounded body edges
-  if (s.cockpit === 'ak') add(new THREE.BoxGeometry(inW, 0.06, 0.4), ceilingMat, 0, s.glassTop + 0.06, wsB.z - 0.3);
-  else add(new THREE.BoxGeometry(inW, 0.3, 0.5), std(0x3b2a24, 0.7), 0, s.glassTop - 0.12, wsB.z - 0.32);
+  if (s.cockpit !== 'ak') add(new THREE.BoxGeometry(inW, 0.3, 0.5), std(0x3b2a24, 0.7), 0, s.glassTop - 0.12, wsB.z - 0.32);
   if (s.cockpit !== 'ak') for (const x of [dX, -dX * 0.6]) {   // sun visors (coach cabs only; the AK1J view stays open)
     const v = add(new RoundedBoxGeometry(0.62, 0.03, 0.26, 2, 0.01), std(0x55524c, 0.8), x, s.glassTop - 0.08, wsB.z - 0.22);
     v.rotation.x = 0.35;
@@ -891,6 +896,15 @@ function addInterior(bus, r) {
   // ---- saloon shell ----
   const L = s.L - 0.3, zc = s.center;
   plane(s.W - 2 * s.bevel * 0.7, L - 2 * s.bevel, ceilingMat, 0, s.H - 0.14, zc, 0, Math.PI / 2);
+  // close the ceiling right up to the top of the windshield (no sky gap above the glass)
+  {
+    const zEnd = zc + (L - 2 * s.bevel) / 2, zTop = wsZ(s, s.glassTop) - 0.02;
+    const a = new THREE.Vector3(0, s.H - 0.14, zEnd), b = new THREE.Vector3(0, s.glassTop + 0.01, zTop);
+    const cap = new THREE.Mesh(new THREE.PlaneGeometry(s.W - 2 * s.bevel * 0.7, a.distanceTo(b) + 0.02), ceilingMat);
+    cap.position.copy(a).add(b).multiplyScalar(0.5);
+    cap.rotation.x = Math.PI / 2 - Math.atan2(a.y - b.y, b.z - a.z);
+    g.add(cap);
+  }
   plane(s.W - 0.1, L, std(0x5a5d62, 0.9), 0, floorY, zc, 0, -Math.PI / 2);
   plane(0.6, L - 2.2, std(0x7d2430, 0.95), 0, floorY + 0.005, zc - 1.1, 0, -Math.PI / 2);   // aisle carpet
   const roofIn = s.H - s.bevel - 0.03;            // top of the flat side walls
