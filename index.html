@@ -216,7 +216,13 @@
 <div id="menu">
   <div class="panel">
     <h1><span class="bn">মহাসড়ক</span> Mohasorok</h1>
-    <div class="sub">N1 prototype · Dhaka (Sayedabad) → Chattogram · ~245 km, 1:12 map scale</div>
+    <div class="sub">N1 Dhaka ⇄ Chattogram · ~245 km, 1:12 map scale</div>
+
+    <h3>Route</h3>
+    <div class="seg" id="route">
+      <button data-v="ctg" class="sel"><span class="bn">ঢাকা → চট্টগ্রাম</span><small>Dhaka to Chattogram</small></button>
+      <button data-v="dhk"><span class="bn">চট্টগ্রাম → ঢাকা</span><small>Chattogram to Dhaka</small></button>
+    </div>
 
     <h3>Operator</h3>
     <div class="ops" id="ops"></div>
@@ -241,7 +247,7 @@
       <button data-v="low">Low</button>
     </div>
 
-    <button id="start">START TRIP ▸ ঢাকা → চট্টগ্রাম</button>
+    <button id="start">START TRIP ▸ <span class="bn" id="start-route">ঢাকা → চট্টগ্রাম</span></button>
     <div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="about-open" style="margin:0;flex:1">About &amp; credits</button></div>
     <div class="keys">
       <kbd>W</kbd>/<kbd>S</kbd> throttle / brake (hold <kbd>S</kbd> to reverse) · <kbd>A</kbd>/<kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>

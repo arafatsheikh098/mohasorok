@@ -7,7 +7,7 @@ import { drawRegion } from './skins.js';
 
 export const BUS_TYPES = {
   ak1j: {
-    name: 'AK1J AC', desc: 'Hino AK1J, BD-built AC body', L: 10.6, W: 2.5, H: 3.3, floor: 0.45, winBot: 1.62, winTop: 2.72,
+    name: 'AK1J AC', desc: 'Hino AK1J, BD-built AC body', L: 10.6, W: 2.5, H: 3.3, floor: 0.45, winBot: 1.58, winTop: 2.86,
     wheelbase: 5.4, rearOH: 2.95, wheelR: 0.5, pillars: 7, ac: true, bays: true, framed: false, rack: false,
     eye: 2.15, wsBot: 1.58, rake: 0.12, mass: 14000, power: 280, seatRows: 9, seat: 0x7a1f2b,
     cockpit: 'ak', bevel: 0.26, frontR: 0.4, roofR: 0.34, eyeZ: 1.45, seatStart: 2.35, visor: true,
@@ -23,7 +23,7 @@ export const BUS_TYPES = {
     eye: 2.65, wsBot: 1.78, rake: 0.3, mass: 18500, power: 330, seatRows: 11, seat: 0x1f3a6b,
   },
   local: {
-    name: 'AK1J Non-AC', desc: 'Hino AK1J local body, roof rack', L: 10.4, W: 2.45, H: 3.15, floor: 0.45, winBot: 1.5, winTop: 2.6,
+    name: 'AK1J Non-AC', desc: 'Hino AK1J local body, roof rack', L: 10.4, W: 2.45, H: 3.15, floor: 0.45, winBot: 1.5, winTop: 2.68,
     wheelbase: 5.3, rearOH: 2.9, wheelR: 0.5, pillars: 9, ac: false, bays: false, framed: true, rack: true,
     eye: 2.08, wsBot: 1.5, rake: 0.1, mass: 13000, power: 250, seatRows: 10, seat: 0x2e5d3a,
     cockpit: 'ak', bevel: 0.22, frontR: 0.32, eyeZ: 1.42, seatStart: 2.3, visor: true,
@@ -401,13 +401,75 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     exterior.add(tr);
   }
 
-  // roof
+  // roof: AK1J bodies carry a low, rounded AC pod forward of centre; coaches a flatter unit
   if (s.ac) {
-    const ac = new THREE.Mesh(new RoundedBoxGeometry(1.7, 0.22, 3.2, 3, 0.08), M.acUnit);
-    ac.position.set(0, s.H + 0.08, s.center - 1.2);
-    ac.castShadow = true;
-    exterior.add(ac);
+    if (s.cockpit === 'ak') {
+      const pod = new THREE.Mesh(new RoundedBoxGeometry(1.95, 0.3, 3.8, 4, 0.14), M.acUnit);
+      pod.position.set(0, s.H + 0.1, s.center + 0.7);
+      pod.castShadow = true;
+      exterior.add(pod);
+      const nose = new THREE.Mesh(new RoundedBoxGeometry(1.8, 0.16, 0.7, 3, 0.07), M.acUnit);
+      nose.position.set(0, s.H + 0.05, s.center + 2.85);
+      nose.rotation.x = 0.12;
+      exterior.add(nose);
+      for (const z of [-0.9, 0, 0.9]) {         // vent grilles
+        const v = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.02, 0.3), M.dark);
+        v.position.set(0, s.H + 0.26, s.center + 0.7 + z);
+        exterior.add(v);
+      }
+    } else {
+      const ac = new THREE.Mesh(new RoundedBoxGeometry(1.7, 0.22, 3.2, 3, 0.08), M.acUnit);
+      ac.position.set(0, s.H + 0.08, s.center - 1.2);
+      ac.castShadow = true;
+      exterior.add(ac);
+    }
   }
+  // Bangladeshi touches on the AK1J body
+  if (s.cockpit === 'ak') {
+    const glassMat = interior ? M.glassPlayer : M.glassAI;
+    // wrap-around windshield: corner glass on the rounded front corners
+    for (const sx of [-1, 1]) {
+      const qg = new THREE.Mesh(new THREE.PlaneGeometry(bev * 0.95, s.glassTop - s.wsBot - 0.05), glassMat);
+      qg.position.set(sx * (s.W / 2 - bev * 0.32), (s.glassTop + s.wsBot) / 2, s.front - bev * 0.32 - s.rake * 0.5);
+      qg.rotation.y = sx * Math.PI / 4;
+      qg.renderOrder = 2;
+      exterior.add(qg);
+    }
+    // real entrance door on the left: black frame + two glass leaves
+    const dz0 = s.front - 0.28, dz1 = s.front - 1.18, dh = s.winTop - s.floor - 0.05;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.03, dh, dz0 - dz1), M.dark);
+    frame.position.set(s.W / 2 + 0.01, s.floor + dh / 2, (dz0 + dz1) / 2);
+    exterior.add(frame);
+    for (const k of [0, 1]) {
+      const leaf = new THREE.Mesh(new THREE.PlaneGeometry((dz0 - dz1) / 2 - 0.06, dh - 0.12), glassMat);
+      leaf.rotation.y = Math.PI / 2;
+      leaf.position.set(s.W / 2 + 0.028, s.floor + dh / 2 + 0.02, dz0 - (dz0 - dz1) * (0.25 + k * 0.5));
+      exterior.add(leaf);
+    }
+    // chrome air horns on the roof cap
+    for (const sx of [-1, 1]) {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.42, 12, 1, true), M.chrome);
+      horn.rotation.x = Math.PI / 2;
+      horn.position.set(sx * 0.35, s.H + 0.05, s.front - s.rake - 0.55);
+      exterior.add(horn);
+    }
+  }
+  // LED marker lights along the roof edge (amber) and skirt (blue), as on most BD buses
+  mats.led = new THREE.MeshStandardMaterial({ color: 0x664400, emissive: 0xffa31a, emissiveIntensity: 1 });
+  mats.ledBlue = new THREE.MeshStandardMaterial({ color: 0x113366, emissive: 0x3d7bff, emissiveIntensity: 1 });
+  const ledGeo = new THREE.BoxGeometry(0.03, 0.04, 0.07);
+  const nLed = Math.floor((s.L - 1.2) / 0.55);
+  const ledA = new THREE.InstancedMesh(ledGeo, mats.led, nLed * 2);
+  const ledB = new THREE.InstancedMesh(ledGeo, mats.ledBlue, nLed * 2);
+  const lm = new THREE.Matrix4();
+  let li = 0;
+  for (const sx of [-1, 1]) for (let k = 0; k < nLed; k++) {
+    const z = s.rear + 0.6 + k * 0.55;
+    lm.makeTranslation(sx * (s.W / 2 + 0.006), s.H - bev - 0.03, z); ledA.setMatrixAt(li, lm);
+    lm.makeTranslation(sx * (s.W / 2 + 0.006), s.floor + 0.16, z); ledB.setMatrixAt(li, lm);
+    li++;
+  }
+  exterior.add(ledA, ledB);
   if (s.rack) {
     const rails = [];
     for (const sx of [-1, 1]) {
@@ -424,6 +486,18 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
         p.translate(sx * (s.W / 2 - 0.15), s.H + 0.14, s.center - 0.5 - s.L * 0.35 + (k * s.L * 0.7) / 8);
         rails.push(p);
       }
+    }
+    // ladder up the rear, on the left, to reach the roof rack
+    const lx = s.W / 2 - 0.45;
+    for (const off of [-0.18, 0.18]) {
+      const g = new THREE.BoxGeometry(0.035, s.H - s.floor - 0.3, 0.035);
+      g.translate(lx + off, (s.H + s.floor) / 2 + 0.1, s.rear - 0.06);
+      rails.push(g);
+    }
+    for (let k = 0; k < 7; k++) {
+      const g = new THREE.BoxGeometry(0.36, 0.03, 0.03);
+      g.translate(lx, s.floor + 0.55 + k * 0.33, s.rear - 0.06);
+      rails.push(g);
     }
     exterior.add(new THREE.Mesh(mergeGeometries(rails), M.rack));
     const bagCols = [0x6d4c41, 0x1e88e5, 0xd84315, 0x9e9d24, 0xeeeeee];
@@ -900,6 +974,7 @@ export function setBusLights(bus, { head = false, brake = false, indL = false, i
   m.indR.emissiveIntensity = indR ? 6 : 0;
   m.marker.emissiveIntensity = head || night ? 3 : 0;
   m.reverse.emissiveIntensity = reverse ? 5 : 0;
+  if (m.led) { m.led.emissiveIntensity = head || night ? 3 : 0.9; m.ledBlue.emissiveIntensity = head || night ? 3 : 0.7; }
 }
 
 // Instrument cluster: speedo, tacho, small gauges, LCD and warning lamps.

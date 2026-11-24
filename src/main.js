@@ -55,14 +55,14 @@ const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.15, 9
 // settings persist between visits; phones start lighter
 const SAVED = (() => { try { return JSON.parse(localStorage.getItem('mohasorok.settings') || '{}'); } catch { return {}; } })();
 const settings = {
-  op: OPERATORS[0], type: 'ak1j', time: 'morning',
+  op: OPERATORS[0], type: 'ak1j', time: 'morning', dir: 'ctg',
   traffic: IS_PHONE ? 22 : 38, quality: IS_PHONE ? 'low' : IS_TOUCH ? 'medium' : 'high',
   ...SAVED, opId: SAVED.opId,
 };
 settings.op = OPERATORS.find((o) => o.id === settings.opId) || OPERATORS[0];
 function saveSettings() {
-  const { type, time, traffic, quality } = settings;
-  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ type, time, traffic, quality, opId: settings.op.id })); } catch { /* private mode */ }
+  const { type, time, traffic, quality, dir } = settings;
+  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ type, time, traffic, quality, dir, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors;
 const audio = new GameAudio();
@@ -113,7 +113,7 @@ function createPlayerBus() {
   player.len = bus.spec.L;
   player.wid = bus.spec.W;
   if (mirrors) mirrors.attach(bus);
-  resetPlayer(60, ROAD.laneCenters[0]);
+  resetPlayer(...startPoint());
 }
 
 function resetPlayer(s, d) {
@@ -126,8 +126,12 @@ function resetPlayer(s, d) {
   placeBusModel(0);
 }
 
+// trip start: Sayedabad heading south-east, or A.K. Khan (Chattogram) heading back to Dhaka
+function startPoint() {
+  return settings.dir === 'dhk' ? [route.length - 60, -ROAD.laneCenters[0]] : [60, ROAD.laneCenters[0]];
+}
 function restartTrip() {
-  resetPlayer(60, ROAD.laneCenters[0]);
+  resetPlayer(...startPoint());
   Object.assign(player, { elapsed: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false,
     fuel: TANK_LITRES * START_FUEL, fuelCost: 0, tollCost: 0, refuelling: false, fuelWarn: 0 });
   for (const g of facilities.gates) { g.holdPlayer = false; g.openT = 0; }
@@ -344,7 +348,9 @@ function events(dt) {
   for (const p of route.places) {
     if (!p.town) continue;
     const cs = p.s - p.town / 2;
-    if (player.side < 0 && player.lastS < cs && s >= cs && kmh > SPEED_LIMIT + 5) {
+    const ce = p.s + p.town / 2;
+    const passedOut = player.side > 0 && player.lastS > ce && s <= ce;
+    if (((player.side < 0 && player.lastS < cs && s >= cs) || passedOut) && kmh > SPEED_LIMIT + 5) {
       const fine = kmh > SPEED_LIMIT + 25 ? 2000 : 1000;
       player.fines += fine;
       player.rating = Math.max(1, player.rating - 0.3);
@@ -488,6 +494,13 @@ function buildMenu() {
     b.onclick = () => { selectSeg(times, b); setTime(k); saveSettings(); };
     times.appendChild(b);
   });
+  const routeSeg = $('route');
+  const routeLabel = () => ($('start-route').textContent = settings.dir === 'dhk' ? 'চট্টগ্রাম → ঢাকা' : 'ঢাকা → চট্টগ্রাম');
+  routeSeg.querySelectorAll('button').forEach((b) => {
+    b.classList.toggle('sel', b.dataset.v === settings.dir);
+    b.onclick = () => { selectSeg(routeSeg, b); settings.dir = b.dataset.v; routeLabel(); saveSettings(); restartTrip(); };
+  });
+  routeLabel();
   for (const id of ['traffic', 'quality']) {
     const el = $(id);
     el.querySelectorAll('button').forEach((b) => {
@@ -586,7 +599,7 @@ function startDrive() {
   hud.show(true);
   state = 'drive';
   perf.t = 0; perf.n = 0;
-  hud.toast(`<span class="bn">${settings.op.bn}</span> · ${BUS_TYPES[settings.type].name}<br><small>Sayedabad → Chattogram via N1. Drive on the LEFT.${IS_TOUCH ? ' Turn the wheel, hold GAS / BRAKE.' : ' Mirrors: V · Refuel: F'}</small>`, 'good', 5000);
+  hud.toast(`<span class="bn">${settings.op.bn}</span> · ${BUS_TYPES[settings.type].name}<br><small>${settings.dir === 'dhk' ? 'A.K. Khan → Sayedabad (Dhaka)' : 'Sayedabad → Chattogram'} via N1. Drive on the LEFT.${IS_TOUCH ? ' Turn the wheel, hold GAS / BRAKE.' : ' Mirrors: V · Refuel: F'}</small>`, 'good', 5000);
 }
 
 // ---------- automatic graphics reduction on slow devices ----------

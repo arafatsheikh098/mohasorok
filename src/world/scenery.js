@@ -558,11 +558,12 @@ function signPost(group, mat, w, h, s, d, route, yawFlip, heightAboveRoad = 2.4)
 }
 
 // steel portal over the carriageway towards Chattogram with the green sign above the lanes
-function gantry(group, mat, w, h, s, route) {
+function gantry(group, mat, w, h, s, route, side = -1) {
   const g = new THREE.Group();
   const p = route.pointAt(s, 0);
   g.position.set(p.x, route.roadHeight(s), p.z);
-  g.rotation.y = route.yawAt(s) + Math.PI;     // faces oncoming traffic on our side
+  // Chattogram-bound side: turn to face traffic coming up the left; Dhaka-bound side faces the other way
+  g.rotation.y = route.yawAt(s) + (side < 0 ? Math.PI : 0);
   const steel = new THREE.MeshStandardMaterial({ color: 0x8e9398, roughness: 0.45, metalness: 0.7 });
   // after the PI turn local +x points along +d (right), so our carriageway is at negative x
   const legs = [-(ROAD.median + 0.4), -(ROAD.half + 0.8)];
@@ -602,7 +603,7 @@ function buildSigns(route, scene, chunks, mats) {
     const behind = majors.filter((p) => p.s < s - 200).slice(-1);
     const bl = behind.map((p) => [p.bn.split(' (')[0], p.en.split(' (')[0], kmBack(s, p)]);
     if (!bl.length || bl[0][1] !== start.en.split(' (')[0]) bl.push([start.bn.split(' (')[0], 'Dhaka', kmBack(s, start)]);
-    items.push({ s: s + 60, d: ROAD.half + 2.5, tex: directionSignTexture(bl), w: 6.2, flip: true });
+    items.push({ s: s + 60, d: ROAD.median + ROAD.lane, tex: directionSignTexture(bl), w: 6.2, flip: true, gantry: true, side: 1 });
   }
   // town entry signs + speed limit after each town
   for (const p of places) {
@@ -619,7 +620,7 @@ function buildSigns(route, scene, chunks, mats) {
     const mat = it.mat || new THREE.MeshStandardMaterial({ map: it.tex, roughness: 0.5 });
     const img = it.tex && it.tex.image;
     const h = it.h || (img ? it.w * (img.height / img.width) : 1);
-    if (it.gantry) gantry(group, mat, it.w, h, it.s, route);
+    if (it.gantry) gantry(group, mat, it.w, h, it.s, route, it.side || -1);
     else signPost(group, mat, it.w, h, it.s, it.d, route, it.flip, it.small ? 1.8 : 2.6);
     scene.add(group);
     chunks.register(group, it.s, 60);
