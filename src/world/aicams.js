@@ -20,6 +20,26 @@ function zoneSignTexture() {
   return canvasTexture(c, { repeat: false });
 }
 
+// camera-flash sprite: hard white core, blue-white rim and a horizontal lens streak
+function flareTexture() {
+  const S = 256;
+  const [c, x] = makeCanvas(S, S);
+  const g = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.12, 'rgba(255,255,255,1)');
+  g.addColorStop(0.3, 'rgba(210,235,255,0.75)');
+  g.addColorStop(0.6, 'rgba(170,210,255,0.22)');
+  g.addColorStop(1, 'rgba(160,200,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, S, S);
+  const h = x.createLinearGradient(0, 0, S, 0);
+  h.addColorStop(0, 'rgba(200,230,255,0)'); h.addColorStop(0.5, 'rgba(255,255,255,0.95)'); h.addColorStop(1, 'rgba(200,230,255,0)');
+  x.fillStyle = h; x.fillRect(0, S / 2 - 3, S, 6);
+  const v = x.createLinearGradient(0, 0, 0, S);
+  v.addColorStop(0, 'rgba(200,230,255,0)'); v.addColorStop(0.5, 'rgba(255,255,255,0.6)'); v.addColorStop(1, 'rgba(200,230,255,0)');
+  x.fillStyle = v; x.fillRect(S / 2 - 2, S * 0.2, 4, S * 0.6);
+  return canvasTexture(c, { repeat: false });
+}
+
 export function buildAICams(route, scene, chunks) {
   const spots = [];
   const ok = (s) => s > 150 && s < route.length - 150 && !route.bridgeAt(s) && !route.bridgeAt(s + 40) && !route.bridgeAt(s - 40) &&
@@ -41,7 +61,7 @@ export function buildAICams(route, scene, chunks) {
   const housing = new THREE.MeshStandardMaterial({ color: 0x2b2e31, roughness: 0.5, metalness: 0.3 });
   const lens = new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: 0.05, metalness: 0.6 });
   const signMat = new THREE.MeshStandardMaterial({ map: zoneSignTexture(), roughness: 0.5 });
-  const glowMap = glowTexture();
+  const glowMap = flareTexture();
 
   for (const c of cams) {
     const h = route.roadHeight(c.s);
@@ -74,7 +94,7 @@ export function buildAICams(route, scene, chunks) {
     fbox.position.set(0.5, 0, 0.04);
     head.add(fbox, flash);
     // halo sprite for the flash (invisible until it fires)
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, fog: false }));
     halo.scale.setScalar(4);
     halo.position.set(0.5, 0, 0.3);
     head.add(halo);
@@ -110,31 +130,40 @@ export function buildAICams(route, scene, chunks) {
 
   return {
     cams,
-    // vehicles: [{ s, prevS, side, kmh, isPlayer }]
+    // vehicles: [{ s, prevS, side, kmh, len, isPlayer }]
+    // The camera photographs vehicles from the front while they are still TRIGGER metres away,
+    // so the driver sees the flash ahead through the windshield.
     update(dt, vehicles, onPlayerPass) {
-      let brightest = null;
+      const TRIGGER = 32, FLASH = 0.5;
+      let brightest = null, bk = 0;
       for (const c of cams) {
         if (c.t > 0) {
           c.t = Math.max(0, c.t - dt);
-          const k = c.t > 0.18 ? 1 : c.t / 0.18;     // quick double-pop then fade
-          c.flashMat.emissiveIntensity = 18 * k;
+          // two pops: 0.50–0.40 s and 0.30–0.18 s, then a short fade
+          const e = FLASH - c.t;
+          const k = e < 0.1 ? 1 : e < 0.2 ? 0.15 : e < 0.32 ? 1 : Math.max(0, 1 - (e - 0.32) / 0.18);
+          c.flashMat.emissiveIntensity = 30 * k;
           c.halo.material.opacity = k;
-          if (!brightest || c.t > brightest.t) brightest = c;
+          c.halo.scale.set(6 + 7 * k, 4 + 4 * k, 1);
+          if (k > bk) { bk = k; brightest = c; }
         }
       }
       for (const v of vehicles) {
+        // front of the vehicle in road distance; side -1 drives towards larger s, side +1 towards smaller s
+        const half = (v.len || 10) / 2;
+        const front = v.s - v.side * half, prevFront = v.prevS - v.side * half;
         for (const c of cams) {
-          if (c.side !== v.side) continue;
-          // traffic on side -1 moves towards larger s, side +1 towards smaller s
-          const crossed = v.side < 0 ? v.prevS < c.s && v.s >= c.s : v.prevS > c.s && v.s <= c.s;
+          if (c.side !== v.side || c.t > 0.05) continue;
+          const line = c.s + v.side * TRIGGER;
+          const crossed = v.side < 0 ? prevFront < line && front >= line : prevFront > line && front <= line;
           if (!crossed) continue;
-          c.t = 0.32;
+          c.t = FLASH;
           if (v.isPlayer) onPlayerPass?.(c, v.kmh);
         }
       }
-      if (brightest && brightest.t > 0.05) {
+      if (brightest && bk > 0.05) {
         brightest.head.getWorldPosition(light.position);
-        light.intensity = 260 * Math.min(1, brightest.t / 0.18);
+        light.intensity = 420 * bk;
       } else light.intensity = 0;
     },
   };

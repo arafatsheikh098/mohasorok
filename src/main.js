@@ -335,12 +335,15 @@ function placeBusModel(dt) {
 
 // ---------- AI cameras ----------
 function aiCamVehicles(withPlayer) {
-  const list = traffic.list.map((v) => ({ s: v.s, prevS: v.prevS ?? v.s, side: v.dir > 0 ? -1 : 1, kmh: v.v * 3.6 }));
-  if (withPlayer) list.push({ s: player.s, prevS: player.lastS, side: player.side, kmh: Math.abs(player.phys.v) * 3.6, isPlayer: true });
+  const list = traffic.list.map((v) => ({ s: v.s, prevS: v.prevS ?? v.s, side: v.dir > 0 ? -1 : 1, kmh: v.v * 3.6, len: v.len }));
+  if (withPlayer) list.push({ s: player.s, prevS: player.lastS, side: player.side, kmh: Math.abs(player.phys.v) * 3.6, len: player.len, isPlayer: true });
   return list;
 }
 function onAICam(cam, kmh) {
   audio.shutter?.();
+  // the flash also catches your eye: a quick white double flash on screen
+  const fl = $('camflash');
+  fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
   const place = route.placeAt(cam.s);
   const where = place ? place.en.split(' (')[0] : 'N1';
   if (kmh > SPEED_LIMIT + 5) {
