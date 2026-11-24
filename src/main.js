@@ -60,9 +60,10 @@ const settings = {
   ...SAVED, opId: SAVED.opId,
 };
 settings.op = OPERATORS.find((o) => o.id === settings.opId) || OPERATORS[0];
+settings.seats = settings.seats || {};
 function saveSettings() {
-  const { type, time, traffic, quality, dir } = settings;
-  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ type, time, traffic, quality, dir, opId: settings.op.id })); } catch { /* private mode */ }
+  const { type, time, traffic, quality, dir, seats } = settings;
+  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ type, time, traffic, quality, dir, seats, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors;
 const audio = new GameAudio();
@@ -434,6 +435,43 @@ function handleCrashes(crashes) {
   }
 }
 
+// ---------- driver's seat adjustment (saved per bus type) ----------
+const SEAT_LIM = { x: [-0.45, 0.45], y: [-0.3, 0.35], z: [-0.5, 0.45], fov: [50, 100] };
+function seatOf() { return settings.seats[settings.type] || (settings.seats[settings.type] = { x: 0, y: 0, z: 0, fov: 72 }); }
+function applySeat() {
+  const st = seatOf();
+  rig.seat.set(st.x, st.y, st.z);
+  rig.seatFov = st.fov;
+  for (const k of ['x', 'y', 'z', 'fov']) { const el = $('seat-' + k); if (el && document.activeElement !== el) el.value = st[k]; }
+}
+function nudgeSeat(k, d) {
+  const st = seatOf();
+  st[k] = THREE.MathUtils.clamp(+(st[k] + d).toFixed(3), ...SEAT_LIM[k]);
+  applySeat();
+  seatSaveSoon();
+}
+let seatTimer = 0;
+function seatSaveSoon() { clearTimeout(seatTimer); seatTimer = setTimeout(saveSettings, 400); }
+function toggleSeatPanel(force) {
+  const el = $('seat');
+  const on = force ?? el.style.display !== 'block';
+  el.style.display = on ? 'block' : 'none';
+  if (on && rig.mode !== 'cabin') rig.setMode('cabin');
+}
+function initSeatPanel() {
+  for (const k of ['x', 'y', 'z', 'fov']) {
+    const el = $('seat-' + k);
+    el.addEventListener('input', (e) => { seatOf()[k] = +e.target.value; applySeat(); seatSaveSoon(); });
+    // give the keyboard back to driving as soon as the slider is released
+    el.addEventListener('change', () => el.blur());
+    el.addEventListener('pointerup', () => el.blur());
+  }
+  $('seat-btn').onclick = () => toggleSeatPanel();
+  $('seat-close').onclick = () => toggleSeatPanel(false);
+  $('seat-reset').onclick = () => { settings.seats[settings.type] = { x: 0, y: 0, z: 0, fov: 72 }; applySeat(); saveSettings(); };
+  document.getElementById('t-seat')?.addEventListener('pointerdown', (e) => { e.preventDefault(); toggleSeatPanel(); });
+}
+
 // ---------- keys ----------
 function handleKeys() {
   if (input.hit('KeyM')) { audio.setMuted(!audio.muted); }
@@ -442,6 +480,18 @@ function handleKeys() {
   }
   if (state !== 'drive') return;
   if (input.hit('KeyC')) rig.next();
+  // seat: Alt + arrows / PgUp / PgDn / [ ]
+  if (input.alt && rig.mode === 'cabin') {
+    const sp = 0.6 * (1 / 60);
+    if (input.has('ArrowLeft')) nudgeSeat('x', -sp);
+    if (input.has('ArrowRight')) nudgeSeat('x', sp);
+    if (input.has('ArrowUp')) nudgeSeat('z', sp);
+    if (input.has('ArrowDown')) nudgeSeat('z', -sp);
+    if (input.has('PageUp')) nudgeSeat('y', sp);
+    if (input.has('PageDown')) nudgeSeat('y', -sp);
+    if (input.has('BracketLeft')) nudgeSeat('fov', -0.6);
+    if (input.has('BracketRight')) nudgeSeat('fov', 0.6);
+  }
   ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((k, i) => { if (input.hit(k)) rig.setMode(CAM_MODES[[1, 0, 2, 3][i]]); });
   if (input.hit('KeyL')) player.lights = !player.lights;
   if (input.hit('KeyV')) {
@@ -483,7 +533,7 @@ function buildMenu() {
     const b = document.createElement('button');
     b.className = k === settings.type ? 'sel' : '';
     b.innerHTML = `${t.name}<small>${t.desc}</small>`;
-    b.onclick = () => { selectSeg(types, b); settings.type = k; createPlayerBus(); saveSettings(); };
+    b.onclick = () => { selectSeg(types, b); settings.type = k; createPlayerBus(); applySeat(); saveSettings(); };
     types.appendChild(b);
   });
   const times = $('times');
@@ -662,6 +712,8 @@ function frame(now) {
     player.bus.cabinLed.emissiveIntensity = night ? 1.2 : 0.3;
     player.bus.dashLight.intensity = night && rig.mode === 'cabin' ? 0.8 : 0;
     $('dashbox').style.display = rig.mode === 'cabin' ? 'none' : 'block';
+    $('seat-btn').style.display = rig.mode === 'cabin' ? 'block' : 'none';
+    if (rig.mode !== 'cabin' && $('seat').style.display === 'block') $('seat').style.display = 'none';
     hudT -= dt;
     if (hudT <= 0) {
       hudT = 1 / 15;
@@ -702,7 +754,7 @@ function frame(now) {
   const cabin = rig.mode === 'cabin';
   if (driving) {
     player.bus.root.updateMatrixWorld(true);
-    const eye = player.bus.driver.clone().applyMatrix4(player.bus.body.matrixWorld);
+    const eye = player.bus.driver.clone().add(rig.seatLocal()).applyMatrix4(player.bus.body.matrixWorld);
     const hudMir = cabin ? mirrors.hudCabin : mirrors.hudOn;
     mirrors.update(eye, cabin, hudMir);
   }
@@ -745,6 +797,8 @@ async function boot() {
   if (mirrors_defaultOff) { mirrors.hudOn = false; mirrors.lowRes = true; }
   hud = new HUD(route, road.water);
   rig = new CameraRig(camera, route);
+  initSeatPanel();
+  applySeat();
   await msg('Painting the buses…');
   createPlayerBus();
   traffic = new Traffic(route, scene, settings.traffic, settings.op.id, audio, facilities.gates);

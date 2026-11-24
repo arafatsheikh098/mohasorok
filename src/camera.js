@@ -17,15 +17,20 @@ export class CameraRig {
     this.tmp = new THREE.Vector3();
     this.tmpQ = new THREE.Quaternion();
     this.first = true;
+    this.seat = new THREE.Vector3();   // driver-seat offset (x = towards the right side, y = up, z = forward)
+    this.seatFov = 72;
   }
 
   label() { return CAM_LABEL[this.mode]; }
+
+  // seat offset in bus-local axes (bus local -x is the driver's right)
+  seatLocal() { return new THREE.Vector3(-this.seat.x, this.seat.y, this.seat.z); }
 
   setMode(m) {
     this.mode = m;
     this.first = true;
     this.cineS = -1e9;
-    this.camera.fov = m === 'cabin' ? 72 : m === 'bumper' ? 70 : 58;
+    this.camera.fov = m === 'cabin' ? this.seatFov : m === 'bumper' ? 70 : 58;
     this.camera.updateProjectionMatrix();
   }
 
@@ -63,7 +68,8 @@ export class CameraRig {
       cam.lookAt(target);
     } else if (this.mode === 'cabin' || this.mode === 'bumper') {
       bus.body.updateWorldMatrix(true, false);
-      const local = this.mode === 'cabin' ? bus.driver.clone() : new THREE.Vector3(0, 1.3, spec.front + 0.4);
+      const local = this.mode === 'cabin' ? bus.driver.clone().add(this.seatLocal()) : new THREE.Vector3(0, 1.3, spec.front + 0.4);
+      if (this.mode === 'cabin' && Math.abs(cam.fov - this.seatFov) > 0.01) { cam.fov = this.seatFov; cam.updateProjectionMatrix(); }
       if (this.mode === 'cabin') {
         this.headYaw = THREE.MathUtils.clamp(this.headYaw - m.dx * 0.004, -2.6, 2.6);
         this.headPitch = THREE.MathUtils.clamp(this.headPitch - m.dy * 0.003, -0.9, 0.6);

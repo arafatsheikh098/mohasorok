@@ -42,6 +42,7 @@
   #t-mirror { right: calc(max(18px, env(safe-area-inset-right)) + 60px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
   #t-reset { right: calc(max(18px, env(safe-area-inset-right)) + 120px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
   #t-pause { right: calc(max(18px, env(safe-area-inset-right)) + 180px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
+  #t-seat { right: calc(max(18px, env(safe-area-inset-right)) + 240px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
   #rotate { display: none; position: fixed; inset: 0; z-index: 90; background: #0b0f13; color: var(--txt); align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; padding: 30px; }
   #rotate b { font-size: 22px; }
   @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
@@ -140,6 +141,14 @@
   #fuelbar { height: 6px; background: #1d2630; border-radius: 3px; margin-top: 6px; overflow: hidden; }
   #fuel-fill { display: block; height: 100%; width: 50%; background: #ffb300; }
   #prompt { display: none; position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); background: var(--bg); border: 1px solid var(--line); border-left: 4px solid #2ecc71; padding: 12px 18px; border-radius: 9px; font-size: 15px; }
+  #seat-btn { pointer-events: auto; cursor: pointer; padding: 8px 12px; font-weight: 700; font-size: 13px; color: var(--txt); display: none; }
+  #seat { position: absolute; right: 18px; top: 66px; width: 300px; padding: 12px 14px; pointer-events: auto; display: none; z-index: 14; font-size: 12px; color: var(--mut); touch-action: none; }
+  #seat label { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
+  #seat input[type=range] { width: 100%; accent-color: var(--acc); }
+  #seat .seat-head { display: flex; justify-content: space-between; align-items: center; color: var(--txt); font-size: 14px; }
+  #seat .x { background: none; border: 0; color: var(--mut); font-size: 16px; cursor: pointer; }
+  #seat .seat-foot { display: flex; align-items: center; gap: 10px; }
+  #seat .seat-foot .btn { margin: 0; padding: 7px 12px; }
   #toasts { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
   .toast { background: var(--bg); border: 1px solid var(--line); border-left: 4px solid var(--acc); padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; transition: opacity .5s, transform .5s; text-align: center; }
   .toast .bn { font-size: 17px; }
@@ -170,9 +179,19 @@
     #gps { width: 170px; height: 86px; }
     #gpsbar { padding: 4px 8px; font-size: 11px; }
     #gpsbar .limit { width: 26px; height: 26px; border-width: 3px; font-size: 10px; }
-    #toasts { top: 64px; transform: translateX(-50%) scale(.8); }
+    #seat-btn { pointer-events: auto; cursor: pointer; padding: 8px 12px; font-weight: 700; font-size: 13px; color: var(--txt); display: none; }
+  #seat { position: absolute; right: 18px; top: 66px; width: 300px; padding: 12px 14px; pointer-events: auto; display: none; z-index: 14; font-size: 12px; color: var(--mut); touch-action: none; }
+  #seat label { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
+  #seat input[type=range] { width: 100%; accent-color: var(--acc); }
+  #seat .seat-head { display: flex; justify-content: space-between; align-items: center; color: var(--txt); font-size: 14px; }
+  #seat .x { background: none; border: 0; color: var(--mut); font-size: 16px; cursor: pointer; }
+  #seat .seat-foot { display: flex; align-items: center; gap: 10px; }
+  #seat .seat-foot .btn { margin: 0; padding: 7px 12px; }
+  #toasts { top: 64px; transform: translateX(-50%) scale(.8); }
     #prompt { bottom: 200px; font-size: 13px; }
-    #t-cam, #t-mirror, #t-reset, #t-pause { top: 6px !important; }
+    #t-cam, #t-mirror, #t-reset, #t-pause, #t-seat { top: 6px !important; }
+    #seat { top: 54px; right: 8px; width: 260px; padding: 8px 10px; }
+    #seat label { margin: 4px 0; }
     #menu .panel { width: 100%; padding: 14px 18px; }
     #menu h1 { font-size: 26px; }
     #menu { background: rgba(8,12,16,.88); }
@@ -202,6 +221,7 @@
   <div class="tb" id="t-mirror">🪞</div>
   <div class="tb" id="t-reset">↺</div>
   <div class="tb" id="t-pause">⏸</div>
+  <div class="tb" id="t-seat">🪑</div>
 </div>
 <div id="about"><div class="card">
   <h2>About Mohasorok</h2>
@@ -252,7 +272,7 @@
     <div class="keys">
       <kbd>W</kbd>/<kbd>S</kbd> throttle / brake (hold <kbd>S</kbd> to reverse) · <kbd>A</kbd>/<kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
       <kbd>H</kbd> horn · <kbd>Q</kbd>/<kbd>E</kbd> indicators · <kbd>L</kbd> lights · <kbd>X</kbd> cruise · <kbd>C</kbd> / <kbd>1</kbd>–<kbd>4</kbd> camera<br>
-      <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>T</kbd> time of day · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>F1</kbd> help · mouse drag = look<br>
+      <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>T</kbd> time of day · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>F1</kbd> help · mouse drag = look · <kbd>Alt</kbd>+arrows = adjust seat<br>
       Stop at the toll gate to pay · turn round at U-turn gaps in the median to drive back to Dhaka
     </div>
   </div>
@@ -271,7 +291,15 @@
     <div class="r">Passengers <b id="trip-rating" class="stars">★★★★★</b></div>
   </div>
   <div id="place" class="card"><div id="place-now"></div></div>
-  <div id="topright"><div id="cam-label" class="card"></div><div id="clock" class="card"></div></div>
+  <div id="topright"><button id="seat-btn" class="card" title="Adjust the driver's seat">🪑 Seat</button><div id="cam-label" class="card"></div><div id="clock" class="card"></div></div>
+  <div id="seat" class="card">
+    <div class="seat-head"><b>Driver's seat</b><button id="seat-close" class="x">✕</button></div>
+    <label>Left ⟷ Right <input type="range" id="seat-x" min="-0.45" max="0.45" step="0.01"></label>
+    <label>Back ⟷ Forward <input type="range" id="seat-z" min="-0.5" max="0.45" step="0.01"></label>
+    <label>Down ⟷ Up <input type="range" id="seat-y" min="-0.3" max="0.35" step="0.01"></label>
+    <label>Field of view <input type="range" id="seat-fov" min="50" max="100" step="1"></label>
+    <div class="seat-foot"><button class="btn ghost" id="seat-reset">Reset</button><small>PC: Alt + ← → ↑ ↓ move · Alt + PgUp/PgDn height · Alt + [ ] view</small></div>
+  </div>
   <div id="toasts"></div>
   <div id="help" class="card">
     <kbd>W</kbd> throttle · <kbd>S</kbd> brake/reverse<br><kbd>A</kbd> <kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>

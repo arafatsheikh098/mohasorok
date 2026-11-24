@@ -9,7 +9,7 @@ export class Input {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown'].includes(e.code) || e.code.startsWith('Alt') || (e.altKey && e.code.startsWith('Arrow'))) e.preventDefault();
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
@@ -25,14 +25,16 @@ export class Input {
   hit(code) { return this.pressed.has(code); }
 
   update(dt) {
-    const left = this.has('KeyA', 'ArrowLeft'), right = this.has('KeyD', 'ArrowRight');
+    this.alt = this.has('AltLeft', 'AltRight');
+    const arrows = !this.alt;   // Alt + arrows = seat adjustment
+    const left = this.has('KeyA') || (arrows && this.has('ArrowLeft')), right = this.has('KeyD') || (arrows && this.has('ArrowRight'));
     const target = (left ? 1 : 0) - (right ? 1 : 0);
     // keyboard steering ramps in/out (bus wheels are heavy)
     const rate = target === 0 ? 3.2 : 1.9;
     this.steer += Math.max(-rate * dt, Math.min(rate * dt, target - this.steer));
     if (Math.abs(this.steer) < 0.01 && target === 0) this.steer = 0;
-    this.throttle = this.has('KeyW', 'ArrowUp') ? 1 : 0;
-    this.brake = this.has('KeyS', 'ArrowDown') ? 1 : 0;
+    this.throttle = this.has('KeyW') || (arrows && this.has('ArrowUp')) ? 1 : 0;
+    this.brake = this.has('KeyS') || (arrows && this.has('ArrowDown')) ? 1 : 0;
     this.handbrake = this.has('Space');
     this.horn = this.has('KeyH');
 

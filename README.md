@@ -30,6 +30,7 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **Dhaka → Chatt
 | Camera | C or 1–4 (1 = driver's seat) | 🎥 · drag the view to look around |
 | Lights / cruise / refuel | L / X / F | 💡 / CRUISE / ⛽ |
 | Screen mirrors / reset / pause | V / R / P | 🪞 / ↺ / ⏸ |
+| Adjust driver's seat | **🪑 Seat** button in cabin view, or Alt + ← → ↑ ↓ (move), Alt + PgUp/PgDn (height), Alt + [ ] (field of view) | 🪑 then sliders |
 
 A gamepad also works: the left stick steers, RT is throttle, LT is brake, and A is the horn.
 
