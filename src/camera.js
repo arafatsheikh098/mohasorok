@@ -9,7 +9,7 @@ export class CameraRig {
     this.route = route;
     this.mode = 'chase';
     this.orbitYaw = 0; this.orbitPitch = 0.22; this.dist = 19;
-    this.headYaw = 0; this.headPitch = -0.14;
+    this.headYaw = 0; this.headPitch = -0.04;
     this.smoothYaw = 0;
     this.shake = 0;
     this.cine = new THREE.Vector3();
@@ -18,7 +18,7 @@ export class CameraRig {
     this.tmpQ = new THREE.Quaternion();
     this.first = true;
     this.seat = new THREE.Vector3();   // driver-seat offset (x = towards the right side, y = up, z = forward)
-    this.seatFov = 72;
+    this.seatFov = 78;
   }
 
   label() { return CAM_LABEL[this.mode]; }

@@ -448,7 +448,7 @@ function handleCrashes(crashes) {
 
 // ---------- driver's seat adjustment (saved per bus type) ----------
 const SEAT_LIM = { x: [-0.45, 0.45], y: [-0.3, 0.35], z: [-0.5, 0.45], fov: [50, 100] };
-function seatOf() { return settings.seats[settings.type] || (settings.seats[settings.type] = { x: 0, y: 0, z: 0, fov: 72 }); }
+function seatOf() { return settings.seats[settings.type] || (settings.seats[settings.type] = { x: 0, y: 0, z: 0, fov: 78 }); }
 function applySeat() {
   const st = seatOf();
   rig.seat.set(st.x, st.y, st.z);
@@ -479,7 +479,7 @@ function initSeatPanel() {
   }
   $('seat-btn').onclick = () => toggleSeatPanel();
   $('seat-close').onclick = () => toggleSeatPanel(false);
-  $('seat-reset').onclick = () => { settings.seats[settings.type] = { x: 0, y: 0, z: 0, fov: 72 }; applySeat(); saveSettings(); };
+  $('seat-reset').onclick = () => { settings.seats[settings.type] = { x: 0, y: 0, z: 0, fov: 78 }; applySeat(); saveSettings(); };
   document.getElementById('t-seat')?.addEventListener('pointerdown', (e) => { e.preventDefault(); toggleSeatPanel(); });
 }
 

@@ -634,7 +634,7 @@ export function paintHeader(ctx, W, H, op, inside = false) {
   ctx.clearRect(0, 0, W, H);
   if (inside) {
     // seen from the cab: the vinyl band is a dark see-through tint with the letters showing as colour
-    ctx.fillStyle = 'rgba(14,26,26,0.78)'; ctx.fillRect(0, 0, W, H * 0.86);
+    ctx.fillStyle = 'rgba(14,26,26,0.5)'; ctx.fillRect(0, 0, W, H * 0.86);
   } else if (op.headerBg) {
     // solid printed band (e.g. Marsa: white band, blue letters)
     ctx.fillStyle = op.headerBg; ctx.fillRect(0, 0, W, H * 0.86);
