@@ -66,12 +66,12 @@ export async function loadCustomSkins() {
       out.push(skinToOperator(rec, img));
     }
   } catch (e) { console.warn('skins: IndexedDB unavailable', e); }
-  // optional: skins shipped in public/skins/skins.json (your own local files)
-  try {
-    const r = await fetch('/skins/skins.json', { cache: 'no-store' });
+  // optional: skins in public/skins/skins.json (your own local files, kept out of git, so dev server only)
+  if (import.meta.env.DEV) try {
+    const r = await fetch(`${import.meta.env.BASE_URL}skins/skins.json`, { cache: 'no-store' });
     if (r.ok) {
       for (const s of await r.json()) {
-        const blob = await (await fetch(`/skins/${s.image}`)).blob();
+        const blob = await (await fetch(`${import.meta.env.BASE_URL}skins/${s.image}`)).blob();
         const img = await loadImage(blob);
         out.push(skinToOperator({ id: `file-${s.image}`, name: s.name, regions: s.regions, blob }, img));
       }
