@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>মহাসড়ক Mohasorok — Bangladesh Bus Simulator (Dhaka–Chattogram N1)</title>
+<meta name="description" content="Drive a Hino AK1J and other Bangladeshi intercity buses on the Dhaka–Chattogram N1 highway, right in your browser. Toll plaza, fuel stations, U-turns, live mirrors, Bangla signs." />
+<meta name="theme-color" content="#0b0f13" />
+<meta property="og:title" content="মহাসড়ক Mohasorok — Bangladesh Bus Simulator" />
+<meta property="og:description" content="Dhaka → Chattogram on the N1 in a Hino AK1J. Free, runs in the browser on PC and phone." />
+<meta property="og:type" content="website" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='14' width='52' height='34' rx='8' fill='%23ff8a1c'/%3E%3Crect x='12' y='20' width='40' height='12' rx='3' fill='%230b0f13'/%3E%3Ccircle cx='18' cy='50' r='6' fill='%23222'/%3E%3Ccircle cx='46' cy='50' r='6' fill='%23222'/%3E%3C/svg%3E" />
+<style>
+  :root { --bg: rgba(12,17,22,.82); --line: rgba(255,255,255,.08); --acc: #ff8a1c; --txt: #e9eef2; --mut: #93a1ad; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f13; color: var(--txt);
+    font-family: 'Helvetica Neue', Arial, 'Noto Sans Bengali', sans-serif; user-select: none; -webkit-user-select: none;
+    touch-action: none; -webkit-touch-callout: none; overscroll-behavior: none; }
+  .bn { font-family: 'Noto Sans Bengali','Kohinoor Bangla','Nirmala UI',sans-serif; }
+
+  /* ---------- touch controls ---------- */
+  #touch { display: none; position: fixed; inset: 0; z-index: 12; pointer-events: none; }
+  #touch .tb { pointer-events: auto; position: absolute; background: rgba(12,17,22,.55); border: 1px solid rgba(255,255,255,.18);
+    color: #fff; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px;
+    touch-action: none; backdrop-filter: blur(4px); }
+  #touch .tb.down { background: rgba(255,138,28,.55); }
+  #t-wheel { pointer-events: auto; position: absolute; left: max(18px, env(safe-area-inset-left)); bottom: 18px; width: 170px; height: 170px; touch-action: none; }
+  #t-wheel-img { width: 100%; height: 100%; border-radius: 50%; border: 14px solid rgba(20,20,22,.85); box-sizing: border-box;
+    background: radial-gradient(circle, rgba(30,30,32,.9) 0 18%, transparent 19%), linear-gradient(transparent 46%, rgba(20,20,22,.85) 46% 54%, transparent 54%);
+    box-shadow: 0 0 0 2px rgba(255,255,255,.2); }
+  #t-gas { right: max(18px, env(safe-area-inset-right)); bottom: 18px; width: 82px; height: 150px; font-size: 13px; background: rgba(40,140,70,.55); }
+  #t-brake { right: calc(max(18px, env(safe-area-inset-right)) + 96px); bottom: 18px; width: 96px; height: 110px; font-size: 13px; background: rgba(170,40,40,.55); }
+  #t-horn { right: calc(max(18px, env(safe-area-inset-right)) + 96px); bottom: 142px; width: 96px; height: 46px; }
+  #t-indl { left: 200px; bottom: 120px; width: 54px; height: 44px; font-size: 20px; }
+  #t-indr { left: 262px; bottom: 120px; width: 54px; height: 44px; font-size: 20px; }
+  #t-cruise { left: 200px; bottom: 18px; width: 116px; height: 40px; font-size: 12px; }
+  #t-lights { left: 200px; bottom: 66px; width: 54px; height: 44px; font-size: 12px; }
+  #t-fuel { left: 262px; bottom: 66px; width: 54px; height: 44px; font-size: 18px; }
+  #t-cam { right: max(18px, env(safe-area-inset-right)); top: 62px; width: 52px; height: 40px; font-size: 18px; }
+  #t-mirror { right: calc(max(18px, env(safe-area-inset-right)) + 60px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
+  #t-reset { right: calc(max(18px, env(safe-area-inset-right)) + 120px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
+  #t-pause { right: calc(max(18px, env(safe-area-inset-right)) + 180px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
+  #rotate { display: none; position: fixed; inset: 0; z-index: 90; background: #0b0f13; color: var(--txt); align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; padding: 30px; }
+  #rotate b { font-size: 22px; }
+  @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+  #menu .panel, #about .card, #se-regions { touch-action: pan-y; }
+  #about { position: fixed; inset: 0; z-index: 45; display: none; align-items: center; justify-content: center; background: rgba(5,8,11,.75); }
+  #about .card { max-width: 640px; max-height: 86vh; overflow: auto; padding: 22px 26px; font-size: 13px; line-height: 1.65; color: var(--mut); }
+  #about h2 { color: var(--txt); margin: 0 0 8px; }
+  #about b { color: var(--txt); }
+  #nogl { display: none; position: fixed; inset: 0; z-index: 99; background: #0b0f13; align-items: center; justify-content: center; text-align: center; padding: 30px; color: var(--txt); }
+  canvas#view { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
+  #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #0b0f13; z-index: 50; font-size: 15px; color: var(--mut); }
+  #loading b { color: var(--txt); font-size: 26px; letter-spacing: .5px; }
+  .bar { width: 260px; height: 4px; background: #1d2630; border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 30%; background: var(--acc); animation: slide 1.2s infinite ease-in-out; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(330%); } }
+
+  /* ---------- menu ---------- */
+  #menu { position: fixed; inset: 0; z-index: 20; display: none; pointer-events: none;
+    background: linear-gradient(90deg, rgba(8,12,16,.92) 0%, rgba(8,12,16,.78) 38%, rgba(8,12,16,0) 62%); }
+  #menu .panel { pointer-events: auto; width: 540px; height: 100%; padding: 34px 36px; overflow-y: auto; }
+  #menu h1 { margin: 0; font-size: 38px; font-weight: 800; letter-spacing: .3px; }
+  #menu h1 .bn { color: var(--acc); }
+  #menu .sub { color: var(--mut); margin: 6px 0 24px; font-size: 14px; }
+  #menu h3 { font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--mut); margin: 22px 0 10px; font-weight: 700; }
+  .ops { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .op { border: 1px solid var(--line); background: rgba(255,255,255,.03); border-radius: 8px; padding: 7px; cursor: pointer; transition: .15s; }
+  .op:hover { background: rgba(255,255,255,.07); }
+  .op.sel { border-color: var(--acc); background: rgba(255,138,28,.1); }
+  .op canvas { width: 100%; height: auto; display: block; border-radius: 4px; }
+  .op .nm { font-size: 12px; font-weight: 700; margin-top: 5px; display: flex; justify-content: space-between; gap: 6px; }
+  .op .nm .bn { font-weight: 600; color: var(--mut); font-size: 12px; }
+  .op.add { display: flex; align-items: center; justify-content: center; flex-direction: column; min-height: 96px; border-style: dashed; color: var(--mut); font-size: 13px; text-align: center; }
+  .op.add b { font-size: 26px; color: var(--acc); line-height: 1; }
+  .op .del { margin-left: 8px; color: #e57373; font-size: 11px; cursor: pointer; text-decoration: underline; }
+  #skin-editor { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; background: rgba(5,8,11,.75); }
+  .se { width: min(1180px, 96vw); padding: 20px 22px; }
+  .se-head h2 { margin: 0 0 4px; }
+  .se-body { display: flex; gap: 18px; margin-top: 14px; }
+  .se-left { flex: 1; min-width: 0; }
+  .se-canvas-wrap { position: relative; background: #0b0f13 repeating-conic-gradient(#141b22 0 25%, #0f151b 0 50%) 0 0/20px 20px; border-radius: 8px; overflow: hidden; display: flex; justify-content: center; }
+  #se-canvas { display: block; max-width: 100%; cursor: crosshair; }
+  #se-drop { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 2px dashed #3a4652; border-radius: 8px; cursor: pointer; color: var(--mut); }
+  #se-drop b { color: var(--txt); font-size: 18px; }
+  .se-help { color: var(--mut); font-size: 12px; margin-top: 10px; line-height: 1.6; }
+  .se-right { width: 330px; display: flex; flex-direction: column; gap: 8px; }
+  .se-name { font-size: 13px; color: var(--mut); display: flex; flex-direction: column; gap: 4px; }
+  .se-name input { background: #121a22; border: 1px solid var(--line); color: var(--txt); padding: 8px 10px; border-radius: 6px; font-size: 14px; }
+  .se-row { border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; cursor: pointer; font-size: 13px; display: grid; grid-template-columns: 14px 1fr auto; gap: 4px 8px; align-items: center; }
+  .se-row.act { border-color: var(--acc); background: rgba(255,138,28,.08); }
+  .se-row .sw { width: 12px; height: 12px; border-radius: 3px; }
+  .se-row small { grid-column: 2 / 4; color: var(--mut); font-size: 11px; }
+  .se-row canvas { grid-column: 2 / 4; background: #0b0f13; border-radius: 4px; max-width: 100%; }
+  .se-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button { flex: 1; min-width: 90px; background: rgba(255,255,255,.04); color: var(--txt); border: 1px solid var(--line); padding: 9px 8px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .seg button small { display: block; color: var(--mut); font-weight: 500; font-size: 11px; margin-top: 2px; }
+  .seg button.sel { border-color: var(--acc); background: rgba(255,138,28,.12); }
+  #start { margin-top: 26px; width: 100%; padding: 15px; font-size: 17px; font-weight: 800; letter-spacing: .4px; background: var(--acc); color: #1a0e02; border: 0; border-radius: 9px; cursor: pointer; }
+  #start:hover { filter: brightness(1.08); }
+  .keys { margin-top: 18px; color: var(--mut); font-size: 12px; line-height: 1.75; }
+  kbd { display: inline-block; min-width: 20px; padding: 0 5px; border: 1px solid #3a4652; border-bottom-width: 2px; border-radius: 4px; font-size: 11px; text-align: center; color: var(--txt); background: #18212a; }
+
+  /* ---------- HUD ---------- */
+  #hud { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  .card { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(6px); }
+  #trip { position: absolute; left: 18px; top: 18px; padding: 12px 16px; min-width: 250px; font-size: 13px; }
+  #trip .route { font-weight: 800; font-size: 15px; margin-bottom: 8px; }
+  #trip .route .bn { color: var(--acc); }
+  #trip .r { display: flex; justify-content: space-between; gap: 22px; margin: 3px 0; color: var(--mut); }
+  #trip .r b { color: var(--txt); font-weight: 700; }
+  #place { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); text-align: center; padding: 8px 18px; }
+  #place-now .bn { font-size: 22px; font-weight: 700; display: block; }
+  #place-now small { color: var(--mut); font-size: 12px; }
+  #topright { position: absolute; right: 18px; top: 18px; display: flex; gap: 10px; align-items: center; }
+  #clock, #cam-label { padding: 8px 12px; font-weight: 700; font-size: 13px; }
+  #cam-label { color: var(--mut); font-weight: 600; }
+  #gpsbox { position: absolute; right: 18px; bottom: 18px; width: 320px; overflow: hidden; }
+  #gps { display: block; width: 320px; height: 220px; }
+  #gpsbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--line); }
+  #trip-next { font-size: 13px; color: var(--txt); }
+  #trip-next .bn { font-weight: 700; }
+  .limit { width: 38px; height: 38px; border-radius: 50%; background: #fff; border: 5px solid #d10000; color: #111; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; }
+  #speedbox { position: absolute; right: 352px; bottom: 18px; padding: 10px 16px; text-align: right; min-width: 128px; }
+  #speed-big { font-size: 44px; font-weight: 800; line-height: 1; }
+  #speed-big.over { color: #ff5252; }
+  #speedbox .u { color: var(--mut); font-size: 12px; }
+  #gear { font-size: 20px; font-weight: 800; color: #ffb300; margin-top: 4px; }
+  #dashbox { position: absolute; left: 18px; bottom: 14px; }
+  #dash { width: 300px; height: 160px; }
+  #indicators { display: flex; gap: 8px; justify-content: center; margin-top: -6px; }
+  .ind { font-size: 12px; font-weight: 800; color: #3b4651; padding: 3px 8px; border-radius: 5px; background: rgba(10,14,18,.78); }
+  .ind.on { color: #2ecc71; }
+  #ind-lights.on { color: #4aa3ff; }
+  .arrows { display: flex; justify-content: space-between; font-size: 22px; font-weight: 900; color: #23313b; margin-bottom: 2px; }
+  .arrows span.on { color: #2bff6a; text-shadow: 0 0 12px #2bff6a; }
+  #fuelbar { height: 6px; background: #1d2630; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  #fuel-fill { display: block; height: 100%; width: 50%; background: #ffb300; }
+  #prompt { display: none; position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); background: var(--bg); border: 1px solid var(--line); border-left: 4px solid #2ecc71; padding: 12px 18px; border-radius: 9px; font-size: 15px; }
+  #toasts { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .toast { background: var(--bg); border: 1px solid var(--line); border-left: 4px solid var(--acc); padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; transition: opacity .5s, transform .5s; text-align: center; }
+  .toast .bn { font-size: 17px; }
+  .toast.bad { border-left-color: #e74c3c; }
+  .toast.good { border-left-color: #2ecc71; }
+  .toast.out { opacity: 0; transform: translateY(-8px); }
+  #help { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); padding: 12px 14px; font-size: 12px; line-height: 1.8; color: var(--mut); display: none; }
+  #pause, #arrival { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; background: rgba(5,8,11,.6); }
+  #pause .card, #arrival .card { padding: 26px 32px; min-width: 380px; text-align: center; }
+  #arrival h2 { margin: 0 0 4px; font-size: 28px; }
+  #arrival .bn.big { font-size: 22px; color: var(--acc); }
+  #arrival-body { margin: 18px 0; text-align: left; }
+  #arrival .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--mut); }
+  #arrival .row b { color: var(--txt); }
+  .stars { color: #ffc107; letter-spacing: 2px; }
+  .btn { pointer-events: auto; background: var(--acc); color: #1a0e02; border: 0; padding: 11px 20px; border-radius: 8px; font-weight: 800; cursor: pointer; margin: 4px; }
+  .btn.ghost { background: rgba(255,255,255,.08); color: var(--txt); }
+
+  /* ---------- phones in landscape (must stay last so it wins) ---------- */
+  @media (max-height: 520px) {
+    #trip { transform: scale(.6); transform-origin: top left; left: 8px; top: 8px; }
+    #place { transform: translateX(-50%) scale(.7); transform-origin: top center; top: 4px; }
+    #topright, #dashbox, #help { display: none !important; }
+    #speedbox { right: 10px; bottom: auto; top: 58px; padding: 6px 10px; min-width: 88px; }
+    #speedbox #speed-big { font-size: 28px; }
+    #speedbox #gear { font-size: 15px; margin-top: 0; }
+    #gpsbox { width: 170px; right: 108px; bottom: auto; top: 54px; }
+    #gps { width: 170px; height: 86px; }
+    #gpsbar { padding: 4px 8px; font-size: 11px; }
+    #gpsbar .limit { width: 26px; height: 26px; border-width: 3px; font-size: 10px; }
+    #toasts { top: 64px; transform: translateX(-50%) scale(.8); }
+    #prompt { bottom: 200px; font-size: 13px; }
+    #t-cam, #t-mirror, #t-reset, #t-pause { top: 6px !important; }
+    #menu .panel { width: 100%; padding: 14px 18px; }
+    #menu h1 { font-size: 26px; }
+    #menu { background: rgba(8,12,16,.88); }
+    .ops { grid-template-columns: repeat(4, 1fr); }
+    .op .nm { font-size: 10px; }
+    .op .nm .bn { display: none; }
+    #arrival .card, #pause .card { transform: scale(.8); }
+  }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="rotate"><b>📱 ↻</b><b>ফোনটি ঘুরিয়ে নিন</b><span>Rotate your phone to landscape to drive</span></div>
+<div id="nogl"><div><h2>WebGL is not available</h2><p>This browser or device can't run 3D graphics. Please try the latest Chrome, Edge, Firefox or Safari, and turn on hardware acceleration.</p></div></div>
+<div id="touch">
+  <div id="t-wheel"><div id="t-wheel-img"></div></div>
+  <div class="tb" id="t-gas">GAS</div>
+  <div class="tb" id="t-brake">BRAKE</div>
+  <div class="tb" id="t-horn">📯 HORN</div>
+  <div class="tb" id="t-indl">◀</div>
+  <div class="tb" id="t-indr">▶</div>
+  <div class="tb" id="t-lights">💡</div>
+  <div class="tb" id="t-fuel">⛽</div>
+  <div class="tb" id="t-cruise">CRUISE</div>
+  <div class="tb" id="t-cam">🎥</div>
+  <div class="tb" id="t-mirror">🪞</div>
+  <div class="tb" id="t-reset">↺</div>
+  <div class="tb" id="t-pause">⏸</div>
+</div>
+<div id="about"><div class="card">
+  <h2>About Mohasorok</h2>
+  <p><b>মহাসড়ক Mohasorok</b> is a free, fan-made bus driving game set on the Dhaka–Chattogram N1 highway. Everything you see — buses, liveries, roads, towns — is drawn by the game's own code; no images or 3D models from other games or mods are included.</p>
+  <p><b>Not affiliated</b> with any bus operator, Hino Motors, or any company. Operator names belong to their owners and are used only to show the buses that run on this road. If you represent an operator and want your name changed or removed, please open an issue on the project page.</p>
+  <p><b>Controls (PC):</b> W/S throttle-brake (hold S to reverse) · A/D steer · H horn · Q/E indicators · L lights · X cruise · C or 1–4 camera · V screen mirrors · F refuel · R reset · P pause · M mute. Gamepad supported. <b>Phone:</b> turn the wheel, hold GAS/BRAKE, drag the view to look around.</p>
+  <p><b>Credits:</b> 3D engine <a href="https://threejs.org" style="color:var(--acc)">three.js</a> (MIT). Bangla font Noto Sans Bengali (SIL Open Font License). Bus liveries and shapes painted from public photos (Wikimedia Commons, CC BY-SA/CC0) and the community's reference images. Speeds/distances: N1 compressed 1:12, ~245 km shown.</p>
+  <button class="btn" id="about-close">Close</button>
+</div></div>
+<div id="loading"><b>মহাসড়ক · Mohasorok</b><div id="load-msg">Building the N1 highway…</div><div class="bar"><i></i></div></div>
+
+<div id="menu">
+  <div class="panel">
+    <h1><span class="bn">মহাসড়ক</span> Mohasorok</h1>
+    <div class="sub">N1 prototype · Dhaka (Sayedabad) → Chattogram · ~245 km, 1:12 map scale</div>
+
+    <h3>Operator</h3>
+    <div class="ops" id="ops"></div>
+
+    <h3>Bus</h3>
+    <div class="seg" id="types"></div>
+
+    <h3>Time of day</h3>
+    <div class="seg" id="times"></div>
+
+    <h3>Traffic</h3>
+    <div class="seg" id="traffic">
+      <button data-v="22">Light<small>early morning</small></button>
+      <button data-v="38" class="sel">Normal<small>typical N1</small></button>
+      <button data-v="58">Heavy<small>Eid rush</small></button>
+    </div>
+
+    <h3>Graphics</h3>
+    <div class="seg" id="quality">
+      <button data-v="high" class="sel">High</button>
+      <button data-v="medium">Medium</button>
+      <button data-v="low">Low</button>
+    </div>
+
+    <button id="start">START TRIP ▸ ঢাকা → চট্টগ্রাম</button>
+    <div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="about-open" style="margin:0;flex:1">About &amp; credits</button></div>
+    <div class="keys">
+      <kbd>W</kbd>/<kbd>S</kbd> throttle / brake (hold <kbd>S</kbd> to reverse) · <kbd>A</kbd>/<kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
+      <kbd>H</kbd> horn · <kbd>Q</kbd>/<kbd>E</kbd> indicators · <kbd>L</kbd> lights · <kbd>X</kbd> cruise · <kbd>C</kbd> / <kbd>1</kbd>–<kbd>4</kbd> camera<br>
+      <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>T</kbd> time of day · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>F1</kbd> help · mouse drag = look<br>
+      Stop at the toll gate to pay · turn round at U-turn gaps in the median to drive back to Dhaka
+    </div>
+  </div>
+</div>
+
+<div id="hud">
+  <div id="trip" class="card">
+    <div class="route"><span class="bn">ঢাকা → চট্টগ্রাম</span> · N1</div>
+    <div class="r">Remaining <b id="trip-remaining">-</b></div>
+    <div class="r">Drive time <b id="trip-time">-</b></div>
+    <div class="r">ETA <b id="trip-eta">-</b></div>
+    <div class="r">Fuel <b id="trip-fuel">-</b></div>
+    <div class="r">Toll + diesel <b id="trip-costs">-</b></div>
+    <div class="r">Fines <b id="trip-fines">-</b></div>
+    <div class="r">Collisions <b id="trip-crashes">0</b></div>
+    <div class="r">Passengers <b id="trip-rating" class="stars">★★★★★</b></div>
+  </div>
+  <div id="place" class="card"><div id="place-now"></div></div>
+  <div id="topright"><div id="cam-label" class="card"></div><div id="clock" class="card"></div></div>
+  <div id="toasts"></div>
+  <div id="help" class="card">
+    <kbd>W</kbd> throttle · <kbd>S</kbd> brake/reverse<br><kbd>A</kbd> <kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
+    <kbd>H</kbd> horn (traffic ahead moves over)<br><kbd>Q</kbd> <kbd>E</kbd> indicators · <kbd>L</kbd> lights<br>
+    <kbd>X</kbd> cruise control · <kbd>C</kbd> camera<br><kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel at a pump<br>Stop at toll gates · U-turn at median gaps<br><kbd>T</kbd> time of day · <kbd>R</kbd> reset<br><kbd>P</kbd> pause · <kbd>M</kbd> mute
+  </div>
+  <div id="dashbox">
+    <canvas id="dash" width="300" height="160"></canvas>
+    <div id="indicators"><span class="ind" id="ind-l">◀</span><span class="ind" id="ind-lights">LIGHTS</span><span class="ind" id="ind-cruise">CRUISE</span><span class="ind" id="ind-r">▶</span></div>
+  </div>
+  <div id="speedbox" class="card"><div class="arrows"><span id="hud-il">◀</span><span id="hud-ir">▶</span></div><div id="speed-big">0</div><div class="u">km/h</div><div id="gear">N</div><div id="fuelbar"><i id="fuel-fill"></i></div></div>
+  <div id="prompt"></div>
+  <div id="gpsbox" class="card">
+    <canvas id="gps" width="320" height="220"></canvas>
+    <div id="gpsbar"><div id="trip-next"></div><div class="limit">80</div></div>
+  </div>
+</div>
+
+<div id="skin-editor">
+  <div class="card se">
+    <div class="se-head"><h2>Import a bus skin</h2>
+      <span style="color:var(--mut);font-size:13px">Use your own image: a BUSSID/ETS2 skin template or a side photo of a bus. It stays in this browser only.</span></div>
+    <div class="se-body">
+      <div class="se-left">
+        <div class="se-canvas-wrap"><canvas id="se-canvas" width="760" height="300"></canvas>
+          <label id="se-drop"><input type="file" id="se-file" accept="image/*" hidden><b>Drop a skin image here</b><span>or click to choose a PNG / JPG</span></label></div>
+        <div class="se-help">Select a region on the right, then drag on the image: drag inside a box to move it, drag its corner square to resize, or drag on empty space to draw it fresh. Turn off <b>Right side</b> to mirror the left side; turn off <b>Front</b>/<b>Rear</b> to use painted ones in the skin's colours.</div>
+      </div>
+      <div class="se-right">
+        <label class="se-name">Name <input id="se-name" maxlength="28" placeholder="e.g. Hanif Scania"></label>
+        <div id="se-regions"></div>
+        <div class="se-actions"><button class="btn ghost" id="se-cancel">Cancel</button><button class="btn" id="se-save">Save skin</button>
+          <label class="btn ghost" for="se-file" style="pointer-events:auto">Change image…</label></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="pause"><div class="card"><h2>Paused</h2><p style="color:var(--mut)">Press P to continue</p>
+  <button class="btn" id="resume">Continue</button><button class="btn ghost" id="to-menu">Main menu</button></div></div>
+
+<div id="arrival"><div class="card">
+  <h2 id="arr-title">Arrived in Chattogram</h2><div class="bn big" id="arr-bn">চট্টগ্রামে স্বাগতম!</div>
+  <div id="arrival-body"></div>
+  <button class="btn" id="again">Drive again</button><button class="btn ghost" id="arr-menu">Main menu</button>
+</div></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
