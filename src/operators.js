@@ -417,9 +417,34 @@ export function paintSide(ctx, W, H, spec, op, frontAtLeft) {
     glass(x, wy, w, wh, f.pxPerM * 0.1);
   }
   const curtain = op.curtain || '#5c1621';
+  // passenger seats seen through the glass: seat backs with white headrest covers, one row every ~0.78 m
+  const seatCol = op.seatColor || '#' + (spec.seat ?? 0x1f3f9a).toString(16).padStart(6, '0');
+  const seatsIn = (x, w) => {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, wy, w, wh); ctx.clip();
+    const sw = f.pxPerM * 0.42, top = f.Y(spec.winBot + 0.5), bot = f.Y(spec.winBot - 0.05);
+    for (let z = zFront - 1.75; z > zRear + 0.3; z -= 0.78) {
+      const cx = f.XZ(z);
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = shade(seatCol, -25);
+      rr(ctx, cx - sw / 2, top, sw, bot - top, sw * 0.18); ctx.fill();
+      ctx.fillStyle = seatCol;
+      rr(ctx, cx - sw / 2 + sw * 0.08, top + (bot - top) * 0.05, sw * 0.84, (bot - top) * 0.9, sw * 0.14); ctx.fill();
+      ctx.fillStyle = '#e9ecef';
+      rr(ctx, cx - sw / 2 + sw * 0.05, top - (bot - top) * 0.02, sw * 0.9, (bot - top) * 0.38, sw * 0.12); ctx.fill();
+      ctx.fillStyle = shade(op.c1 || '#c62828', 0);
+      ctx.fillRect(cx - sw * 0.3, top + (bot - top) * 0.14, sw * 0.6, Math.max(2, (bot - top) * 0.07));
+    }
+    // dim the cabin behind the tinted glass, darker at the bottom
+    const g = ctx.createLinearGradient(0, wy, 0, wy + wh);
+    g.addColorStop(0, 'rgba(8,14,18,0.05)'); g.addColorStop(1, 'rgba(8,14,18,0.3)');
+    ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(x, wy, w, wh);
+    ctx.restore();
+  };
+  if (!spec.framed) seatsIn(Math.min(f.XZ(zFront - 1.2), f.XZ(zRear)), Math.abs(f.XZ(zFront - 1.2) - f.XZ(zRear)));
   panes.forEach(([za, zb], k) => {
     const x = Math.min(f.XZ(za), f.XZ(zb)) + 3, w = Math.abs(f.XZ(za) - f.XZ(zb)) - 6;
-    if (spec.framed) { ctx.fillStyle = '#c9cfd4'; rr(ctx, x - 5, wy - 5, w + 10, wh + 10, 8); ctx.fill(); glass(x, wy, w, wh, 6); }
+    if (spec.framed) { ctx.fillStyle = '#c9cfd4'; rr(ctx, x - 5, wy - 5, w + 10, wh + 10, 8); ctx.fill(); glass(x, wy, w, wh, 6); seatsIn(x, w); }
     const cw = w * 0.16;
     for (const cx of [x, x + w - cw]) {
       const g = ctx.createLinearGradient(cx, 0, cx + cw, 0);
@@ -512,7 +537,8 @@ export function paintFront(ctx, W, H, spec, op, plate) {
   ctx.fillRect(0, 0, W, H);
   if (spec.cockpit === 'ak') {
     // Hino AK1J nose: upper panel, a lamp/grille band, then the bumper
-    const bandTop = Math.min(spec.floor + 0.88, ws - 0.38), bandBot = spec.floor + 0.36;
+    // lamp band holds the 3D headlamp pods and grille (busModel.js); bumper is a 3D part too
+    const bandTop = Math.min(spec.floor + 0.74, ws - 0.1), bandBot = spec.floor + 0.32;
     ctx.fillStyle = op.frontUpper || op.base; ctx.fillRect(0, 0, W, Y(bandTop));
     ctx.fillStyle = op.frontLower || op.c1; ctx.fillRect(0, Y(bandTop), W, Y(bandBot) - Y(bandTop));
     ctx.fillStyle = op.frontStripe || '#ffffff'; ctx.fillRect(0, Y(bandTop) - 4, W, 6);
@@ -535,8 +561,9 @@ export function paintFront(ctx, W, H, spec, op, plate) {
     ctx.fillStyle = '#2a2d30';
     ctx.fillRect(0, Y(ws + 0.02), W, Y(ws - 0.02) - Y(ws + 0.02));
   }
-  // grille (kept clear of the windshield on short-nosed AK bodies)
   const ak = spec.cockpit === 'ak';
+  if (ak) return;   // AK1J grille, badge, lamps and plate are 3D parts
+  // grille
   const akTop = Math.min(spec.floor + 0.88, ws - 0.38);
   const gT = ak ? akTop - 0.06 : Math.min(spec.floor + 0.98, ws - 0.26), gB = ak ? spec.floor + 0.44 : gT - 0.36;
   const gw = ak ? 0.5 : 0.5;
