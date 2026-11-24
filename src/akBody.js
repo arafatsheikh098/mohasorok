@@ -6,16 +6,18 @@ import * as THREE from 'three';
 
 const smooth = (a, b, x) => { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const FRONT_ROOF_R = 0.5;    // how far the roof rolls down into the windshield
+const REAR_ROOF_R = 0.42;    // and into the rear window
 
 export function akSlice(s, y) {
   const Rs = s.roofR;
   const sideIn = y > s.H - Rs ? Rs - Math.sqrt(Math.max(0, Rs * Rs - (y - (s.H - Rs)) ** 2)) : 0;
   const frontIn = y > s.H - FRONT_ROOF_R ? FRONT_ROOF_R - Math.sqrt(Math.max(0, FRONT_ROOF_R ** 2 - (y - (s.H - FRONT_ROOF_R)) ** 2)) : 0;
+  const rearIn = y > s.H - REAR_ROOF_R ? REAR_ROOF_R - Math.sqrt(Math.max(0, REAR_ROOF_R ** 2 - (y - (s.H - REAR_ROOF_R)) ** 2)) : 0;
   const lean = y <= s.wsBot ? 0 : s.rake * Math.min(1, (y - s.wsBot) / (s.glassTop - s.wsBot));
   const hw = s.W / 2 - sideIn;
   const rcF = Math.min(hw - 0.05, 0.3 + 0.15 * smooth(s.wsBot - 0.1, s.wsBot + 0.2, y));
-  const rcR = Math.min(hw - 0.05, 0.22);
-  return { y, hw, zF: s.front - lean - frontIn, zR: s.rear + sideIn, rcF, rcR };
+  const rcR = Math.min(hw - 0.05, 0.4);
+  return { y, hw, zF: s.front - lean - frontIn, zR: s.rear + Math.max(sideIn, rearIn), rcF, rcR };
 }
 // z of the front surface (flat middle part) at height y
 export const akFrontZ = (s, y) => akSlice(s, y).zF;
@@ -27,7 +29,7 @@ function heights(s) {
   const ys = [s.floor - SKIRT, s.floor, s.floor + 0.25, s.wsBot - 0.15, s.wsBot - 0.05, s.wsBot, s.glassTop, s.winBot, s.winTop];
   for (let y = s.wsBot; y < s.glassTop; y += 0.2) ys.push(y);
   for (let y = s.floor - SKIRT; y < s.wheelR + archR(s) + 0.1; y += 0.06) ys.push(y);   // fine rows for the wheel arches
-  const top0 = s.H - Math.max(s.roofR, FRONT_ROOF_R);
+  const top0 = s.H - Math.max(s.roofR, FRONT_ROOF_R, REAR_ROOF_R);
   for (let k = 0; k <= 12; k++) ys.push(top0 + (s.H - top0) * (1 - Math.cos((k / 12) * Math.PI / 2)));
   ys.sort((a, b) => a - b);
   return ys.filter((y, i) => i === 0 || y - ys[i - 1] > 0.012);
@@ -100,6 +102,31 @@ function grid(rows, uvOf, skip, offset = 0) {
 }
 
 // returns { meshes, glass }
+// a band that follows the front of the body at height y, from offset a to offset b, extruded h up
+export function akFrontBand(s, y, a, b, h) {
+  const sl = akSlice(s, y);
+  const pts = [...samples(sl, 'left').filter((p) => p.ws), ...samples(sl, 'front').slice(1), ...samples(sl, 'right').filter((p) => p.ws).slice(1)];
+  const outer = pts.map((p) => new THREE.Vector2(p.x + p.nx * b, -(p.z + p.nz * b)));
+  const inner = pts.map((p) => new THREE.Vector2(p.x + p.nx * a, -(p.z + p.nz * a))).reverse();
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape([...outer, ...inner]), { depth: h, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 2 });
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, y, 0);
+  return g;
+}
+
+// strip that follows the wrap-around windshield between heights y0 and y1 (for the name sticker);
+// u runs across the full body width so letters can wrap round the corners
+export function akGlassStrip(s, y0, y1, offset) {
+  const ys = [];
+  for (let k = 0; k <= 6; k++) ys.push(y0 + (y1 - y0) * (k / 6));
+  const zc = (s.front + s.rear) / 2;
+  const rows = ys.map((y) => {
+    const sl = akSlice(s, y);
+    return { y, zc, pts: [...samples(sl, 'left').filter((p) => p.ws), ...samples(sl, 'front').slice(1), ...samples(sl, 'right').filter((p) => p.ws).slice(1)] };
+  });
+  return grid(rows, (p, y) => [(p.x + s.W / 2) / s.W, (y - y0) / (y1 - y0)], null, offset);
+}
+
 const geoCache = new Map();
 export function buildAkShell(s, mats, glassMat) {
   if (!geoCache.has(s)) geoCache.set(s, buildGeometry(s));

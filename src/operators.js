@@ -650,7 +650,25 @@ export function paintFront(ctx, W, H, spec, op, plate) {
     ctx.fillRect(0, Y(ws + 0.02), W, Y(ws - 0.02) - Y(ws + 0.02));
   }
   const ak = spec.cockpit === 'ak';
-  if (ak) return;   // AK1J grille, badge, lamps and plate are 3D parts
+  if (ak) {
+    // AK1J grille, badge, lamps and plate are 3D parts; paint the accent sweeps that frame the headlamps
+    ctx.fillStyle = op.frontAccent || op.c1;
+    for (const sx of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(X(sx * hw), Y(spec.floor + 0.42));
+      ctx.quadraticCurveTo(X(sx * 0.75), Y(spec.floor + 0.36), X(sx * 0.42), Y(spec.floor + 0.4));
+      ctx.lineTo(X(sx * 0.42), Y(spec.floor + 0.46));
+      ctx.quadraticCurveTo(X(sx * 0.8), Y(spec.floor + 0.44), X(sx * hw), Y(spec.floor + 0.56));
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(X(sx * hw), Y(spec.floor + 0.86));
+      ctx.quadraticCurveTo(X(sx * 0.85), Y(spec.floor + 0.84), X(sx * 0.55), Y(spec.floor + 0.8));
+      ctx.lineTo(X(sx * 0.55), Y(spec.floor + 0.77));
+      ctx.quadraticCurveTo(X(sx * 0.88), Y(spec.floor + 0.8), X(sx * hw), Y(spec.floor + 0.8));
+      ctx.closePath(); ctx.fill();
+    }
+    return;
+  }
   // grille
   const akTop = Math.min(spec.floor + 0.88, ws - 0.38);
   const gT = ak ? akTop - 0.06 : Math.min(spec.floor + 0.98, ws - 0.26), gB = ak ? spec.floor + 0.44 : gT - 0.36;
@@ -714,10 +732,19 @@ export function paintRear(ctx, W, H, spec, op, plate) {
   rr(ctx, X(-hw + 0.12), Y(spec.winTop), X(hw - 0.12) - X(-hw + 0.12), Y(spec.winBot + 0.05) - Y(spec.winTop), 16);
   ctx.fill();
   if (op.headerBg) { ctx.fillStyle = op.headerBg; ctx.fillRect(X(-hw + 0.12), Y(spec.winTop), X(hw - 0.12) - X(-hw + 0.12), Y(spec.winTop - 0.5) - Y(spec.winTop)); }
-  ctx.fillStyle = op.headerBg ? (op.headerColor || '#111') : '#ffffff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (spec.cockpit === 'ak') {
+    // AK1J: Bangla name in big white letters on the rear glass, chrome bars and badge under it
+    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = W * 0.008;
+    ctx.font = `bold ${W * 0.15}px ${BN_FONT}`;
+    ctx.strokeText(op.bn.split(' ')[0], W / 2, Y(spec.winTop - 0.42), W * 0.8);
+    ctx.fillText(op.bn.split(' ')[0], W / 2, Y(spec.winTop - 0.42), W * 0.8);
+    for (let k = 0; k < 3; k++) { ctx.fillStyle = '#d7dbdf'; ctx.fillRect(X(-0.55 + k * 0.05), Y(spec.winBot - 0.3 - k * 0.09), X(0.55 - k * 0.05) - X(-0.55 + k * 0.05), Math.max(3, H * 0.008)); }
+  } else {
+  ctx.fillStyle = op.headerBg ? (op.headerColor || '#111') : '#ffffff';
   ctx.font = `bold ${W * 0.085}px ${op.headerFont || SERIF}`;
   ctx.fillText((op.header || op.en).replace(/★/g, '').trim(), W / 2, Y(spec.winTop - 0.25), W * 0.8);
+  }
   // row of round lamps under the rear window (amber / red), chrome badge in the middle
   for (const [k, col] of [[-3, '#ffb300'], [-2, '#e53935'], [-1, '#ffb300'], [1, '#ffb300'], [2, '#e53935'], [3, '#ffb300']]) {
     ctx.fillStyle = '#d0d4d8'; ctx.beginPath(); ctx.arc(X(k * 0.17), Y(spec.winBot - 0.14), W * 0.022, 0, Math.PI * 2); ctx.fill();
@@ -753,8 +780,10 @@ export function paintHeader(ctx, W, H, op, inside = false, clearGlass = false) {
     // AK1J: big bold letters straight on the glass, no band (as on the BD bus mods)
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const main = (op.header || op.en).replace(/★/g, '').trim();
-    ctx.font = `italic 900 ${H * 0.78}px ${op.headerFont || SANS}`;
-    if ('letterSpacing' in ctx) ctx.letterSpacing = `${H * 0.02}px`;
+    let fs = H * 0.8;
+    ctx.font = `italic 900 ${fs}px ${op.headerFont || SANS}`;
+    fs = Math.min(fs, fs * (W * 0.78) / Math.max(1, ctx.measureText(main).width));
+    ctx.font = `italic 900 ${fs}px ${op.headerFont || SANS}`;
     if (!inside) {
       ctx.lineJoin = 'round'; ctx.lineWidth = H * 0.07; ctx.strokeStyle = shade(op.c2 || '#1a3a8a', -20);
       ctx.strokeText(main, W / 2, H * 0.5, W * 0.94);
