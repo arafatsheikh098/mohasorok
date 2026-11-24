@@ -493,7 +493,9 @@ export function paintSide(ctx, W, H, spec, op, frontAtLeft) {
   const doorZ0 = spec.front - (ak ? 0.5 : 0.25), doorZ1 = spec.front - (ak ? 1.4 : 1.2);
   const glass = (x, y, w, h, rad) => {
     const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, '#2c3d49'); g.addColorStop(0.5, '#141d24'); g.addColorStop(1, '#0b1116');
+    if (spec.cockpit === 'ak') {   // lighter glass like the ETS2 mods: sky reflection fading to the cabin
+      g.addColorStop(0, '#7f9fb3'); g.addColorStop(0.35, '#4a6577'); g.addColorStop(1, '#22313b');
+    } else { g.addColorStop(0, '#2c3d49'); g.addColorStop(0.5, '#141d24'); g.addColorStop(1, '#0b1116'); }
     ctx.fillStyle = g;
     rr(ctx, x, y, w, h, rad); ctx.fill();
   };
@@ -510,7 +512,7 @@ export function paintSide(ctx, W, H, spec, op, frontAtLeft) {
   const seatsIn = (x, w) => {
     ctx.save();
     ctx.beginPath(); ctx.rect(x, wy, w, wh); ctx.clip();
-    const sw = f.pxPerM * 0.42, top = f.Y(spec.winBot + 0.5), bot = f.Y(spec.winBot - 0.05);
+    const sw = f.pxPerM * 0.44, top = f.Y(spec.winBot + 0.62), bot = f.Y(spec.winBot - 0.05);
     for (let z = zFront - 1.75; z > zRear + 0.3; z -= 0.78) {
       const cx = f.XZ(z);
       ctx.globalAlpha = 0.95;
@@ -525,7 +527,7 @@ export function paintSide(ctx, W, H, spec, op, frontAtLeft) {
     }
     // dim the cabin behind the tinted glass, darker at the bottom
     const g = ctx.createLinearGradient(0, wy, 0, wy + wh);
-    g.addColorStop(0, 'rgba(8,14,18,0.05)'); g.addColorStop(1, 'rgba(8,14,18,0.3)');
+    g.addColorStop(0, 'rgba(8,14,18,0)'); g.addColorStop(1, 'rgba(8,14,18,0.18)');
     ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(x, wy, w, wh);
     ctx.restore();
   };
