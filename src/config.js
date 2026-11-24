@@ -45,9 +45,10 @@ export const CHUNK = 500;          // scenery chunk length (m of road)
 export const VIEW_CHUNKS = 5;      // chunks visible ahead/behind
 
 export const QUALITY = {
-  high:   { pixelRatio: 1.5, shadow: 4096, shadowArea: 90,  treeDensity: 1.0 },
-  medium: { pixelRatio: 1.0, shadow: 2048, shadowArea: 70,  treeDensity: 0.7 },
-  low:    { pixelRatio: 0.8, shadow: 1024, shadowArea: 60,  treeDensity: 0.45 },
+  // touchPR: phones/tablets have small, very dense screens, so they need more pixels to look sharp
+  high:   { pixelRatio: 1.5, touchPR: 2.0, shadow: 4096, shadowArea: 90,  treeDensity: 1.0 },
+  medium: { pixelRatio: 1.0, touchPR: 1.5, shadow: 2048, shadowArea: 70,  treeDensity: 0.7 },
+  low:    { pixelRatio: 0.8, touchPR: 1.0, shadow: 1024, shadowArea: 60,  treeDensity: 0.45 },
 };
 
 // ---- road facilities ----

@@ -38,7 +38,7 @@ class Chunks {
 const canvas = $('view');
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: !IS_PHONE, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
 } catch (e) {
   document.getElementById('nogl').style.display = 'flex';
   document.getElementById('loading').style.display = 'none';
@@ -55,16 +55,18 @@ const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.15, 9
 
 // settings persist between visits; phones start lighter
 const SAVED = (() => { try { return JSON.parse(localStorage.getItem('mohasorok.settings') || '{}'); } catch { return {}; } })();
+// v2: phones used to be saved as 'low' automatically; forget that unless the player picked it
+if (SAVED.v !== 2 && !SAVED.qualityManual) delete SAVED.quality;
 const settings = {
   op: OPERATORS[0], type: 'ak1j', time: 'morning', dir: 'ctg',
-  traffic: IS_PHONE ? 22 : 38, quality: IS_PHONE ? 'low' : IS_TOUCH ? 'medium' : 'high',
+  traffic: IS_PHONE ? 26 : 38, quality: IS_TOUCH ? 'medium' : 'high', qualityManual: false,
   ...SAVED, opId: SAVED.opId,
 };
 settings.op = OPERATORS.find((o) => o.id === settings.opId) || OPERATORS[0];
 settings.seats = settings.seats || {};
 function saveSettings() {
-  const { type, time, traffic, quality, dir, seats } = settings;
-  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ type, time, traffic, quality, dir, seats, opId: settings.op.id })); } catch { /* private mode */ }
+  const { type, time, traffic, quality, qualityManual, dir, seats } = settings;
+  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, dir, seats, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;
 const audio = new GameAudio();
@@ -83,7 +85,7 @@ const player = {
 
 function applyQuality() {
   const q = QUALITY[settings.quality];
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q.pixelRatio));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? q.touchPR : q.pixelRatio));
   renderer.setSize(innerWidth, innerHeight);
   if (sky.sun.shadow.mapSize.x !== q.shadow) {
     sky.sun.shadow.mapSize.set(q.shadow, q.shadow);
@@ -481,6 +483,8 @@ function initSeatPanel() {
   $('seat-close').onclick = () => toggleSeatPanel(false);
   $('seat-reset').onclick = () => { settings.seats[settings.type] = { x: 0, y: 0, z: 0, fov: 78 }; applySeat(); saveSettings(); };
   document.getElementById('t-seat')?.addEventListener('pointerdown', (e) => { e.preventDefault(); toggleSeatPanel(); });
+  // phones: the trip panel is hidden to keep the view clear; tap the place name to show or hide it
+  if (IS_TOUCH) $('place')?.addEventListener('pointerdown', () => document.body.classList.toggle('show-trip'));
 }
 
 // ---------- keys ----------
@@ -569,7 +573,7 @@ function buildMenu() {
       b.onclick = () => {
         selectSeg(el, b);
         if (id === 'traffic') settings.traffic = +b.dataset.v;
-        else { settings.quality = b.dataset.v; applyQuality(); }
+        else { settings.quality = b.dataset.v; settings.qualityManual = true; applyQuality(); }
         saveSettings();
       };
     });
@@ -659,25 +663,35 @@ function startDrive() {
   $('menu').style.display = 'none';
   hud.show(true);
   state = 'drive';
-  perf.t = 0; perf.n = 0;
+  perf.t = 0; perf.n = 0; perf.warm = 0; perf.slow = 0;
   hud.toast(`<span class="bn">${settings.op.bn}</span> · ${BUS_TYPES[settings.type].name}<br><small>${settings.dir === 'dhk' ? 'A.K. Khan → Sayedabad (Dhaka)' : 'Sayedabad → Chattogram'} via N1. Drive on the LEFT.${IS_TOUCH ? ' Turn the wheel, hold GAS / BRAKE.' : ' Mirrors: V · Refuel: F'}</small>`, 'good', 5000);
 }
 
 // ---------- automatic graphics reduction on slow devices ----------
-const perf = { t: 0, n: 0, steps: 0 };
+const perf = { t: 0, n: 0, steps: 0, warm: 0, slow: 0 };
 function autoPerf(dt) {
+  // only when the player hasn't picked a Graphics level, and not in the first seconds (shader compiling and loading stutter)
+  if (settings.qualityManual) return;
+  perf.warm += dt;
+  if (perf.warm < 10) return;
   perf.t += dt; perf.n++;
-  if (perf.t < 5) return;
+  if (perf.t < 4) return;
   const fps = perf.n / perf.t;
   perf.t = 0; perf.n = 0;
-  if (fps < 32 && perf.steps < 3) {
-    perf.steps++;
-    const pr = Math.max(0.6, renderer.getPixelRatio() - 0.25);
-    renderer.setPixelRatio(pr);
+  // A steady ~30 fps is the browser's own cap (iPhone Low Power Mode and the like); lower graphics wouldn't help.
+  // Only a device that stays well below that for 8 s gets lighter settings.
+  perf.slow = fps < 26 ? perf.slow + 1 : 0;
+  if (perf.slow < 2 || perf.steps >= 3) return;
+  perf.slow = 0; perf.steps++;
+  const floor = IS_TOUCH ? 1.0 : 0.75;
+  if (renderer.getPixelRatio() > floor) {
+    renderer.setPixelRatio(Math.max(floor, renderer.getPixelRatio() - 0.25));
     renderer.setSize(innerWidth, innerHeight);
-    if (perf.steps === 2) { mirrors.hudOn = false; sky.sun.shadow.mapSize.set(1024, 1024); sky.sun.shadow.map?.dispose(); sky.sun.shadow.map = null; }
-    hud.toast(`Graphics lowered for smoother driving (${Math.round(fps)} fps)`, '', 2500);
+  } else if (sky.sun.shadow.mapSize.x > 1024) {
+    sky.sun.shadow.mapSize.set(1024, 1024); sky.sun.shadow.map?.dispose(); sky.sun.shadow.map = null;
   }
+  if (perf.steps === 2) mirrors.hudOn = false;
+  hud.toast(`Graphics lowered for smoother driving (${Math.round(fps)} fps) · pick a Graphics level in the menu to keep yours`, '', 3500);
 }
 
 // ---------- main loop ----------
@@ -842,7 +856,8 @@ async function boot() {
 }
 let mirrors_defaultOff = false;
 function applyQualityBase() {
-  renderer.setPixelRatio(Math.min(devicePixelRatio, (QUALITY[settings.quality] || QUALITY.high).pixelRatio));
+  const q0 = QUALITY[settings.quality] || QUALITY.high;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? q0.touchPR : q0.pixelRatio));
   renderer.setSize(innerWidth, innerHeight);
 }
 
