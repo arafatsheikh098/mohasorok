@@ -231,11 +231,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   glass.material = interior ? M.glassPlayer : M.glassAI;
   glass.renderOrder = 2;
   exterior.add(glass);
-  if (s.framed) {
-    const div = quadAlong(wsA, wsB, 0.07, 0.016);
-    div.material = M.dark;
-    exterior.add(div);
-  }
+  // one-piece windshield on every type: no centre divider bar
   // two wiper arms parked almost upright with a scissor brace (BD AK1J style)
   const wiperMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 });
   const lean0 = Math.atan2(s.rake, s.glassTop - s.wsBot);
@@ -860,10 +856,6 @@ function addInterior(bus, r) {
     if (ak) continue;   // AK1J: clean windshield, no pillar frame
     const p = add(new RoundedBoxGeometry(pw, pillarLen, 0.06, 2, 0.015), trim, sx * px, (wsA.y + wsB.y) / 2, (wsA.z + wsB.z) / 2 - 0.05);
     p.rotation.x = -lean;
-  }
-  if (s.framed) {
-    const c = add(new THREE.BoxGeometry(0.06, pillarLen, 0.06), trim, 0, (wsA.y + wsB.y) / 2, (wsA.z + wsB.z) / 2 - 0.04);
-    c.rotation.x = -lean;
   }
   const inW = s.W - 2 * s.bevel - 0.12;   // inner width that stays inside the rounded body edges
   if (s.cockpit !== 'ak') add(new THREE.BoxGeometry(inW, 0.3, 0.5), std(0x3b2a24, 0.7), 0, s.glassTop - 0.12, wsB.z - 0.32);
