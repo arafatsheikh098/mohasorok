@@ -2,7 +2,7 @@
 
 Drive a Hino AK1J and other Bangladeshi intercity buses on the **Dhaka → Chattogram N1 highway**, right in your browser on a PC or a phone. It's free and there's nothing to install.
 
-**▶ Play:** https://YOUR-GITHUB-USERNAME.github.io/mohasorok/
+**▶ Play:** https://arafatsheikh098.github.io/mohasorok/
 
 ## Features
 - **Route:** the real N1 route, from Sayedabad through Kanchpur, the Meghna and Gumti bridges, Cumilla, Feni and Sitakunda to Chattogram. It is compressed 1:12, and the game shows about 245 km.
