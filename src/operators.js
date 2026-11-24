@@ -17,10 +17,17 @@ export const OPERATORS = [
     header: 'HANIF', headerFont: SERIF, headerColor: '#ffd54f', frontLower: '#e53935', frontStripe: '#8b1a2b',
     names: [{ text: 'HANIF', font: SERIF, weight: 'bold', color: '#8b1a2b', t: 0.62, y: -0.3, size: 0.36, spacing: 0.08 }],
     byType: {
+      ak1j: {
+        base: '#1667c4', roof: '#2bb3e6', lower: '#1667c4', c1: '#2bb3e6', c2: '#ffffff', c3: '#0d3f86', text: '#ffffff', style: 'hanifAK',
+        mirror: '#2bb3e6', mirrorTip: null, curtain: '#1d2a6b', frontUpper: '#1667c4', frontLower: '#1667c4', frontBumper: '#1667c4',
+        headerColor: '#ffffff', decal: 'HANIF SPECIAL', decal2: null, garland: false,
+        names: [{ text: 'HANIF', font: SERIF, weight: 'bold', color: '#d6e9ff', t: 0.42, y: -0.42, size: 0.3, spacing: 0.06 }],
+      },
       local: {
-        base: '#1f55d6', roof: '#1f55d6', lower: '#1f55d6', c1: '#c9ced3', c2: '#53b6ea', c3: '#173f9e', style: 'hanifblue', mirror: '#1f55d6',
-        frontLower: '#53b6ea', frontStripe: '#c9ced3', headerColor: '#ffffff', decal: 'HANIF ENTERPRISE', decal2: null, curtain: '#3b3f48',
-        names: [{ text: 'HANIF', font: SERIF, weight: 'bold', color: '#e0262c', t: 0.5, y: -0.5, size: 0.4, spacing: 0.08 }],
+        base: '#1667c4', roof: '#2bb3e6', lower: '#1667c4', c1: '#2bb3e6', c2: '#ffffff', c3: '#0d3f86', text: '#ffffff', style: 'hanifAK',
+        mirror: '#2bb3e6', mirrorTip: null, curtain: '#1d2a6b', frontUpper: '#1667c4', frontLower: '#1667c4', frontBumper: '#1667c4',
+        headerColor: '#ffffff', decal: 'HANIF SPECIAL', decal2: null, garland: false,
+        names: [{ text: 'HANIF', font: SERIF, weight: 'bold', color: '#d6e9ff', t: 0.42, y: -0.42, size: 0.3, spacing: 0.06 }],
       },
       highdeck: {
         base: '#4e5b3d', roof: '#6c7a52', lower: '#1d2117', c1: '#e8dcbc', c2: '#8b1e2e', c3: '#c9bc98', style: 'hanif', mirror: '#151515',
@@ -55,7 +62,17 @@ export const OPERATORS = [
     style: 'redlower', curtain: '#7a1f2b', garland: true, decal: 'SHYAMOLI', mirror: '#e8e6e0', mirrorTip: '#d0262c',
     header: '★ SHYAMOLI ★', headerFont: SERIF, headerSub: 'Business Class', frontLower: '#d0262c', frontStripe: '#ffffff',
     names: [{ text: 'SHYAMOLI PARIBAHAN', font: SERIF, weight: 'bold', color: '#111111', t: 0.5, y: -0.42, size: 0.26, spacing: 0.04 }],
-    byType: { highdeck: { lower: '#1f7a3a', c1: '#1f7a3a', mirrorTip: '#1f7a3a', frontLower: '#1f7a3a' } },
+    byType: {
+      ak1j: {
+        base: '#d9141b', roof: '#d9141b', lower: '#d9141b', c1: '#ffffff', c2: '#c9a227', c3: '#1a1a1a', text: '#ffffff', style: 'shyamoliAK',
+        mirror: '#f2f2f2', mirrorTip: '#d9141b', curtain: '#1d2a6b', frontUpper: '#d9141b', frontLower: '#d9141b', frontBumper: '#d9141b',
+        names: [{ text: 'SHYAMOLI PARIBAHAN', font: SERIF, weight: 'bold', color: '#ffffff', t: 0.4, y: -0.3, size: 0.14, spacing: 0.04 }],
+      },
+      local: {
+        base: '#d9141b', roof: '#d9141b', lower: '#d9141b', c1: '#ffffff', c2: '#c9a227', c3: '#1a1a1a', text: '#ffffff', style: 'shyamoliAK',
+        mirror: '#f2f2f2', mirrorTip: '#d9141b', curtain: '#1d2a6b', frontUpper: '#d9141b', frontLower: '#d9141b', frontBumper: '#d9141b',
+        names: [{ text: 'SHYAMOLI PARIBAHAN', font: SERIF, weight: 'bold', color: '#ffffff', t: 0.4, y: -0.3, size: 0.14, spacing: 0.04 }],
+      }, highdeck: { lower: '#1f7a3a', c1: '#1f7a3a', mirrorTip: '#1f7a3a', frontLower: '#1f7a3a' } },
   },
   {
     id: 'soudia', en: 'SOUDIA X', bn: 'সৌদিয়া', ref: true,
@@ -64,6 +81,21 @@ export const OPERATORS = [
     header: 'SOUDIA', headerFont: SANS, frontLower: '#f6d40c', frontStripe: '#d32f2f',
     names: [{ parts: [['SOUDIA', '#111111'], [' X', '#d32f2f']], text: 'SOUDIA X', font: SANS, weight: 'italic 900', t: 0.42, y: -0.42, size: 0.3 }],
     logo: 'runner',
+    // AK1J bodies: livery as on the ETS2 BD bus mods
+    byType: {
+      ak1j: {
+        base: '#a7a993', roof: '#a7a993', lower: '#a7a993', c1: '#c8161d', c2: '#ffffff', c3: '#2b2b2b', text: '#c8161d', style: 'soudiaAK',
+        mirror: '#c8161d', mirrorTip: null, curtain: '#2a2a2a', frontUpper: '#a7a993', frontLower: '#a7a993', frontBumper: '#a7a993',
+        header: 'SOUDIA', headerColor: '#ffffff', logo: 'runner',
+        names: [{ text: 'SOUDIA X', font: SCRIPT, weight: 'bold', color: '#2b2b2b', t: 0.32, y: -0.25, size: 0.26 }],
+      },
+      local: {
+        base: '#a7a993', roof: '#a7a993', lower: '#a7a993', c1: '#c8161d', c2: '#ffffff', c3: '#2b2b2b', text: '#c8161d', style: 'soudiaAK',
+        mirror: '#c8161d', mirrorTip: null, curtain: '#2a2a2a', frontUpper: '#a7a993', frontLower: '#a7a993', frontBumper: '#a7a993',
+        header: 'SOUDIA', headerColor: '#ffffff', logo: 'runner',
+        names: [{ text: 'SOUDIA X', font: SCRIPT, weight: 'bold', color: '#2b2b2b', t: 0.32, y: -0.25, size: 0.26 }],
+      },
+    },
   },
   {
     id: 'marsa', en: 'MARSA', bn: 'মারসা পরিবহন', ref: true,
@@ -89,6 +121,21 @@ export const OPERATORS = [
     header: 'Shohagh', headerFont: SANS, headerSub: 'Alhamdulillah', frontLower: '#141414', frontStripe: '#1e3fd0',
     names: [{ text: 'Shohagh', font: SANS, weight: 'italic 800', color: '#b3aca2', outline: '#2b2b2b', t: 0.55, y: -0.12, size: 0.3 }],
     logo: 'bolt',
+    // AK1J bodies: livery as on the ETS2 BD bus mods
+    byType: {
+      ak1j: {
+        base: '#ffae1a', roof: '#ffae1a', lower: '#f39412', c1: '#e8231c', c2: '#2443c9', c3: '#c4161c', text: '#2443c9', style: 'shohaghAK',
+        mirror: '#f08a1c', mirrorTip: '#e8231c', curtain: '#1d2a6b', frontUpper: '#ffae1a', frontLower: '#ffae1a', frontBumper: '#f39412',
+        header: 'Shohagh', headerColor: '#ffffff', headerSub: null, decal: 'Shohagh', decal2: null, decalFont: SANS, logo: null,
+        names: [{ text: 'Shohagh', font: SANS, weight: 'italic 800', color: '#2443c9', t: 0.42, y: -0.42, size: 0.34 }],
+      },
+      local: {
+        base: '#ffae1a', roof: '#ffae1a', lower: '#f39412', c1: '#e8231c', c2: '#2443c9', c3: '#c4161c', text: '#2443c9', style: 'shohaghAK',
+        mirror: '#f08a1c', mirrorTip: '#e8231c', curtain: '#1d2a6b', frontUpper: '#ffae1a', frontLower: '#ffae1a', frontBumper: '#f39412',
+        header: 'Shohagh', headerColor: '#ffffff', headerSub: null, decal: 'Shohagh', decal2: null, decalFont: SANS, logo: null,
+        names: [{ text: 'Shohagh', font: SANS, weight: 'italic 800', color: '#2443c9', t: 0.42, y: -0.42, size: 0.34 }],
+      },
+    },
   },
   {
     id: 'unique', en: 'UNIQUE SERVICE', bn: 'ইউনিক', ref: true,
@@ -359,6 +406,46 @@ const STYLES = {
     for (const [t, c, w, r] of [[-0.1, op.c1, 0.2, 1.2], [0.25, op.c1, 0.22, 1.0], [0.62, op.c1, 0.2, 1.1], [0.0, op.c2, 0.05, 1.3], [0.4, op.c3, 0.05, 1.2], [0.7, op.c2, 0.06, 1.0], [0.18, op.c3, 0.04, 1.1]]) arc(t, c, w, r);
     line(ctx, f, [[-0.02, fl + 0.2], [0.4, fl + 0.4], [0.7, fl + 0.25], [1.02, fl + 0.45]], op.c1, 0.12);
   },
+  // ---- AK1J liveries in the style of the ETS2 BD bus mods ----
+  shohaghAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    const g = ctx.createLinearGradient(0, f.Y(s.H), 0, f.Y(fl)); g.addColorStop(0, '#ffb81f'); g.addColorStop(1, '#f28c10');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, f.W, f.H);
+    blob(ctx, f, [[0.3, fl - 0.1], [0.5, fl + 0.3], [0.7, wb - 0.25], [0.9, wb + 0.05], [1.06, wb + 0.15], [1.06, fl + 0.55], [0.9, fl + 0.4], [0.72, fl + 0.1], [0.55, fl - 0.1]], op.c1);
+    line(ctx, f, [[0.36, fl - 0.05], [0.58, fl + 0.42], [0.8, wb - 0.1], [1.04, wb + 0.12]], op.c2, 0.13);
+    line(ctx, f, [[0.52, fl - 0.05], [0.72, fl + 0.3], [0.9, wb - 0.32], [1.04, wb - 0.2]], op.c3, 0.05);
+    line(ctx, f, [[-0.05, wb - 0.06], [1.05, wb - 0.06]], '#ffffff', 0.025);
+  },
+  shyamoliAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // white sweep from the front bumper up to the middle, olive and black feathers behind it
+    blob(ctx, f, [[-0.05, fl + 0.05], [0.1, fl + 0.12], [0.35, fl + 0.5], [0.55, wb - 0.12], [0.62, wb - 0.08], [0.45, fl + 0.55], [0.2, fl + 0.12], [-0.05, fl - 0.05]], op.c1);
+    blob(ctx, f, [[0.45, fl - 0.05], [0.6, fl + 0.35], [0.8, wb - 0.2], [0.95, wb - 0.1], [0.82, fl + 0.4], [0.62, fl - 0.05]], op.c2);
+    line(ctx, f, [[0.55, fl - 0.02], [0.7, fl + 0.35], [0.88, wb - 0.25], [1.0, wb - 0.18]], op.c3, 0.06);
+    line(ctx, f, [[0.62, fl - 0.02], [0.78, fl + 0.3], [0.95, fl + 0.6]], op.c3, 0.04);
+    line(ctx, f, [[0.7, fl - 0.02], [0.86, fl + 0.22], [1.04, fl + 0.4]], op.c1, 0.05);
+  },
+  hanifAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    band(ctx, f, s.winTop - 0.05, s.H + 0.2, op.c1);                    // cyan roof band
+    line(ctx, f, [[-0.05, wb - 0.07], [1.05, wb - 0.07]], op.c2, 0.03);   // white line under the windows
+    // dark-blue floral swirls on the rear half, a white leaf sweep near the middle
+    for (const [t, y, r] of [[0.62, fl + 0.55, 0.32], [0.75, fl + 0.35, 0.24], [0.86, fl + 0.6, 0.3], [0.95, fl + 0.3, 0.2], [0.7, wb - 0.25, 0.18]]) {
+      ctx.strokeStyle = op.c3; ctx.lineWidth = f.pyPerM * 0.05;
+      ctx.beginPath(); ctx.ellipse(f.X(t), f.Y(y), r * f.pxPerM, r * f.pyPerM, 0, 0.3, 5.2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(f.X(t), f.Y(y), r * 0.55 * f.pxPerM, r * 0.55 * f.pyPerM, 0, 2.2, 6.8); ctx.stroke();
+    }
+    blob(ctx, f, [[0.5, fl + 0.05], [0.56, fl + 0.5], [0.66, wb - 0.15], [0.6, fl + 0.55], [0.53, fl + 0.05]], op.c2);
+    blob(ctx, f, [[0.55, fl + 0.05], [0.64, fl + 0.4], [0.76, fl + 0.75], [0.66, fl + 0.38], [0.58, fl + 0.05]], '#9fd8f5');
+  },
+  soudiaAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // red ribbon with a white edge rising from the front wheel to the rear, dark rear quarter
+    blob(ctx, f, [[0.86, s.H], [0.9, wb - 0.3], [1.06, fl + 0.3], [1.06, s.H]], op.c3);
+    blob(ctx, f, [[0.08, fl + 0.18], [0.35, fl + 0.28], [0.62, fl + 0.6], [0.85, wb - 0.05], [1.0, wb + 0.2], [1.0, wb + 0.02], [0.82, wb - 0.35], [0.6, fl + 0.35], [0.35, fl + 0.12], [0.08, fl + 0.06]], op.c1);
+    line(ctx, f, [[0.1, fl + 0.32], [0.36, fl + 0.4], [0.62, fl + 0.72], [0.86, wb + 0.05], [1.0, wb + 0.28]], op.c2, 0.04);
+    line(ctx, f, [[0.12, fl + 0.02], [0.4, fl + 0.05], [0.66, fl + 0.3], [0.9, wb - 0.55]], op.c1, 0.05);
+  },
   swoosh(ctx, f, op, s) {
     const wb = s.winBot;
     blob(ctx, f, [[-0.05, 0.2], [0.2, 0.2], [0.55, wb * 0.55], [0.85, wb + 0.4], [1.05, s.H], [1.05, 0.2]], op.c1);
@@ -402,7 +489,8 @@ export function paintSide(ctx, W, H, spec, op, frontAtLeft) {
   const wy = f.Y(spec.winTop), wh = f.Y(spec.winBot) - f.Y(spec.winTop);
   const zFront = spec.front - 0.15, zRear = spec.rear + 0.35;
   const leftSide = frontAtLeft;
-  const doorZ0 = spec.front - 0.25, doorZ1 = spec.front - 1.2;
+  const ak = spec.cockpit === 'ak';
+  const doorZ0 = spec.front - (ak ? 0.5 : 0.25), doorZ1 = spec.front - (ak ? 1.4 : 1.2);
   const glass = (x, y, w, h, rad) => {
     const g = ctx.createLinearGradient(0, y, 0, y + h);
     g.addColorStop(0, '#2c3d49'); g.addColorStop(0.5, '#141d24'); g.addColorStop(1, '#0b1116');
@@ -659,8 +747,22 @@ export function paintRear(ctx, W, H, spec, op, plate) {
 }
 
 // big white operator name across the top of the windshield (as on real BD coaches)
-export function paintHeader(ctx, W, H, op, inside = false) {
+export function paintHeader(ctx, W, H, op, inside = false, clearGlass = false) {
   ctx.clearRect(0, 0, W, H);
+  if (clearGlass && !op.headerBadge) {
+    // AK1J: big bold letters straight on the glass, no band (as on the BD bus mods)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const main = (op.header || op.en).replace(/★/g, '').trim();
+    ctx.font = `italic 900 ${H * 0.78}px ${op.headerFont || SANS}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = `${H * 0.02}px`;
+    if (!inside) {
+      ctx.lineJoin = 'round'; ctx.lineWidth = H * 0.07; ctx.strokeStyle = shade(op.c2 || '#1a3a8a', -20);
+      ctx.strokeText(main, W / 2, H * 0.5, W * 0.94);
+    }
+    ctx.fillStyle = inside ? 'rgba(220,235,240,0.35)' : (op.headerColor || '#ffffff');
+    ctx.fillText(main, W / 2, H * 0.5, W * 0.94);
+    return;
+  }
   if (inside) {
     // seen from the cab: clear glass, only the (mirrored) letters show
   } else if (op.headerBg) {

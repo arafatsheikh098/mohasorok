@@ -4,13 +4,14 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeCanvas, canvasTexture, rng, EN_FONT, BN_FONT, grassTexture } from './textures.js';
 import { paintSide, paintFront, paintRear, paintHeader, randomPlate, liveryFor } from './operators.js';
 import { drawRegion } from './skins.js';
+import { buildAkShell, akFrontZ } from './akBody.js';
 
 export const BUS_TYPES = {
   ak1j: {
     name: 'AK1J AC', desc: 'Hino AK1J, BD-built AC body', L: 10.6, W: 2.5, H: 3.3, floor: 0.45, winBot: 1.58, winTop: 2.86,
     wheelbase: 5.4, rearOH: 2.95, wheelR: 0.5, pillars: 7, ac: true, bays: true, framed: false, rack: true, bags: false,
     eye: 2.0, wsBot: 1.3, dashY: 1.58, rake: 0.12, mass: 14000, power: 280, seatRows: 9, seat: 0x7a1f2b,
-    cockpit: 'ak', bevel: 0.26, frontR: 0.4, roofR: 0.34, eyeZ: 1.62, seatStart: 2.4, visor: true,
+    cockpit: 'ak', bevel: 0.26, frontR: 0.4, roofR: 0.34, eyeZ: 1.62, seatStart: 2.4, visor: false,
   },
   coach: {
     name: 'Coach', desc: 'Universe-style AC coach', L: 12, W: 2.5, H: 3.55, floor: 0.38, winBot: 1.9, winTop: 3.25,
@@ -26,7 +27,7 @@ export const BUS_TYPES = {
     name: 'AK1J Non-AC', desc: 'Hino AK1J local body, roof rack', L: 10.4, W: 2.45, H: 3.15, floor: 0.45, winBot: 1.5, winTop: 2.68,
     wheelbase: 5.3, rearOH: 2.9, wheelR: 0.5, pillars: 9, ac: false, bays: false, framed: true, rack: true, bags: true,
     eye: 1.94, wsBot: 1.26, dashY: 1.5, rake: 0.1, mass: 13000, power: 250, seatRows: 10, seat: 0x2e5d3a,
-    cockpit: 'ak', bevel: 0.22, frontR: 0.32, eyeZ: 1.6, seatStart: 2.35, visor: true,
+    cockpit: 'ak', bevel: 0.22, frontR: 0.32, eyeZ: 1.6, seatStart: 2.35, visor: false,
   },
 };
 for (const s of Object.values(BUS_TYPES)) {
@@ -81,16 +82,18 @@ function liveryTextures(type, op, scale, plate) {
 // shared materials
 const M = {
   tire: new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.92 }),
-  rim: new THREE.MeshStandardMaterial({ color: 0x2d3034, roughness: 0.45, metalness: 0.6 }),
+  rim: new THREE.MeshStandardMaterial({ color: 0xb9bdc2, roughness: 0.3, metalness: 0.85 }),
   hub: new THREE.MeshStandardMaterial({ color: 0xe2e5e8, roughness: 0.15, metalness: 1 }),
   dark: new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.7 }),
   chrome: new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.15, metalness: 1 }),
   mirror: new THREE.MeshStandardMaterial({ color: 0x8fa3b0, roughness: 0.05, metalness: 1 }),
   acUnit: new THREE.MeshStandardMaterial({ color: 0xe6e6e6, roughness: 0.4, metalness: 0.2 }),
-  rack: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.5, metalness: 0.6 }),
+  rack: new THREE.MeshStandardMaterial({ color: 0x1e1f21, roughness: 0.5, metalness: 0.5 }),
+  wellDark: new THREE.MeshStandardMaterial({ color: 0x111213, roughness: 0.9, side: THREE.DoubleSide }),
+  glassAIws: new THREE.MeshPhysicalMaterial({ color: 0x18374a, roughness: 0.05, metalness: 0.45, envMapIntensity: 1.5 }),
   glassAI: new THREE.MeshPhysicalMaterial({ color: 0x0c1418, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.86, envMapIntensity: 1.2 }),
   // outer face only (FrontSide): dark reflective glass from outside, invisible from the cab
-  glassPlayer: new THREE.MeshPhysicalMaterial({ color: 0x1d2d33, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.4, envMapIntensity: 1.2, depthWrite: false }),
+  glassPlayer: new THREE.MeshPhysicalMaterial({ color: 0x1a4f78, roughness: 0.04, metalness: 0.3, transparent: true, opacity: 0.6, envMapIntensity: 1.2, depthWrite: false }),
 };
 const wheelGeo = {};
 function getWheelGeo(R, wid) {
@@ -190,12 +193,19 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   const paint = { roughness: 0.42, metalness: 0.05, clearcoat: 0.35, clearcoatRoughness: 0.22, envMapIntensity: 0.45 };
   const baseMat = new THREE.MeshPhysicalMaterial({ color: op.roof || op.base, ...paint });
   const bev = s.bevel;  // rounded corners (AK1J bodies are very round in plan)
+  const mk = (map) => new THREE.MeshPhysicalMaterial({ map, ...paint });
+  const AK = s.cockpit === 'ak';
+  if (AK) {
+    // rounded AK1J shell with a wrap-around windshield (akBody.js)
+    const { meshes, glass } = buildAkShell(s, { left: mk(tex.left), right: mk(tex.right), front: mk(tex.front), rear: mk(tex.rear), roof: baseMat, under: M.wellDark },
+      interior ? M.glassPlayer : M.glassAIws);
+    exterior.add(...meshes, glass);
+  } else {
   const shell = new THREE.Mesh(extrudeAcross(profileShape(s, bev), -s.W / 2, s.W / 2, bev), baseMat);
   shell.castShadow = true;
   exterior.add(shell);
 
   // livery side panels follow the profile
-  const mk = (map) => new THREE.MeshPhysicalMaterial({ map, ...paint });
   const y0 = s.floor + s.r, y1 = s.H - s.r, z0 = s.front - s.r, z1 = s.rear + s.r;
   const sidePanel = (left) => {
     const g = new THREE.ShapeGeometry(profileShape(s, bev + 0.01, left ? -1 : 1), 10);   // only on the flat part of the side
@@ -228,13 +238,14 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   rear.position.set(0, y0 + rh / 2, s.rear - 0.004);
   exterior.add(front, rear);
 
-  // windshield glass (outer face) + black seal frame
+  // windshield glass (outer face)
   const wsA = new THREE.Vector3(0, s.wsBot + 0.02, s.front);
   const wsB = new THREE.Vector3(0, s.glassTop, wsZ(s, s.glassTop));
   const glass = quadAlong(wsA, wsB, s.W - 2 * bev * 0.7, 0.012);
   glass.material = interior ? M.glassPlayer : M.glassAI;
   glass.renderOrder = 2;
   exterior.add(glass);
+  }
   // one-piece windshield on every type: no centre divider bar
   // two wiper arms parked almost upright with a scissor brace (BD AK1J style)
   const wiperMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 });
@@ -260,18 +271,19 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
 
   // operator name sticker across the top of the windshield (white letters on a dark tint band)
   const [hc, hx] = makeCanvas(1024, 170);
-  paintHeader(hx, 1024, 170, op);
+  paintHeader(hx, 1024, 170, op, false, s.cockpit === 'ak');
   const hTex = canvasTexture(hc, { repeat: false });
   const hTop = new THREE.Vector3(0, s.glassTop - 0.01, wsZ(s, s.glassTop - 0.01));
-  const hBot = new THREE.Vector3(0, s.glassTop - 0.43, wsZ(s, s.glassTop - 0.43));
-  const header = quadAlong(hBot, hTop, s.W - 2 * bev * 0.8, 0.02);
+  const hH = s.cockpit === 'ak' ? 0.5 : 0.43;
+  const hBot = new THREE.Vector3(0, s.glassTop - hH, wsZ(s, s.glassTop - hH));
+  const header = quadAlong(hBot, hTop, s.cockpit === 'ak' ? s.W - 0.6 : s.W - 2 * bev * 0.8, 0.02);
   header.material = new THREE.MeshBasicMaterial({ map: hTex, transparent: true, side: THREE.FrontSide, depthWrite: false });
   header.renderOrder = 3;
   exterior.add(header);
   // the same sticker seen from inside the cab (dark tint, teal letters, mirrored automatically)
   if (interior) {
     const [ic, ix] = makeCanvas(1024, 170);
-    paintHeader(ix, 1024, 170, op, true);
+    paintHeader(ix, 1024, 170, op, true, s.cockpit === 'ak');
     const hIn = header.clone();
     hIn.material = new THREE.MeshBasicMaterial({ map: canvasTexture(ic, { repeat: false }), transparent: true, side: THREE.BackSide, depthWrite: false });
     exterior.add(hIn);
@@ -314,21 +326,28 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   const LX = s.lampX;
   for (const sx of [-1, 1]) {
     if (s.cockpit === 'ak') {
-      // headlamp housing at each lower corner of the nose: black pod, two big round lamps, indicator, DRL strip
+      // angular projector headlamp at each corner, outer end raised (as on the ETS2 BD AK1J bodies)
       const hl = new THREE.Group();
-      hl.position.set(sx * (LX - 0.33), s.floor + 0.53, s.front + 0.025);
+      hl.position.set(sx * (LX - 0.27), s.floor + 0.6, s.front + 0.01);
+      hl.rotation.z = sx * 0.14;
       exterior.add(hl);
-      lbox(0.64, 0.27, 0.07, M.dark, 0, 0, 0, hl);
-      lbox(0.66, 0.29, 0.05, M.chrome, 0, 0, -0.012, hl);
-      for (const k of [-1, 1]) {
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.083, 0.014, 8, 24), M.chrome);
-        ring.position.set(k * 0.12 - sx * 0.04, -0.01, 0.04);
-        const lamp = new THREE.Mesh(new THREE.CircleGeometry(0.078, 24), mats.head);
-        lamp.position.set(k * 0.12 - sx * 0.04, -0.01, 0.038);
+      const eyeShape = new THREE.Shape();
+      const P = [[-0.25, -0.07], [0.2, -0.085], [0.27, -0.01], [0.23, 0.075], [-0.2, 0.075], [-0.27, 0.0]];
+      P.forEach(([x, y], k) => (k ? eyeShape.lineTo(sx * x, y) : eyeShape.moveTo(sx * x, y)));
+      eyeShape.closePath();
+      const eye3 = new THREE.Mesh(new THREE.ExtrudeGeometry(eyeShape, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.012, bevelSegments: 2 }), M.dark);
+      hl.add(eye3);
+      for (const [x, r] of [[-0.13, 0.052], [0.02, 0.04]]) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.01, 8, 24), M.chrome);
+        ring.position.set(sx * x, -0.005, 0.062);
+        const lamp = new THREE.Mesh(new THREE.CircleGeometry(r - 0.004, 24), mats.head);
+        lamp.position.set(sx * x, -0.005, 0.06);
         hl.add(ring, lamp);
       }
-      lbox(0.1, 0.17, 0.05, sx > 0 ? mats.indL : mats.indR, sx * 0.25, -0.01, 0.03, hl);
-      lbox(0.5, 0.025, 0.04, mats.drl, -sx * 0.04, 0.115, 0.035, hl);
+      lbox(0.07, 0.09, 0.03, sx > 0 ? mats.indL : mats.indR, sx * 0.17, -0.005, 0.055, hl);
+      lbox(0.4, 0.018, 0.03, mats.drl, sx * -0.02, 0.058, 0.057, hl);
+      // red reflector / tail-style lamp low on each bumper corner
+      lbox(0.16, 0.07, 0.04, mats.tail, sx * (LX - 0.12), s.floor + 0.26, s.front + 0.15);
       // round yellow fog lamp in the bumper
       const fog = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 18), new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0xffc400, emissiveIntensity: 0.35, roughness: 0.2 }));
       fog.rotation.x = Math.PI / 2;
@@ -349,7 +368,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   // roof "eyebrow" visor over the windshield (AK1J bodies) + the little dome light on the roof cap
   if (s.visor) {
     const dome = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xdddddd, emissive: 0x88aaff, emissiveIntensity: 0.4, roughness: 0.3 }));
-    dome.position.set(0, s.H - 0.02, wsZ(s, s.glassTop) - 0.25);
+    dome.position.set(0, s.H - 0.02, (s.cockpit === 'ak' ? akFrontZ(s, s.H) - 0.15 : wsZ(s, s.glassTop) - 0.25));
     exterior.add(dome);
     const vz = wsZ(s, s.glassTop);
     const eb = new THREE.Mesh(new RoundedBoxGeometry(s.W - 2 * bev * 0.6, 0.09, 0.32, 3, 0.04), baseMat);
@@ -358,17 +377,19 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     eb.castShadow = true;
     exterior.add(eb);
   }
-  for (let k = 0; k < 5; k++) lbox(0.12, 0.07, 0.05, mats.marker, (k - 2) * 0.32, s.H - 0.05, s.front - s.rake - 0.06);
+  for (let k = 0; k < 5; k++) lbox(0.12, 0.07, 0.05, mats.marker, (k - 2) * 0.28, s.H - 0.14, (s.cockpit === 'ak' ? akFrontZ(s, s.H - 0.14) + 0.01 : s.front - s.rake - 0.06));
   if (s.cockpit === 'ak') {
     // chrome grille between the lamps with the big Hino "H" oval, small red badge under the windshield
     const gy = s.floor + 0.53;
-    const grille = new THREE.Mesh(new RoundedBoxGeometry(0.86, 0.24, 0.06, 2, 0.03), M.dark);
-    grille.position.set(0, gy, s.front + 0.02);
+    const tz = new THREE.Shape();
+    tz.moveTo(-0.42, 0.2); tz.lineTo(0.42, 0.2); tz.lineTo(0.3, -0.17); tz.lineTo(-0.3, -0.17); tz.closePath();
+    const grille = new THREE.Mesh(new THREE.ExtrudeGeometry(tz, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.012, bevelSegments: 2 }), M.dark);
+    grille.position.set(0, gy, s.front);
     exterior.add(grille);
-    for (const dy of [-0.07, 0, 0.07]) lbox(0.8, 0.022, 0.03, M.chrome, 0, gy + dy, s.front + 0.055);
+    for (const dy of [-0.1, 0.1]) lbox(0.5, 0.018, 0.02, M.chrome, 0, gy + dy, s.front + 0.065);
     const oval = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.018, 8, 28), M.chrome);
     oval.scale.set(1.45, 1, 1);
-    oval.position.set(0, gy, s.front + 0.075);
+    oval.position.set(0, gy, s.front + 0.072);
     exterior.add(oval);
     const hMat = M.chrome;
     for (const sx of [-1, 1]) lbox(0.028, 0.13, 0.02, hMat, sx * 0.05, gy, s.front + 0.08);
@@ -386,18 +407,20 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     px.font = `bold 34px ${BN_FONT}`; px.fillText(`${l1} ব`, 128, 30, 236);
     px.font = `bold 38px ${BN_FONT}`; px.fillText(l2 || '', 128, 68, 236);
     const pl = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.19), new THREE.MeshStandardMaterial({ map: canvasTexture(pc, { repeat: false }), roughness: 0.5 }));
-    pl.position.set(0, s.floor + 0.13, s.front + 0.145);
+    pl.position.set(0, s.floor + 0.09, s.front + 0.145);
     exterior.add(pl);
+    // black air intake across the bumper, above the plate
+    lbox(1.3, 0.09, 0.03, M.dark, 0, s.floor + 0.25, s.front + 0.14);
   }
 
   // bull-horn mirrors; the glass faces the driver
   const mirrorGlass = [];
   for (const sx of [-1, 1]) {
-    const hp = s.cockpit === 'ak' ? new THREE.Vector3(sx * (s.W / 2 + 0.24), s.H - 0.98, s.front + 0.55) : new THREE.Vector3(sx * (s.W / 2 + 0.36), s.H - 0.95, s.front + 0.62);
+    const hp = s.cockpit === 'ak' ? new THREE.Vector3(sx * (s.W / 2 + 0.06), s.H - 1.0, s.front + 0.5) : new THREE.Vector3(sx * (s.W / 2 + 0.36), s.H - 0.95, s.front + 0.62);
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(sx * (s.W / 2 - 0.12), s.H - 0.12, s.front - s.rake - 0.1),
-      new THREE.Vector3(sx * (s.W / 2 + 0.12), s.H - 0.1, s.front + 0.3),
-      new THREE.Vector3(hp.x, s.H - 0.38, hp.z + 0.04),
+      s.cockpit === 'ak' ? new THREE.Vector3(sx * (s.W / 2 - 0.3), s.H - 0.25, s.front - 0.55) : new THREE.Vector3(sx * (s.W / 2 - 0.12), s.H - 0.12, s.front - s.rake - 0.1),
+      new THREE.Vector3(sx * (s.W / 2 + 0.02), s.H - 0.2, s.front + 0.12),
+      new THREE.Vector3(hp.x, s.H - 0.42, hp.z - 0.02),
       hp.clone().setY(hp.y + 0.3),
     ]);
     exterior.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 20, s.cockpit === 'ak' ? 0.042 : 0.028, 8), op.mirror && op.mirror !== '#151515' ? new THREE.MeshStandardMaterial({ color: op.mirror, roughness: 0.4 }) : M.dark));
@@ -408,7 +431,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     const toRear = new THREE.Vector3(sx * (s.W / 2 + 1.2), 1.4, s.rear - 40).sub(hp).normalize();
     head.lookAt(hp.clone().add(toEye.add(toRear).normalize()));
     const mirMat = op.mirror ? new THREE.MeshPhysicalMaterial({ color: op.mirror, roughness: 0.35, clearcoat: 0.5 }) : M.dark;
-    const mw = s.cockpit === 'ak' ? 0.34 : 0.36, mh = s.cockpit === 'ak' ? 0.6 : 0.62;
+    const mw = s.cockpit === 'ak' ? 0.3 : 0.36, mh = s.cockpit === 'ak' ? 0.56 : 0.62;
     head.add(new THREE.Mesh(new RoundedBoxGeometry(mw, mh, 0.1, 2, 0.05), mirMat));
     // split glass: a thin divider between the flat upper and convex lower mirror
     const divider = new THREE.Mesh(new THREE.BoxGeometry(mw - 0.04, 0.025, 0.11), M.dark);
@@ -477,7 +500,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   if (s.cockpit === 'ak') {
     const glassMat = interior ? M.glassPlayer : M.glassAI;
     // real entrance door on the left: black frame + two glass leaves
-    const dz0 = s.front - 0.28, dz1 = s.front - 1.18, dh = s.winTop - s.floor - 0.05;
+    const dz0 = s.front - 0.5, dz1 = s.front - 1.4, dh = s.winTop - s.floor - 0.05;
     const frame = new THREE.Mesh(new THREE.BoxGeometry(0.03, dh, dz0 - dz1), M.dark);
     frame.position.set(s.W / 2 + 0.01, s.floor + dh / 2, (dz0 + dz1) / 2);
     exterior.add(frame);
@@ -491,7 +514,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     for (const sx of [-1, 1]) {
       const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.42, 12, 1, true), M.chrome);
       horn.rotation.x = Math.PI / 2;
-      horn.position.set(sx * 0.35, s.H + 0.05, s.front - s.rake - 0.55);
+      horn.position.set(sx * 0.35, s.H + 0.05, akFrontZ(s, s.H) - 0.35);
       exterior.add(horn);
     }
   }
