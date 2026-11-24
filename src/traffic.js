@@ -73,6 +73,7 @@ export class Traffic {
     }
     v.cool = 2;
     v.tollPaid = false; v.tollWait = 0; v.yieldT = 0;
+    v.prevS = v.s;   // so a respawn never counts as passing a camera
   }
 
   init(playerS) { for (const v of this.list) this.spawn(v, playerS, true); }
@@ -150,6 +151,7 @@ export class Traffic {
       const dd = tD - v.d;
       const lat = THREE.MathUtils.clamp(dd, -1.6 * dt, 1.6 * dt);
       v.d += lat;
+      v.prevS = v.s;
       v.s += v.v * v.dir * dt;
 
       // place the model

@@ -17,7 +17,8 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **Dhaka → Chatt
   - footbridges, gantry signs, Bangla shop signs, villages, brick kilns and rivers
 - **Driving:**
   - live rear-view mirrors and working indicators
-  - realistic collisions, a top speed of 140 km/h, and speed cameras in towns
+  - realistic collisions and a top speed of 140 km/h
+  - **AI traffic cameras** on poles over the road. They flash for every vehicle that passes and fine you above 80 km/h. Each one has an "এআই ক্যামেরা" warning sign 150 m before it.
 - **Time of day:** morning, noon, evening and night with headlights.
 
 ## Controls

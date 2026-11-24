@@ -38,6 +38,7 @@ export class CameraRig {
 
   update(dt, bus, phys, input, playerS) {
     const cam = this.camera;
+    if (this.debugCam) { cam.position.copy(this.debugCam.pos); cam.lookAt(this.debugCam.target); return; }   // test hook
     const spec = bus.spec;
     const fwd = phys.forward(this.tmp.clone());
     const center = phys.pos.clone().addScaledVector(fwd, spec.center);

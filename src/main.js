@@ -5,6 +5,7 @@ import { TouchControls, IS_TOUCH, IS_PHONE } from './touch.js';
 import { Route } from './route.js';
 import { ROAD, CHUNK, VIEW_CHUNKS, QUALITY, SPEED_LIMIT, TOLL_FEE, DIESEL_PRICE, TANK_LITRES, START_FUEL, BUS_KM_PER_LITRE, REAL_ROUTE_KM } from './config.js';
 import { buildFacilities } from './world/facilities.js';
+import { buildAICams } from './world/aicams.js';
 import { Mirrors } from './mirrors.js';
 import { resolveImpulse } from './collide.js';
 import { loadCustomSkins, openSkinEditor, deleteSkin } from './skins.js';
@@ -65,7 +66,7 @@ function saveSettings() {
   const { type, time, traffic, quality, dir, seats } = settings;
   try { localStorage.setItem('mohasorok.settings', JSON.stringify({ type, time, traffic, quality, dir, seats, opId: settings.op.id })); } catch { /* private mode */ }
 }
-let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors;
+let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;
 const audio = new GameAudio();
 const input = new Input();
 const touch = new TouchControls(input);
@@ -332,6 +333,26 @@ function placeBusModel(dt) {
   void dt;
 }
 
+// ---------- AI cameras ----------
+function aiCamVehicles(withPlayer) {
+  const list = traffic.list.map((v) => ({ s: v.s, prevS: v.prevS ?? v.s, side: v.dir > 0 ? -1 : 1, kmh: v.v * 3.6 }));
+  if (withPlayer) list.push({ s: player.s, prevS: player.lastS, side: player.side, kmh: Math.abs(player.phys.v) * 3.6, isPlayer: true });
+  return list;
+}
+function onAICam(cam, kmh) {
+  audio.shutter?.();
+  const place = route.placeAt(cam.s);
+  const where = place ? place.en.split(' (')[0] : 'N1';
+  if (kmh > SPEED_LIMIT + 5) {
+    const fine = kmh > SPEED_LIMIT + 25 ? 2000 : 1000;
+    player.fines += fine;
+    player.rating = Math.max(1, player.rating - 0.3);
+    hud.toast(`📸 AI camera (${where}): ${Math.round(kmh)} km/h in a ${SPEED_LIMIT} zone<br><b>Fine ৳ ${fine.toLocaleString('en-IN')}</b>`, 'bad', 4200);
+  } else {
+    hud.toast(`📸 AI camera · ${Math.round(kmh)} km/h ✓`, 'good', 1600);
+  }
+}
+
 // ---------- events ----------
 function events(dt) {
   const s = player.s;
@@ -345,19 +366,6 @@ function events(dt) {
   const br = route.bridgeAt(s);
   if (br && br !== player.lastBridge) hud.toast(`<span class="bn">${br.bn} নদী</span> · ${br.en} River bridge`, '', 3200);
   player.lastBridge = br;
-  // speed cameras at town entries
-  for (const p of route.places) {
-    if (!p.town) continue;
-    const cs = p.s - p.town / 2;
-    const ce = p.s + p.town / 2;
-    const passedOut = player.side > 0 && player.lastS > ce && s <= ce;
-    if (((player.side < 0 && player.lastS < cs && s >= cs) || passedOut) && kmh > SPEED_LIMIT + 5) {
-      const fine = kmh > SPEED_LIMIT + 25 ? 2000 : 1000;
-      player.fines += fine;
-      player.rating = Math.max(1, player.rating - 0.3);
-      hud.toast(`📸 Speed camera at ${p.en.split(' (')[0]}: ${Math.round(kmh)} km/h in an ${SPEED_LIMIT} zone<br><b>Fine ৳ ${fine.toLocaleString('en-IN')}</b>`, 'bad', 4200);
-    }
-  }
   // passenger comfort
   player.complainCool -= dt;
   const ph = player.phys;
@@ -707,6 +715,7 @@ function frame(now) {
     setBusLights(player.bus, { head: player.lights, brake: ph.brake > 0.1 || input.handbrake, indL: player.indL && blink, indR: player.indR && blink, reverse: ph.gear < 0, night });
     player.spot.intensity = player.lights ? 260 : 0;
     audio.update({ rpm: ph.rpm, throttle: ph.throttle, speed: Math.abs(ph.v), cabin: rig.mode === 'cabin', braking: ph.brake > 0.1 });
+    aicams.update(dt, aiCamVehicles(true), onAICam);
     events(dt);
     rig.update(dt, player.bus, ph, input, player.s);
     player.bus.cabinLed.emissiveIntensity = night ? 1.2 : 0.3;
@@ -735,6 +744,7 @@ function frame(now) {
     // showroom orbit with the bus on the right half of the screen
     menuT += dt;
     traffic.update(dt, player, night);
+    aicams.update(dt, aiCamVehicles(false));
     setBusLights(player.bus, { head: player.lights, night });
     player.spot.intensity = player.lights ? 260 : 0;
     const c = player.bus.root.position.clone().add(new THREE.Vector3(Math.sin(ph.yaw) * player.bus.spec.center, 0, Math.cos(ph.yaw) * player.bus.spec.center));
@@ -792,6 +802,7 @@ async function boot() {
   road = buildRoad(route, scene, chunks);
   await msg('Planting paddy, palms and villages…');
   facilities = buildFacilities(route, scene, chunks);
+  aicams = buildAICams(route, scene, chunks);
   scenery = buildScenery(route, scene, chunks, { treeDensity: (QUALITY[settings.quality] || QUALITY.high).treeDensity }, road.water);
   mirrors = new Mirrors(renderer, scene);
   if (mirrors_defaultOff) { mirrors.hudOn = false; mirrors.lowRes = true; }
@@ -815,7 +826,7 @@ async function boot() {
   requestAnimationFrame(frame);
   console.info(`[mohasorok] route ${(route.length / 1000).toFixed(1)} km game, ${route.places.length} places, ${route.bridges.length} bridges`);
   window.__game = { route, player, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
-    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); traffic.init(s); }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; } };
+    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); traffic.init(s); }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; } };
 }
 let mirrors_defaultOff = false;
 function applyQualityBase() {

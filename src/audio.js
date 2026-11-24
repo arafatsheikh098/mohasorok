@@ -152,6 +152,21 @@ export class GameAudio {
     o.start(t); o.stop(t + 0.05);
   }
 
+  // camera shutter: a short double click
+  shutter() {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    for (const dt of [0, 0.07]) {
+      const n = ctx.createBufferSource(); n.buffer = this.noiseBuf;
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3000;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.18, t + dt);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.04);
+      n.connect(hp).connect(g).connect(this.master);
+      n.start(t + dt); n.stop(t + dt + 0.05);
+    }
+  }
+
   crash(intensity) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
