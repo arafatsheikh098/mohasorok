@@ -1117,9 +1117,9 @@ function addInterior(bus, r) {
   void r;
 }
 
-export function setBusLights(bus, { head = false, brake = false, indL = false, indR = false, reverse = false, night = false }) {
+export function setBusLights(bus, { head = false, high = false, brake = false, indL = false, indR = false, reverse = false, night = false }) {
   const m = bus.mats;
-  m.head.emissiveIntensity = head ? 6 : 0;
+  m.head.emissiveIntensity = high ? 11 : head ? 6 : 0;
   m.tail.emissiveIntensity = head ? 2.5 : 0;
   m.brake.emissiveIntensity = brake ? 6 : 0;
   m.indL.emissiveIntensity = indL ? 6 : 0;

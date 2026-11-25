@@ -41,6 +41,8 @@ function lights() {
   return {
     head: new THREE.MeshStandardMaterial({ color: 0xeeeeee, emissive: 0xfff2d0, emissiveIntensity: 0 }),
     tail: new THREE.MeshStandardMaterial({ color: 0x700000, emissive: 0xff1a0a, emissiveIntensity: 0 }),
+    indL: new THREE.MeshStandardMaterial({ color: 0x8a5200, emissive: 0xffa000, emissiveIntensity: 0 }),
+    indR: new THREE.MeshStandardMaterial({ color: 0x8a5200, emissive: 0xffa000, emissiveIntensity: 0 }),
   };
 }
 
@@ -69,6 +71,10 @@ function addLamps(root, L, W, y, mats, headW = 0.22) {
   for (const sx of [-1, 1]) {
     add(root, rbox(headW, 0.12, 0.05, 0.03), mats.head, sx * (W / 2 - 0.25), y, L / 2 + 0.01, false);
     add(root, rbox(0.18, 0.14, 0.05, 0.03), mats.tail, sx * (W / 2 - 0.2), y + 0.05, -L / 2 - 0.01, false);
+    // amber indicators at each corner (+x is the vehicle's left when it faces +z)
+    const ind = sx > 0 ? mats.indL : mats.indR;
+    add(root, rbox(0.1, 0.08, 0.05, 0.02), ind, sx * (W / 2 - 0.07), y, L / 2 + 0.01, false);
+    add(root, rbox(0.12, 0.08, 0.05, 0.02), ind, sx * (W / 2 - 0.2), y - 0.08, -L / 2 - 0.01, false);
   }
 }
 
@@ -116,7 +122,7 @@ export function buildTruck(seed) {
   }
   addLamps(root, L, W, 0.95, mats, 0.25);
   const wheels = addWheels(root, 0.5, 0.32, [-(W / 2 - 0.2), W / 2 - 0.2], [L / 2 - 1.5, -L / 2 + 1.9, -L / 2 + 2.95]);
-  return { root, mats, len: L, wid: W, wheels, wheelR: 0.5, kind: 'truck' };
+  return { root, mats, len: L, wid: W, wheels, wheelR: 0.5, kind: 'truck', lampY: 0.95 };
 }
 
 const CAR_COLS = [0xf2f2f2, 0xe8e8e8, 0xb9bec4, 0x202224, 0x8a1c1c, 0x2f4f7f, 0xd9d9d9];
@@ -131,7 +137,7 @@ export function buildCar(seed) {
   add(root, rbox(W - 0.1, 0.46, 2.2, 0.18), glassMat, 0, 1.14, -0.25, false);
   addLamps(root, L, W, 0.72, mats);
   const wheels = addWheels(root, 0.31, 0.22, [-(W / 2 - 0.15), W / 2 - 0.15], [L / 2 - 0.95, -L / 2 + 0.95]);
-  return { root, mats, len: L, wid: W, wheels, wheelR: 0.31, kind: 'car' };
+  return { root, mats, len: L, wid: W, wheels, wheelR: 0.31, kind: 'car', lampY: 0.72 };
 }
 
 export function buildMicrobus(seed) {
@@ -145,7 +151,7 @@ export function buildMicrobus(seed) {
   add(root, rbox(W - 0.2, 0.55, 0.05, 0.05), glassMat, 0, 1.52, L / 2 - 0.03, false);
   addLamps(root, L, W, 0.8, mats);
   const wheels = addWheels(root, 0.32, 0.22, [-(W / 2 - 0.15), W / 2 - 0.15], [L / 2 - 0.85, -L / 2 + 0.95]);
-  return { root, mats, len: L, wid: W, wheels, wheelR: 0.32, kind: 'micro' };
+  return { root, mats, len: L, wid: W, wheels, wheelR: 0.32, kind: 'micro', lampY: 0.8 };
 }
 
 const cngGreen = paint(0x1b8f3a);
@@ -162,12 +168,18 @@ export function buildCNG() {
   for (const sx of [-1, 1]) for (const z of [L / 2 - 0.35, -0.2, -L / 2 + 0.2]) add(root, new THREE.BoxGeometry(0.04, 0.8, 0.04), cageMat, sx * (W / 2 - 0.02), 1.3, z, false);
   add(root, rbox(W - 0.1, 0.55, 0.04, 0.02), glassMat, 0, 1.32, L / 2 - 0.35, false);
   add(root, rbox(0.25, 0.14, 0.05, 0.04), mats.head, 0, 0.9, L / 2 + 0.06, false);
-  for (const sx of [-1, 1]) add(root, rbox(0.12, 0.12, 0.05, 0.03), mats.tail, sx * 0.5, 0.7, -L / 2 - 0.08, false);
+  for (const sx of [-1, 1]) {
+    add(root, rbox(0.12, 0.12, 0.05, 0.03), mats.tail, sx * 0.5, 0.7, -L / 2 - 0.08, false);
+    add(root, rbox(0.08, 0.07, 0.05, 0.02), sx > 0 ? mats.indL : mats.indR, sx * 0.5, 0.56, -L / 2 - 0.08, false);
+    add(root, rbox(0.07, 0.07, 0.05, 0.02), sx > 0 ? mats.indL : mats.indR, sx * 0.3, 0.9, L / 2 + 0.06, false);
+  }
   const wheels = addWheels(root, 0.22, 0.14, [0], [L / 2 - 0.25]).concat(addWheels(root, 0.22, 0.14, [-0.55, 0.55], [-L / 2 + 0.55]));
-  return { root, mats, len: L, wid: W, wheels, wheelR: 0.22, kind: 'cng' };
+  return { root, mats, len: L, wid: W, wheels, wheelR: 0.22, kind: 'cng', lampY: 0.9 };
 }
 
-export function setVehicleLights(v, head, brake) {
-  v.mats.head.emissiveIntensity = head ? 5 : 0;
+export function setVehicleLights(v, { head = false, high = false, brake = false, indL = false, indR = false }) {
+  v.mats.head.emissiveIntensity = high ? 10 : head ? 5 : 0;
   v.mats.tail.emissiveIntensity = brake ? 6 : head ? 2 : 0;
+  v.mats.indL.emissiveIntensity = indL ? 7 : 0;
+  v.mats.indR.emissiveIntensity = indR ? 7 : 0;
 }

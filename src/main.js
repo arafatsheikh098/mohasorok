@@ -775,7 +775,7 @@ function startDrive() {
   applyQuality();
   if (traffic.list.length !== settings.traffic || traffic.opCount !== OPERATORS.length) {
     for (const v of traffic.list) scene.remove(v.wrap);
-    traffic = new Traffic(route, scene, settings.traffic, settings.op.id, audio, facilities.gates);
+    traffic = new Traffic(route, scene, settings.traffic, settings.op.id, audio, facilities.gates); traffic.camera = camera;
     traffic.opCount = OPERATORS.length;
   }
   restartTrip();
@@ -851,7 +851,7 @@ function frame(now) {
     indicatorLogic(dt);
     facilities.update(dt);
     updatePlayerBox();
-    handleCrashes(traffic.update(dt, player, night));
+    handleCrashes(traffic.update(dt, player, night, sky.hour > 17.4 || sky.hour < 6.4));
     audio.horn(input.horn);
     player.blinkT += dt;
     const blink = (player.blinkT % 0.8) < 0.4;
@@ -886,7 +886,7 @@ function frame(now) {
   } else if (state === 'menu') {
     // showroom orbit with the bus on the right half of the screen
     menuT += dt;
-    traffic.update(dt, player, night);
+    traffic.update(dt, player, night, sky.hour > 17.4 || sky.hour < 6.4);
     aicams.update(dt, aiCamVehicles(false));
     setBusLights(player.bus, { head: player.lights, night });
     player.spot.intensity = player.lights ? 260 : 0;
@@ -958,7 +958,7 @@ async function boot() {
   applySeat();
   await msg('Painting the buses…');
   createPlayerBus();
-  traffic = new Traffic(route, scene, settings.traffic, settings.op.id, audio, facilities.gates);
+  traffic = new Traffic(route, scene, settings.traffic, settings.op.id, audio, facilities.gates); traffic.camera = camera;
   traffic.opCount = OPERATORS.length;
   traffic.init(player.s);
   mirrors.layoutHUD(innerWidth, innerHeight);
