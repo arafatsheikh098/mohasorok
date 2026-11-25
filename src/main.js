@@ -22,7 +22,7 @@ import { Traffic } from './traffic.js';
 import { CameraRig, CAM_MODES } from './camera.js';
 import { HUD } from './hud.js';
 import { GameAudio } from './audio.js';
-import { MusicPlayer, fmtSize } from './music.js';
+import { MusicPlayer, fmtSize, parseYouTube } from './music.js';
 import { Input } from './input.js';
 
 const $ = (id) => document.getElementById(id);
@@ -591,14 +591,16 @@ function handleKeys() {
 }
 
 // ---------- music: menu list + in-game player ----------
+let lastYTTitle = null;
 function renderMusicList() {
   const el = $('music-list');
   el.innerHTML = music.tracks.length ? '' : '<div class="empty">No songs yet. Add MP3/M4A files from your phone or computer.</div>';
   music.tracks.forEach((t, k) => {
     const row = document.createElement('div');
     row.className = 'trk' + (k === music.i && music.playing ? ' on' : '');
-    row.innerHTML = `<button title="Play">${k === music.i && music.playing ? '⏸' : '▶'}</button><span></span><small>${fmtSize(t.size)}</small><button title="Remove">✕</button>`;
-    row.querySelector('span').textContent = t.name;
+    const size = t.kind === 'yt' ? (t.listId && !t.videoId ? 'YouTube playlist' : 'YouTube') : fmtSize(t.size);
+    row.innerHTML = `<button title="Play">${k === music.i && music.playing ? '⏸' : '▶'}</button><span></span><small>${size}</small><button title="Remove">✕</button>`;
+    row.querySelector('span').textContent = (t.kind === 'yt' ? '📺 ' : '') + t.name;
     const [pb, xb] = row.querySelectorAll('button');
     pb.onclick = () => { if (k === music.i) music.toggle(); else music.play(k); };
     xb.onclick = () => music.remove(t.id);
@@ -608,7 +610,7 @@ function renderMusicList() {
 function updateMusicBox() {
   const has = music.tracks.length > 0;
   $('musicbox').style.display = has && state !== 'menu' ? 'block' : 'none';
-  $('mus-title').textContent = music.current ? `🎵 ${music.current.name}` : '🎵 Press ▶ to play your songs';
+  $('mus-title').textContent = music.current ? `${music.isYT ? '📺' : '🎵'} ${music.nowTitle || music.current.name}` : '🎵 Press ▶ to play your songs';
   $('mus-play').textContent = music.playing ? '⏸' : '▶';
 }
 function initMusicUI() {
@@ -620,6 +622,17 @@ function initMusicUI() {
     const n = await music.add(files);
     hud.toast(n ? `🎵 Added ${n} song${n > 1 ? 's' : ''}` : 'Those files are not audio files', n ? 'good' : 'bad', 2500);
   };
+  const addYT = async () => {
+    const v = $('yt-url').value;
+    if (!parseYouTube(v)) { hud.toast('That is not a YouTube song or playlist link', 'bad', 2800); return; }
+    const rec = await music.addYouTube(v);
+    $('yt-url').value = '';
+    $('yt-url').blur();
+    hud.toast(rec.listId && !rec.videoId ? '📺 YouTube playlist added' : '📺 YouTube song added', 'good', 2500);
+  };
+  $('yt-add-btn').onclick = addYT;
+  $('yt-url').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') addYT(); });
+  $('yt-close').onclick = () => music.ytStop();
   $('music-auto').checked = music.auto;
   $('music-auto').onchange = (e) => { music.auto = e.target.checked; music.save(); };
   $('music-shuffle').checked = music.shuffle;
@@ -630,9 +643,11 @@ function initMusicUI() {
   $('mus-vol').value = music.vol;
   $('mus-vol').oninput = (e) => music.setVolume(+e.target.value);
   for (const id of ['mus-prev', 'mus-next', 'mus-play', 'mus-vol']) $(id).addEventListener('pointerup', (e) => e.currentTarget.blur());
-  music.onChange((kind) => {
+  music.onChange((kind, m, info) => {
     renderMusicList(); updateMusicBox();
-    if (kind === 'track' && state === 'drive') hud.toast(`🎵 ${music.current.name}`, '', 2200);
+    if (kind === 'track' && state === 'drive' && !music.isYT) hud.toast(`🎵 ${music.current.name}`, '', 2200);
+    if (kind === 'ytplay' && music.nowTitle !== lastYTTitle) { lastYTTitle = music.nowTitle; if (state === 'drive') hud.toast(`📺 ${music.nowTitle}`, '', 2500); }
+    if (kind === 'error') hud.toast(`📺 ${info}`, 'bad', 4000);
   });
   renderMusicList();
 }

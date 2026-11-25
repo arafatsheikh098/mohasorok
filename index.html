@@ -192,6 +192,14 @@
   .music-actions .btn { margin: 0; padding: 8px 14px; }
   .chk { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--txt); cursor: pointer; }
   .chk input { accent-color: var(--acc); }
+  .yt-add { display: flex; gap: 8px; margin-top: 8px; }
+  .yt-add input { flex: 1; min-width: 0; background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--txt); border-radius: 7px; padding: 8px 10px; font-size: 13px; }
+  .yt-add .btn { margin: 0; padding: 8px 12px; white-space: nowrap; }
+  /* YouTube's player has to stay visible (at least 200x200) while it plays */
+  #yt-box { position: fixed; right: 18px; top: 62px; width: 240px; height: 200px; z-index: 22; display: none; background: #000;
+    border-radius: 9px; overflow: hidden; box-shadow: 0 6px 24px rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.15); }
+  #yt-box iframe, #yt-player { width: 100%; height: 100%; display: block; border: 0; }
+  #yt-close { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); color: #fff; cursor: pointer; font-size: 12px; z-index: 2; }
   #musicbox { position: absolute; left: 18px; bottom: 190px; padding: 8px 12px; width: 250px; pointer-events: auto; display: none; }
   #mus-title { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
   .mus-row { display: flex; align-items: center; gap: 6px; }
@@ -258,6 +266,8 @@
     #t-fuel { right: calc(max(8px, env(safe-area-inset-right)) + 322px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
     #t-music { right: calc(max(8px, env(safe-area-inset-right)) + 368px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
     #t-cruise { right: calc(max(8px, env(safe-area-inset-right)) + 414px); top: 6px !important; width: 64px; height: 34px; font-size: 11px; }
+    #yt-box { right: max(8px, env(safe-area-inset-right)); top: 46px; bottom: auto; width: 200px; height: 200px; }
+    body.yt-on #gpsbox { display: none; }
     #musicbox { left: 50%; bottom: 8px; transform: translateX(-50%) scale(.82); transform-origin: bottom center; }
     #touch.open ~ #hud #place, body.tray-open #place { display: none; }
   }
@@ -269,6 +279,7 @@
 <div id="rotate"><b>📱 ↻</b><b>ফোনটি ঘুরিয়ে নিন</b><span>Rotate your phone to landscape to drive</span></div>
 <div id="nogl"><div><h2>WebGL is not available</h2><p>This browser or device can't run 3D graphics. Please try the latest Chrome, Edge, Firefox or Safari, and turn on hardware acceleration.</p></div></div>
 <div id="camflash"></div>
+<div id="yt-box"><div id="yt-player"></div><button id="yt-close" title="Stop YouTube">✕</button></div>
 <div id="restfade"><div>🍛 যাত্রা বিরতি<small>20 minute break…</small></div></div>
 <div id="touch">
   <div id="t-wheel"><div id="t-wheel-img"></div></div>
@@ -340,6 +351,7 @@
       <label class="chk"><input type="checkbox" id="music-auto"> Play while driving</label>
       <label class="chk"><input type="checkbox" id="music-shuffle"> Shuffle</label>
     </div>
+    <div class="yt-add"><input id="yt-url" type="url" placeholder="Paste a YouTube link: one song or a whole playlist" autocomplete="off"><button class="btn ghost" id="yt-add-btn">＋ Add link</button></div>
     <input type="file" id="music-file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac" multiple hidden>
 
     <button id="start">START TRIP ▸ <span class="bn" id="start-route">ঢাকা → চট্টগ্রাম</span></button>
