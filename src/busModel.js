@@ -423,8 +423,21 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     lbox(0.16, 0.14, 0.06, sx > 0 ? mats.indL : mats.indR, sx * LX, s.floor + 0.58, s.rear - 0.02);
     lbox(0.12, 0.08, 0.06, mats.reverse, sx * (LX - 0.25), s.floor + 0.58, s.rear - 0.02);
     }
-    // side repeater near the front wheel
-    lbox(0.05, 0.07, 0.16, sx > 0 ? mats.indL : mats.indR, sx * (s.W / 2 + 0.01), s.floor + 0.55, s.wheelbase + 1.0);
+    // side indicators along the body (as on BD intercity buses): a repeater at the front corner (ahead of the
+    // door on the left) and three chrome-ringed amber lamps at waist height, behind the front wheel, mid-body
+    // and behind the rear wheel. They share the indicator material, so they blink with that side's signal.
+    const indMat = sx > 0 ? mats.indL : mats.indR;
+    lbox(0.05, 0.09, 0.2, indMat, sx * (s.W / 2 + 0.012), s.floor + 0.55, s.front - 0.28);
+    const sideY = s.winBot - 0.6;
+    for (const z of [s.wheelbase - 1.05, s.wheelbase / 2, s.rear + 0.62]) {
+      const bezel = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.03, 20), M.chrome);
+      bezel.rotation.z = Math.PI / 2; bezel.scale.set(1, 1, 1.9);          // oval, long along the body
+      bezel.position.set(sx * (s.W / 2 + 0.012), sideY, z);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.068, 0.03, 20), indMat);
+      lens.rotation.z = Math.PI / 2; lens.scale.set(1, 1, 1.9);
+      lens.position.set(sx * (s.W / 2 + 0.026), sideY, z);
+      exterior.add(bezel, lens);
+    }
   }
   // roof "eyebrow" visor over the windshield (AK1J bodies) + the little dome light on the roof cap
   if (s.visor) {
