@@ -38,6 +38,7 @@ export class BusPhysics {
     this.reverseHold = 0;
     this.cruise = null;
     this.offroad = 0;
+    this.grip = 1;                    // road grip: 1 dry, ~0.75 on a wet road (weather.js)
     this.governor = 140 / 3.6;      // top speed limiter
   }
 
@@ -104,7 +105,7 @@ export class BusPhysics {
     const sgn = Math.sign(this.v) || dir;
     const aero = 0.5 * 1.2 * 0.6 * 8.2 * this.v * this.v;
     const roll = (0.009 + this.offroad * 0.05) * this.mass * G;
-    const brakeF = brk * 6.5 * this.mass + (input.handbrake ? 4 * this.mass : 0);
+    const brakeF = (brk * 6.5 * this.mass + (input.handbrake ? 4 * this.mass : 0)) * (0.35 + 0.65 * this.grip);   // wet road: longer stops
     // engine braking / retarder when off throttle
     const engBrake = thr < 0.05 && speed > 1 ? 0.25 * this.mass * (this.gear > 0 ? 1 / this.gear + 0.15 : 0.2) : 0;
 
@@ -125,7 +126,7 @@ export class BusPhysics {
     // understeer factor stacked up to only ~3 m/s² at 90 km/h, so curves and quick
     // overtakes could not be made.
     const under = 1 / (1 + (speed / 40) ** 2 * 0.5);
-    const A_MAX = 6.0;
+    const A_MAX = 6.0 * this.grip;     // less cornering grip in the wet
     const maxSteer = Math.min(0.62 / (1 + (speed / 14) ** 2), Math.atan((A_MAX * this.wheelbase) / Math.max(1, speed * speed * under)));
     this.maxSteer = maxSteer;
     const target = input.steer * maxSteer;

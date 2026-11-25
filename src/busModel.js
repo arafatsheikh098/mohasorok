@@ -2,9 +2,14 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeCanvas, canvasTexture, rng, EN_FONT, BN_FONT, grassTexture } from './textures.js';
-import { paintSide, paintFront, paintRear, paintHeader, randomPlate, liveryFor } from './operators.js';
+import { paintSide, paintFront, paintRear, paintHeader, randomPlate, liveryFor, OPERATORS } from './operators.js';
 import { drawRegion } from './skins.js';
 import { buildAkShell, akFrontZ, akFrontBand, akGlassStrip, SKIRT } from './akBody.js';
+
+// debug: with ?debug in the URL the bus builder is exposed for livery screenshots (headless checks)
+if (typeof location !== 'undefined' && /[?&]debug\b/.test(location.search)) {
+  queueMicrotask(() => { window.__busModel = { buildBus, setBusLights, setBusDoor, BUS_TYPES, OPERATORS }; });
+}
 
 export const BUS_TYPES = {
   ak1j: {
@@ -200,6 +205,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     const { meshes, glass } = buildAkShell(s, { left: mk(tex.left), right: mk(tex.right), front: mk(tex.front), rear: mk(tex.rear), roof: baseMat, under: M.wellDark },
       interior ? M.glassPlayer : M.glassAIws);
     exterior.add(...meshes, glass);
+    glass.userData.windshield = true;     // weather.js lays rain drops over it
     const sideGlass = new THREE.MeshPhysicalMaterial({ color: 0x0c1820, roughness: 0.04, metalness: 0.9, transparent: true, opacity: 0.38, envMapIntensity: 1.8, depthWrite: false });
     const zA = s.front - 1.45, zB = s.rear + 0.4;
     for (const sx of [-1, 1]) {
@@ -257,6 +263,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   const wsB = new THREE.Vector3(0, s.glassTop, wsZ(s, s.glassTop));
   const glass = quadAlong(wsA, wsB, s.W - 2 * bev * 0.7, 0.012);
   glass.material = interior ? M.glassPlayer : M.glassAI;
+  glass.userData.windshield = true;
   glass.renderOrder = 2;
   exterior.add(glass);
   }
@@ -270,6 +277,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     wg.rotation.x = -lean0;
     const tilt = new THREE.Group();
     tilt.rotation.z = ang;
+    tilt.userData.wiper = { ang, px, py: s.wsBot + 0.04, len: 0.52 };   // setWipers / weather.js (arm reach = len × tilt.scale.y)
     tilt.scale.y = 1 + (s.dashY - s.wsBot) / 0.45;   // taller AK1J glass: longer arms so they rise above the dash
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.46, 0.018), wiperMat);
     arm.position.y = 0.23;
@@ -324,6 +332,21 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
   chassis.position.set(0, 0.32, s.center);
   exterior.add(bumper, rbumper, chassis);
   bumper.castShadow = true;
+  if (ak) {
+    // rear bumper details: a chrome strip along the top, red reflectors at the corners, a step in the middle
+    const rz = s.rear - 0.105;
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(s.W - 0.8, 0.035, 0.02), M.chrome);
+    strip.position.set(0, s.floor + 0.1, rz);
+    const reflMat = new THREE.MeshStandardMaterial({ color: 0xb01010, emissive: 0x500000, emissiveIntensity: 0.6, roughness: 0.25, metalness: 0.2 });
+    for (const sx of [-1, 1]) {
+      const refl = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.07, 0.02), reflMat);
+      refl.position.set(sx * (s.W / 2 - 0.62), s.floor - 0.04, rz);
+      exterior.add(refl);
+    }
+    const step = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.16), M.dark);
+    step.position.set(s.bags ? s.W / 2 - 0.45 : 0, s.floor - 0.19, s.rear - 0.1);     // under the ladder on the non-AC body
+    exterior.add(strip, step);
+  }
 
   // lights
   const mats = {
@@ -378,15 +401,22 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
       lbox(0.14, 0.1, 0.06, sx > 0 ? mats.indL : mats.indR, sx * (LX - 0.05), s.floor + 0.72, s.front + 0.02);
     }
     if (s.cockpit === 'ak') {
+      // tall tail-lamp cluster round each rear corner, as on the BD AK1J bodies: a chrome bezel with a
+      // stack of round lamps (tail, brake, brake, indicator, reverse) and a red reflector at the bottom
       const tl = new THREE.Group();
-      tl.position.set(sx * 0.9, s.floor + 0.95, s.rear + 0.02);
+      tl.position.set(sx * 0.9, s.floor + 0.92, s.rear + 0.02);
       tl.rotation.y = Math.PI + sx * 0.45;       // turned round the rear corner
       exterior.add(tl);
-      lbox(0.2, 0.86, 0.06, M.chrome, 0, 0, -0.005, tl);
-      lbox(0.17, 0.42, 0.06, mats.tail, 0, 0.18, 0.01, tl);
-      lbox(0.17, 0.16, 0.06, mats.brake, 0, -0.12, 0.01, tl);
-      lbox(0.17, 0.1, 0.06, sx > 0 ? mats.indL : mats.indR, 0, -0.27, 0.01, tl);
-      lbox(0.17, 0.07, 0.06, mats.reverse, 0, -0.37, 0.01, tl);
+      lbox(0.24, 1.02, 0.06, M.chrome, 0, 0, -0.012, tl);
+      lbox(0.2, 0.98, 0.04, M.dark, 0, 0, 0.012, tl);
+      const lamps = [[0.38, mats.tail], [0.19, mats.brake], [0.0, mats.brake], [-0.19, sx > 0 ? mats.indL : mats.indR], [-0.36, mats.reverse]];
+      for (const [y, mat] of lamps) {
+        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.074, 0.074, 0.03, 22), mat);
+        lens.rotation.x = Math.PI / 2; lens.position.set(0, y, 0.04);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.012, 8, 24), M.chrome);
+        ring.position.set(0, y, 0.05);
+        tl.add(lens, ring);
+      }
     } else {
     lbox(0.16, 0.36, 0.06, mats.tail, sx * LX, s.floor + 1.15, s.rear - 0.02);
     lbox(0.16, 0.22, 0.06, mats.brake, sx * LX, s.floor + 0.8, s.rear - 0.02);
@@ -1292,4 +1322,11 @@ function drawHinoPanel(c, W, H, { kmh, rpm, gear, cruise, lights, indL, indR, fu
   // right: big speedometer
   face(650, 12, 360, 336);
   dial(830, 180, 162, kmh, 140, 20, 10, 'km/h', (k) => String(k));
+}
+
+// windshield wipers (weather.js): t = -1 … 1 sweeps the arms either side of their parked position, 0 = parked
+export function setWipers(bus, t) {
+  if (!bus) return;
+  if (!bus.wipers) { bus.wipers = []; bus.exterior.traverse((o) => { if (o.userData.wiper) bus.wipers.push(o); }); }
+  for (const w of bus.wipers) w.rotation.z = w.userData.wiper.ang + t * 1.15;
 }

@@ -178,6 +178,36 @@
   #arrival-body { margin: 18px 0; text-align: left; }
   #arrival .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--mut); }
   #arrival .row b { color: var(--txt); }
+  #arrival .card { max-height: 92vh; overflow-y: auto; min-width: 560px; }
+  #arrival .row { gap: 14px; align-items: baseline; }
+  #arrival .row b { text-align: right; white-space: nowrap; }
+  .arr-cols { display: flex; gap: 22px; }
+  .arr-col { flex: 1; min-width: 0; }
+  .arr-h { font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--mut); font-weight: 700; margin: 0 0 4px; }
+  #arrival .row.in b { color: #6fdc8c; } #arrival .row.out b { color: #ff8a80; }
+  #arrival .row.total { border-top: 2px solid var(--line); margin-top: 4px; font-size: 15px; }
+  #arrival .row.total span { color: var(--txt); font-weight: 700; }
+  #arrival .row.bank b { color: var(--acc); }
+  #arrival .rec { color: #ffd54f; font-size: 11px; margin-left: 4px; }
+  /* career: company card, garage prices, stats */
+  #company { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.03); }
+  #company .bal { flex: 1; font-size: 12px; color: var(--mut); }
+  #company .bal b { display: block; font-size: 20px; color: var(--acc); }
+  #company .btn { margin: 0; padding: 8px 12px; }
+  .seg button .price { display: block; margin-top: 4px; font-size: 11px; font-weight: 700; color: var(--acc); }
+  .seg button .price.own { color: #6fdc8c; }
+  .seg button.locked { opacity: .78; }
+  .seg button.locked .price { color: #ffcf8a; }
+  .seg button.poor .price { color: #ff8a80; }
+  #stats { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; background: rgba(5,8,11,.6); }
+  #stats .card { width: min(460px, 92vw); max-height: 88vh; overflow-y: auto; padding: 22px 26px; }
+  #stats h2 { margin: 0 0 12px; }
+  #stats .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; color: var(--mut); }
+  #stats .row b { color: var(--txt); }
+  #stats .foot { display: flex; gap: 8px; margin-top: 14px; }
+  #stats .foot .btn { margin: 0; flex: 1; }
+  .btn.danger { background: #5a1f1f; color: #ffd6d6; }
+  #pause .card .btn, #arrival .card > .btn { min-width: 120px; }
   .stars { color: #ffc107; letter-spacing: 2px; }
   .btn { pointer-events: auto; background: var(--acc); color: #1a0e02; border: 0; padding: 11px 20px; border-radius: 8px; font-weight: 800; cursor: pointer; margin: 4px; }
   .btn.ghost { background: rgba(255,255,255,.08); color: var(--txt); }
@@ -230,8 +260,14 @@
   #seat .seat-foot { display: flex; align-items: center; gap: 10px; }
   #seat .seat-foot .btn { margin: 0; padding: 7px 12px; }
   #toasts { top: 64px; transform: translateX(-50%) scale(.8); }
-    #prompt { bottom: 200px; font-size: 13px; }
-    #paxprompt { bottom: 244px; font-size: 13px; }
+    /* landscape phones: prompts and the helper's subtitle sit low in the middle, between the wheel and the
+       pedals, so they never pile up on the toasts and the place name at the top */
+    #prompt, #paxprompt { font-size: 12px; padding: 7px 12px; white-space: normal; text-align: center; max-width: calc(100vw - 340px); width: max-content; }
+    #paxprompt { bottom: 8px; }
+    #prompt { bottom: 52px; }
+    #voice-sub { bottom: 98px !important; max-width: calc(100vw - 340px) !important; font-size: 12px !important; padding: 6px 10px !important; }
+    #stats .row { padding: 4px 0; font-size: 12px; }
+    #stats h2 { font-size: 18px; margin-bottom: 6px; }
     #t-cam, #t-mirror, #t-reset, #t-pause, #t-seat { top: 6px !important; }
     #seat { top: 54px; right: 8px; width: 260px; padding: 8px 10px; }
     #seat label { margin: 4px 0; }
@@ -241,7 +277,12 @@
     .ops { grid-template-columns: repeat(4, 1fr); }
     .op .nm { font-size: 10px; }
     .op .nm .bn { display: none; }
-    #arrival .card, #pause .card { transform: scale(.8); }
+    #arrival .card, #pause .card { transform: none; padding: 16px 18px; min-width: 0; width: min(560px, 94vw); }
+    #arrival h2 { font-size: 20px; } #arrival .bn.big { font-size: 16px; }
+    #arrival-body { margin: 10px 0; }
+    #arrival .row { padding: 4px 0; font-size: 12px; }
+    #arrival .card > .btn, #pause .card .btn { padding: 9px 14px; }
+    #company .bal b { font-size: 17px; }
     /* phones: keep the road visible. Only wheel, pedals, horn, indicators, camera and ☰ stay on screen */
     #trip { display: none; }
     body.show-trip #trip { display: block; top: 92px; left: max(12px, env(safe-area-inset-left)); }
@@ -320,6 +361,8 @@
   <div class="panel">
     <h1><span class="bn">মহাসড়ক</span> Mohasorok</h1>
     <div class="sub">N1 Dhaka ⇄ Chattogram · ~245 km, 1:12 map scale</div>
+    <div id="company"><div class="bal">Company bank <span class="bn">· কোম্পানির টাকা</span><b id="co-balance">৳ 0</b></div>
+      <button class="btn ghost" id="stats-open">📊 Stats</button></div>
 
     <h3>Route</h3>
     <div class="seg" id="route">
@@ -330,7 +373,7 @@
     <h3>Operator</h3>
     <div class="ops" id="ops"></div>
 
-    <h3>Bus</h3>
+    <h3>Bus <small class="h3note">garage · buy bigger buses with your trip profits</small></h3>
     <div class="seg" id="types"></div>
 
     <h3>Time of day</h3>
@@ -361,7 +404,7 @@
     <input type="file" id="music-file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac" multiple hidden>
 
     <button id="start">START TRIP ▸ <span class="bn" id="start-route">ঢাকা → চট্টগ্রাম</span></button>
-    <div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="about-open" style="margin:0;flex:1">About &amp; credits</button></div>
+    <div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="about-open" style="margin:0;flex:1">About &amp; credits</button><button class="btn ghost" id="feedback-menu" style="margin:0;flex:1">💬 Feedback / report a bug</button></div>
     <div class="keys">
       <kbd>W</kbd>/<kbd>S</kbd> throttle / brake (hold <kbd>S</kbd> to reverse) · <kbd>A</kbd>/<kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
       <kbd>H</kbd> horn · <kbd>Q</kbd>/<kbd>E</kbd> indicators · <kbd>L</kbd> lights · <kbd>X</kbd> cruise · <kbd>C</kbd> / <kbd>1</kbd>–<kbd>4</kbd> camera<br>
@@ -441,12 +484,18 @@
 </div>
 
 <div id="pause"><div class="card"><h2>Paused</h2><p style="color:var(--mut)">Press P to continue</p>
-  <button class="btn" id="resume">Continue</button><button class="btn ghost" id="to-menu">Main menu</button></div></div>
+  <button class="btn" id="resume">Continue</button><button class="btn ghost" id="to-menu">Main menu</button>
+  <div><button class="btn ghost" id="feedback-pause">💬 Feedback / report a bug</button></div></div></div>
 
 <div id="arrival"><div class="card">
   <h2 id="arr-title">Arrived in Chattogram</h2><div class="bn big" id="arr-bn">চট্টগ্রামে স্বাগতম!</div>
   <div id="arrival-body"></div>
   <button class="btn" id="again">Drive again</button><button class="btn ghost" id="arr-menu">Main menu</button>
+</div></div>
+<div id="stats"><div class="card">
+  <h2>📊 Your company</h2>
+  <div id="stats-body"></div>
+  <div class="foot"><button class="btn ghost danger" id="stats-reset">Reset progress</button><button class="btn" id="stats-close">Close</button></div>
 </div></div>
 
 <script type="module" src="/src/main.js"></script>

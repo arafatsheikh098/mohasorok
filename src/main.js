@@ -26,6 +26,9 @@ import { voice } from './voice.js';
 import { MusicPlayer, fmtSize, parseYouTube } from './music.js';
 import { Input } from './input.js';
 import { Passengers } from './passengers.js';
+import { Weather } from './world/weather.js';
+import { Police } from './world/police.js';
+import { career, BUS_PRICES, REAL_PRICE, taka, fmtDuration, feedbackURL } from './career.js';
 
 const $ = (id) => document.getElementById(id);
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -69,12 +72,15 @@ const settings = {
 };
 settings.op = OPERATORS.find((o) => o.id === settings.opId) || OPERATORS[0];
 settings.seats = settings.seats || {};
+settings.type = career.ownedType(settings.type);     // career: only buses the company owns can be driven
 function saveSettings() {
   const { type, time, traffic, quality, qualityManual, dir, seats } = settings;
   try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, dir, seats, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;
 let passengers;   // bus counters, boarding / alighting (src/passengers.js)
+let weather;      // rain, fog, wet road, wipers (src/world/weather.js)
+let police;       // highway police checkpoints + jam warnings (src/world/police.js)
 const audio = new GameAudio();
 const music = new MusicPlayer();
 const input = new Input();
@@ -166,6 +172,8 @@ function restartTrip() {
   setTime(settings.time);                       // clock back to the chosen start time
   Object.assign(player, { sinceBreak: 0, breaks: 0, breakWarned: false, resting: 0, restPrompt: false, termHint: false, arriveT: 0, inTerminal: route.terminalAt(player.s, player.d) });
   passengers?.reset(settings.dir);
+  police?.reset();
+  weather?.reset(sky.hour);
 }
 
 // rest stops: stop in the lot and press F for a 20-minute passenger break (clock moves on, passengers happier)
@@ -452,15 +460,7 @@ function events(dt) {
   const br = route.bridgeAt(s);
   if (br && br !== player.lastBridge) hud.toast(`<span class="bn">${br.bn} নদী</span> · ${br.en} River bridge`, '', 3200);
   player.lastBridge = br;
-  // passenger comfort
-  player.complainCool -= dt;
-  const ph = player.phys;
-  if (player.complainCool <= 0 && (Math.abs(ph.latAcc) > 3.4 || ph.lonAcc < -5.5)) {
-    const lines = ['আস্তে চালান! — Drive slowly!', 'ড্রাইভার ভাই, সাবধানে! — Careful, driver bhai!', 'পেটের ভাত উল্টে যাবে! — My lunch is coming back up!'];
-    hud.toast(`<span class="bn">${lines[Math.floor(Math.random() * lines.length)]}</span>`, 'bad', 2600);
-    player.rating = Math.max(1, player.rating - 0.1);
-    player.complainCool = 7;
-  }
+  // passenger comfort: handled by the mood in src/passengers.js (complaints, rating, tips)
   player.lastS = s;
   // arrival: stop inside the destination terminal (fallback: the very end of the road)
   const dest = destTerminal(), toCtg = dest.end === 1;
@@ -476,7 +476,8 @@ function events(dt) {
   if (player.arriveT > 0.8 || atEnd) {
     state = 'arrived';
     passengers?.finishTrip();          // everyone still aboard gets down at the terminal
-    hud.arrival(player, settings.op.en, toCtg ? 'Chattogram' : 'Dhaka');
+    hud.arrival(player, settings.op.en, toCtg ? 'Chattogram' : 'Dhaka', career.finishTrip(player, { dir: settings.dir, km: route.realKm(route.length) }));
+    renderCompany();
     audio.horn(false);
     $('prompt').style.display = 'none';
   }
@@ -614,6 +615,7 @@ function handleKeys() {
   }
   if (input.hit('KeyQ')) { player.indL = !player.indL; player.indR = false; }
   if (input.hit('KeyE')) { player.indR = !player.indR; player.indL = false; }
+  if (input.hit('KeyY')) weather?.cycle();
   if (input.hit('KeyT')) {
     const k = TIME_ORDER[(TIME_ORDER.indexOf(settings.time) + 1) % TIME_ORDER.length];
     setTime(k);
@@ -703,14 +705,7 @@ function togglePause() {
 // ---------- menu ----------
 function buildMenu() {
   renderOps();
-  const types = $('types');
-  Object.entries(BUS_TYPES).forEach(([k, t], i) => {
-    const b = document.createElement('button');
-    b.className = k === settings.type ? 'sel' : '';
-    b.innerHTML = `${t.name}<small>${t.desc}</small>`;
-    b.onclick = () => { selectSeg(types, b); settings.type = k; createPlayerBus(); applySeat(); saveSettings(); };
-    types.appendChild(b);
-  });
+  renderGarage();
   const times = $('times');
   TIME_ORDER.forEach((k, i) => {
     const b = document.createElement('button');
@@ -739,12 +734,74 @@ function buildMenu() {
     });
   }
   $('start').onclick = startDrive;
+  // career: company bank, stats and feedback
+  renderCompany();
+  $('stats-open').onclick = () => { renderStats(); $('stats').style.display = 'flex'; };
+  $('stats-close').onclick = () => ($('stats').style.display = 'none');
+  $('stats-reset').onclick = () => {
+    if (!confirm('Reset your company? Your bank balance, bought buses and all stats go back to the start. This cannot be undone.')) return;
+    career.resetAll();
+    if (!career.owns(settings.type)) { settings.type = career.ownedType(settings.type); createPlayerBus(); applySeat(); saveSettings(); }
+    renderGarage(); renderCompany(); renderStats();
+  };
+  const feedback = () => window.open(feedbackURL({ type: BUS_TYPES[settings.type]?.name, dir: settings.dir, opName: settings.op.en,
+    where: state === 'paused' ? `${route.realKm(player.s).toFixed(0)} km from Dhaka` : '' }), '_blank', 'noopener');
+  $('feedback-menu').onclick = feedback;
+  $('feedback-pause').onclick = feedback;
   $('about-open').onclick = () => ($('about').style.display = 'flex');
   $('about-close').onclick = () => ($('about').style.display = 'none');
   $('resume').onclick = togglePause;
   $('to-menu').onclick = () => { togglePause(); toMenu(); };
   $('again').onclick = () => { $('arrival').style.display = 'none'; restartTrip(); state = 'drive'; };
   $('arr-menu').onclick = () => { $('arrival').style.display = 'none'; toMenu(); };
+}
+// ---------- career: garage, company card, stats ----------
+function renderGarage() {
+  const types = $('types');
+  types.innerHTML = '';
+  const order = Object.keys(BUS_TYPES).sort((a, b) => (BUS_PRICES[a] ?? 0) - (BUS_PRICES[b] ?? 0));
+  for (const k of order) {
+    const t = BUS_TYPES[k], own = career.owns(k), price = BUS_PRICES[k] ?? 0;
+    const b = document.createElement('button');
+    b.className = `${k === settings.type ? 'sel' : ''} ${own ? '' : 'locked'} ${!own && career.balance < price ? 'poor' : ''}`;
+    b.innerHTML = `${t.name}<small>${t.desc}</small><span class="price ${own ? 'own' : ''}">${own ? '✓ Owned' : `🔒 ${taka(price)}`}</span>`;
+    b.title = own ? '' : `Game price ${taka(price)} (a real one costs about ${REAL_PRICE[k] || '—'})`;
+    b.onclick = () => {
+      if (!own) {
+        if (career.balance < price) { hud.toast(`🔒 ${t.name} costs ${taka(price)} — your company has ${taka(career.balance)}. Finish trips to earn more.`, 'bad', 3800); return; }
+        if (!confirm(`Buy the ${t.name} for ${taka(price)}?\nYour bank: ${taka(career.balance)} → ${taka(career.balance - price)}`)) return;
+        career.buy(k);
+        hud.toast(`🚌 New bus! The ${t.name} is in your garage.`, 'good', 3500);
+        renderCompany();
+      }
+      settings.type = k; createPlayerBus(); applySeat(); saveSettings();
+      renderGarage();
+    };
+    types.appendChild(b);
+  }
+}
+function renderCompany() {
+  const el = $('co-balance');
+  if (el) { el.textContent = taka(career.balance); el.style.color = career.balance < 0 ? '#ff8a80' : ''; }
+  if ($('types')?.children.length) renderGarage();
+}
+function renderStats() {
+  const s = career.stats, row = (k, v) => `<div class="row"><span>${k}</span><b>${v}</b></div>`;
+  $('stats-body').innerHTML = [
+    row('Company bank', taka(career.balance)),
+    row('Buses owned', [...career.owned].map((k) => BUS_TYPES[k]?.name).filter(Boolean).join(', ')),
+    row('Trips completed', s.trips),
+    row('Kilometres driven', `${Math.round(s.km).toLocaleString('en-IN')} km`),
+    row('Passengers carried', s.passengers.toLocaleString('en-IN')),
+    row('Money earned (fares + tips)', taka(s.income)),
+    row('Total profit', taka(s.profit)),
+    row('Best trip profit', s.bestProfit == null ? '—' : taka(s.bestProfit)),
+    row('Best passenger rating', s.trips ? `${'★'.repeat(Math.round(s.bestRating))}${'☆'.repeat(5 - Math.round(s.bestRating))}` : '—'),
+    row('Fastest Dhaka → Chattogram', fmtDuration(s.fastest.ctg)),
+    row('Fastest Chattogram → Dhaka', fmtDuration(s.fastest.dhk)),
+    row('Crashes', s.crashes),
+    row('Fines & damage paid', taka(s.fines)),
+  ].join('');
 }
 function renderOps() {
   const ops = $('ops');
@@ -892,11 +949,12 @@ function frame(now) {
     fuelLogic(dt);
     voiceLogic(dt);
     passengers.update(dt, input);
+    police?.update(dt, input, sky.hour);
     restLogic(dt);
     indicatorLogic(dt);
     facilities.update(dt);
     updatePlayerBox();
-    handleCrashes(traffic.update(dt, player, night, sky.hour > 17.4 || sky.hour < 6.4));
+    handleCrashes(traffic.update(dt, player, night, sky.hour > 17.4 || sky.hour < 6.4 || (player.weather?.fog ?? 0) > 0.45 || (player.weather?.rain ?? 0) > 0.6));   // lights on in fog / heavy rain
     audio.horn(input.horn);
     player.blinkT += dt;
     const blink = (player.blinkT % 0.8) < 0.4;
@@ -946,6 +1004,7 @@ function frame(now) {
 
   const focus = player.bus.root.position;
   chunks.update(player.s);
+  weather?.update(dt, { camera, player, cabin: rig.mode === 'cabin' && state !== 'menu', hour: sky.hour, speed: Math.abs(player.phys.v), running: state !== 'paused' });
   sky.update(dt, focus, camera);
   scenery.update(dt, focus);
   const driving = state === 'drive' || state === 'arrived';
@@ -997,7 +1056,9 @@ async function boot() {
   mirrors = new Mirrors(renderer, scene);
   if (mirrors_defaultOff) { mirrors.hudOn = false; mirrors.lowRes = true; }
   hud = new HUD(route, road.water);
+  weather = new Weather({ scene, sky, route, audio, hud, road, quality: settings.quality, isTouch: IS_TOUCH });
   passengers = new Passengers({ route, scene, chunks, hud, player });
+  police = new Police({ route, scene, chunks, obstacles: facilities.obstacles, counters: passengers.counters, hud, player });
   rig = new CameraRig(camera, route);
   initSeatPanel();
   initMusicUI();

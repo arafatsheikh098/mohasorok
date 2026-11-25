@@ -167,6 +167,43 @@ export class GameAudio {
     }
   }
 
+  // rain (weather.js): level 0..1; inside the cabin it is the drumming on the roof and glass, duller
+  rain(level, cabin) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (!this.rainGain) {
+      if (level < 0.01) return;
+      this.rainSrc = this.noise();
+      this.rainHP = ctx.createBiquadFilter(); this.rainHP.type = 'highpass'; this.rainHP.frequency.value = 350;
+      this.rainLP = ctx.createBiquadFilter(); this.rainLP.type = 'lowpass'; this.rainLP.frequency.value = 6000;
+      this.rainGain = ctx.createGain(); this.rainGain.gain.value = 0;
+      this.rainSrc.connect(this.rainHP).connect(this.rainLP).connect(this.rainGain).connect(this.master);
+      // big drops ticking on the roof: noise gated by a fast random LFO
+      this.dripSrc = this.noise();
+      this.dripBP = ctx.createBiquadFilter(); this.dripBP.type = 'bandpass'; this.dripBP.frequency.value = 2400; this.dripBP.Q.value = 1.2;
+      this.dripGain = ctx.createGain(); this.dripGain.gain.value = 0;
+      this.dripSrc.connect(this.dripBP).connect(this.dripGain).connect(this.master);
+    }
+    this.rainGain.gain.setTargetAtTime(level * (cabin ? 0.11 : 0.075), t, 0.6);
+    this.rainLP.frequency.setTargetAtTime(cabin ? 1900 : 6500, t, 0.2);
+    this.dripGain.gain.setTargetAtTime(cabin ? level * (0.02 + Math.random() * 0.05) : level * 0.012, t, 0.03);
+  }
+
+  // thunder: a low rumble after a lightning flash (delay = distance)
+  thunder(delay = 1, power = 1) {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay;
+    const n = ctx.createBufferSource(); n.buffer = this.noiseBuf; n.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160 + power * 120;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.35 * power, t + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.12 * power, t + 1.2);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 3.6);
+    n.connect(lp).connect(g).connect(this.master);
+    n.start(t); n.stop(t + 3.8);
+  }
+
   crash(intensity) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;

@@ -1,12 +1,16 @@
 // Bangladeshi bus operators and their liveries — repainted from reference photos
 // (Wikimedia Commons, see REFERENCES.md). Painted procedurally: no photos or skins are copied.
-// Operators without a reference photo (Soudia, Unique, Shohagh) are approximations.
+// Operators without a reference photo (Soudia, Unique, Shohagh, Sakura) are approximations.
+// On the AK1J every operator has its own livery in the style of the ETS2 Bangladeshi bus mods (byType ak1j/local).
 import { BN_FONT, EN_FONT, shade, toBn } from './textures.js';
 
 const SERIF = "'Times New Roman', Georgia, serif";
 const SCRIPT = "'Snell Roundhand', 'Brush Script MT', 'Segoe Script', cursive";
 const ROUND = "'Arial Rounded MT Bold', 'Helvetica Neue', Arial, sans-serif";
 const SANS = "'Helvetica Neue', Arial, sans-serif";
+
+// the same livery on both AK1J bodies (AC and non-AC)
+const AK = (o) => ({ ak1j: o, local: o });
 
 export const OPERATORS = [
   {
@@ -42,12 +46,12 @@ export const OPERATORS = [
     style: 'greenline', curtain: '#5f8fb0', decal: 'GREEN LINE', mirror: '#f2f2f2', mirrorTip: '#43a047',
     header: 'GREEN LINE', headerFont: SANS, frontLower: '#f6f6f3', frontStripe: '#43a047',
     names: [{ text: 'GREEN LINE', font: SANS, weight: '800', color: '#3d4752', t: 0.66, y: -0.62, size: 0.34, align: 'left' }],
-    byType: {
-      local: {
-        base: '#86c440', roof: '#86c440', lower: '#86c440', style: 'plain', frontLower: '#86c440', frontStripe: '#5b8f22', mirror: '#86c440',
-        names: [{ text: 'GREEN LINE', font: SANS, weight: 'italic 900', color: '#ffffff', outline: '#4c7a1c', t: 0.3, y: -0.45, size: 0.32 }],
-      },
-    },
+    byType: AK({
+      base: '#f7f7f4', roof: '#f2f2ee', lower: '#f7f7f4', c1: '#2e9e47', c2: '#4a5560', c3: '#8cc63f', text: '#2e9e47', style: 'greenlineAK',
+      mirror: '#f2f2f2', mirrorTip: '#2e9e47', curtain: '#2f5f80', frontUpper: '#f7f7f4', frontLower: '#2e9e47', frontBumper: '#4a5560', frontAccent: '#8cc63f',
+      header: 'GREEN LINE', headerFont: SANS, headerColor: '#ffffff', decal: null,
+      names: [{ text: 'GREEN LINE', font: SANS, weight: 'italic 900', color: '#2e9e47', outline: '#ffffff', t: 0.34, y: -0.3, size: 0.3, spacing: 0.04 }],
+    }),
   },
   {
     id: 'ena', en: 'ENA TRANSPORT', bn: 'এনা ট্রান্সপোর্ট', ref: true,
@@ -55,6 +59,13 @@ export const OPERATORS = [
     style: 'ena', curtain: '#2b2b33', mirror: '#141414',
     header: 'Ena', headerFont: ROUND, frontLower: '#25304a', frontStripe: '#9d6c50',
     names: [{ text: 'Ena', font: ROUND, weight: 'bold', color: '#ffffff', t: 0.47, y: -0.62, size: 0.52 }],
+    byType: AK({
+      base: '#a0694b', roof: '#a86f50', lower: '#25304a', c1: '#25304a', c2: '#7a2232', c3: '#c99a7a', text: '#ffffff', style: 'enaAK',
+      mirror: '#25304a', mirrorTip: '#a0694b', curtain: '#2b2b33', frontUpper: '#a0694b', frontLower: '#25304a', frontBumper: '#25304a', frontAccent: '#c99a7a',
+      header: 'Ena', headerFont: ROUND, headerColor: '#ffffff',
+      names: [{ text: 'Ena', font: ROUND, weight: 'bold', color: '#ffffff', t: 0.2, y: -0.62, size: 0.5 },
+        { text: 'TRANSPORT', font: SANS, weight: '800', color: '#e8d2bd', t: 0.2, y: -0.34, size: 0.1, spacing: 0.2 }],
+    }),
   },
   {
     id: 'shyamoli', en: 'SHYAMOLI PARIBAHAN', bn: 'শ্যামলী পরিবহন', ref: true,
@@ -105,6 +116,12 @@ export const OPERATORS = [
     frontUpper: '#f4f4f2', frontLower: '#1d3e8f', frontBumper: '#2aa3dc', frontStripe: '#ffffff',
     names: [{ text: 'MARSA', font: SANS, weight: '600', color: '#1d3e8f', t: 0.535, y: -0.5, size: 0.34, spacing: 0.06, align: 'left' }],
     logo: 'swirl',
+    byType: AK({
+      base: '#2aa3dc', roof: '#2aa3dc', lower: '#2aa3dc', c1: '#ffffff', c2: '#1d3e8f', c3: '#7fd0f2', text: '#1d3e8f', style: 'marsaAK',
+      mirror: '#2aa3dc', mirrorTip: '#1d3e8f', frontUpper: '#2aa3dc', frontLower: '#1d3e8f', frontBumper: '#2aa3dc', frontAccent: '#ffffff',
+      header: 'MARSA', headerBg: null, headerColor: '#ffffff', logo: null,
+      names: [{ text: 'MARSA', font: SANS, weight: '800', color: '#1d3e8f', t: 0.26, y: -0.5, size: 0.3, spacing: 0.1 }],
+    }),
   },
   {
     id: 'nabil', en: 'NABIL CLASSIC', bn: 'নাবিল পরিবহন', ref: true,
@@ -113,6 +130,12 @@ export const OPERATORS = [
     header: 'NABIL', headerFont: SANS, headerSub: 'Classic', frontLower: '#d81e24', frontStripe: '#ffffff',
     names: [{ parts: [['NABIL ', '#ffffff'], ['CLASSIC', '#ffffff']], text: 'NABIL CLASSIC', font: SERIF, weight: 'bold', t: 0.38, y: -0.5, size: 0.3 }],
     logo: 'nc',
+    byType: AK({
+      base: '#d81e24', roof: '#d81e24', lower: '#ffffff', c1: '#ffffff', c2: '#d81e24', c3: '#1f2f7a', text: '#ffffff', style: 'nabilAK',
+      mirror: '#d81e24', mirrorTip: '#ffffff', curtain: '#5c3a2e', frontUpper: '#d81e24', frontLower: '#ffffff', frontBumper: '#d81e24', frontAccent: '#1f2f7a',
+      header: 'NABIL', headerFont: SERIF, headerSub: null, headerColor: '#ffffff', logo: null, decal: null, decal2: null,
+      names: [{ parts: [['NABIL ', '#ffffff'], ['CLASSIC', '#ffd54f']], text: 'NABIL CLASSIC', font: SERIF, weight: 'bold', t: 0.14, y: -0.22, size: 0.28 }],
+    }),
   },
   {
     id: 'shohagh', en: 'SHOHAGH PARIBAHAN', bn: 'সোহাগ পরিবহন', ref: true,
@@ -143,6 +166,12 @@ export const OPERATORS = [
     style: 'unique', curtain: '#3a2a2a', mirror: '#f2281a',
     header: 'ইউনিক', headerFont: BN_FONT, headerBadge: true, headerSub: 'ঢাকা ⇄ সিলেট', frontLower: '#2d3a8c', frontStripe: '#ffc20e',
     names: [], logo: 'uniquebadge',
+    byType: AK({
+      base: '#e8251a', roof: '#e8251a', lower: '#e8251a', c1: '#ffc20e', c2: '#2d3a8c', c3: '#1f9a3a', text: '#ffffff', style: 'uniqueAK',
+      mirror: '#e8251a', mirrorTip: '#ffc20e', frontUpper: '#e8251a', frontLower: '#2d3a8c', frontBumper: '#e8251a', frontAccent: '#ffc20e',
+      headerSub: null, logo: null,
+      names: [{ text: 'ইউনিক সার্ভিস', font: BN_FONT, weight: 'bold', color: '#ffffff', outline: '#8f130c', t: 0.27, y: -0.62, size: 0.34 }],
+    }),
   },
   {
     id: 'desh', en: 'DESH TRAVELS', bn: 'দেশ ট্রাভেলস', ref: true,
@@ -150,6 +179,12 @@ export const OPERATORS = [
     style: 'desh', curtain: '#6b2a1e', garland: true, mirror: '#1a1a1a',
     header: 'Desh Travels', headerFont: SCRIPT, frontLower: '#5b6067', frontStripe: '#ebe5d1',
     names: [{ parts: [['Desh ', '#c62828'], ['Travels', '#2e7d32']], text: 'Desh Travels', font: SCRIPT, weight: 'bold', t: 0.12, y: -0.38, size: 0.36 }],
+    byType: AK({
+      base: '#efe8d2', roof: '#ebe4cd', lower: '#5b6067', c1: '#5b6067', c2: '#c62828', c3: '#2e7d32', text: '#c62828', style: 'deshAK',
+      mirror: '#1a1a1a', mirrorTip: '#c62828', frontUpper: '#efe8d2', frontLower: '#5b6067', frontBumper: '#5b6067', frontAccent: '#c62828',
+      headerColor: '#ffffff', garland: false,
+      names: [{ parts: [['Desh ', '#c62828'], ['Travels', '#2e7d32']], text: 'Desh Travels', font: SCRIPT, weight: 'bold', t: 0.18, y: -0.2, size: 0.34 }],
+    }),
   },
   {
     id: 'shahfatehali', en: 'SHAH FATEH ALI', bn: 'শাহ ফতেহ আলী', ref: true,
@@ -157,6 +192,13 @@ export const OPERATORS = [
     style: 'blackswoosh', curtain: '#1a1a1a', decal: 'Shah Foteh Ali', decal2: 'Business Class', decalFont: SCRIPT, mirror: '#f0f0f0',
     header: 'শাহ ফতেহ আলী', headerFont: BN_FONT, frontLower: '#d9dbdc', frontStripe: '#121212',
     names: [{ text: 'শাহ ফতেহ আলী', font: BN_FONT, weight: 'bold', color: '#ffffff', t: 0.5, y: -0.25, size: 0.34 }],
+    byType: AK({
+      base: '#f3f3f1', roof: '#ecedeb', lower: '#f3f3f1', c1: '#121212', c2: '#9aa0a4', c3: '#5b5f62', text: '#121212', style: 'sfaAK',
+      mirror: '#121212', mirrorTip: '#9aa0a4', frontUpper: '#f3f3f1', frontLower: '#121212', frontBumper: '#121212', frontAccent: '#9aa0a4',
+      headerColor: '#ffffff', decal: null, decal2: null,
+      names: [{ text: 'শাহ ফতেহ আলী', font: BN_FONT, weight: 'bold', color: '#121212', t: 0.2, y: -0.3, size: 0.3 },
+        { text: 'Business Class', font: SCRIPT, weight: 'bold', color: '#e8e8e8', t: 0.5, y: -0.92, size: 0.16 }],
+    }),
   },
   {
     id: 'ekushey', en: 'EKUSHEY AIR CON', bn: 'একুশে', ref: true,
@@ -164,6 +206,26 @@ export const OPERATORS = [
     style: 'yellowsweep', curtain: '#20262c', decal: 'EKUSHEY AIR CON', decalFont: SANS, windowBn: 'একুশে', mirror: '#ecebe4',
     header: 'EKUSHEY', headerFont: SANS, frontLower: '#f1f0ea', frontStripe: '#f2c500',
     names: [],
+    byType: AK({
+      base: '#f4f3ee', roof: '#efeee8', lower: '#f4f3ee', c1: '#f2c500', c2: '#c79a00', c3: '#333333', text: '#333333', style: 'ekusheyAK',
+      mirror: '#f4f3ee', mirrorTip: '#f2c500', frontUpper: '#f4f3ee', frontLower: '#f2c500', frontBumper: '#333333', frontAccent: '#c79a00',
+      headerColor: '#f2c500', decal: null, windowBn: null,
+      names: [{ text: 'একুশে', font: BN_FONT, weight: 'bold', color: '#c79a00', t: 0.2, y: -0.3, size: 0.42 },
+        { text: 'EKUSHEY AIR CON', font: SANS, weight: 'italic 900', color: '#333333', t: 0.5, y: -0.3, size: 0.16, spacing: 0.06 }],
+    }),
+  },
+  {
+    // Sakura Paribahan (Dhaka – Barishal / Khulna): white with a magenta-pink wave and cherry blossoms (approximation)
+    id: 'sakura', en: 'SAKURA PARIBAHAN', bn: 'সাকুরা পরিবহন', ref: false,
+    base: '#f8f8f6', roof: '#f2f2f0', lower: '#f8f8f6', c1: '#c2185b', c2: '#f06292', c3: '#1b7a3a', text: '#c2185b',
+    style: 'sakura', curtain: '#7a1f45', decal: 'SAKURA', decalFont: SERIF, mirror: '#f2f2f2', mirrorTip: '#c2185b',
+    header: 'SAKURA', headerFont: SERIF, headerSub: 'পরিবহন', frontLower: '#c2185b', frontStripe: '#f06292',
+    names: [{ text: 'SAKURA', font: SERIF, weight: 'bold', color: '#c2185b', t: 0.3, y: -0.3, size: 0.36, spacing: 0.1 }],
+    byType: AK({
+      frontUpper: '#f8f8f6', frontLower: '#c2185b', frontBumper: '#f8f8f6', frontAccent: '#f06292', headerColor: '#ffffff', headerSub: null, decal: null,
+      names: [{ text: 'SAKURA', font: SERIF, weight: 'bold', color: '#c2185b', t: 0.26, y: -0.3, size: 0.34, spacing: 0.1 },
+        { text: 'সাকুরা পরিবহন', font: BN_FONT, weight: 'bold', color: '#1b7a3a', t: 0.26, y: -0.62, size: 0.16 }],
+    }),
   },
 ];
 
@@ -446,6 +508,97 @@ const STYLES = {
     line(ctx, f, [[0.1, fl + 0.32], [0.36, fl + 0.4], [0.62, fl + 0.72], [0.86, wb + 0.05], [1.0, wb + 0.28]], op.c2, 0.04);
     line(ctx, f, [[0.12, fl + 0.02], [0.4, fl + 0.05], [0.66, fl + 0.3], [0.9, wb - 0.55]], op.c1, 0.05);
   },
+  // ---- the other operators on the AK1J, same bold ETS2-mod treatment (approximations of the real buses) ----
+  greenlineAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // white body; a big green wave rising from the front wheel to the rear roof, lime and grey edges
+    blob(ctx, f, [[-0.05, fl - 0.1], [-0.05, fl + 0.3], [0.25, fl + 0.32], [0.5, fl + 0.55], [0.72, wb - 0.15], [0.9, wb + 0.4], [1.06, s.H], [1.06, fl - 0.1]], op.c1);
+    line(ctx, f, [[-0.03, fl + 0.42], [0.25, fl + 0.45], [0.5, fl + 0.7], [0.72, wb], [0.88, wb + 0.55], [1.0, s.H - 0.1]], op.c3, 0.07);
+    line(ctx, f, [[-0.03, fl + 0.53], [0.25, fl + 0.56], [0.5, fl + 0.82], [0.7, wb + 0.12], [0.84, wb + 0.62]], op.c2, 0.025);
+    line(ctx, f, [[-0.05, wb - 0.06], [0.62, wb - 0.06]], op.c1, 0.03);
+  },
+  enaAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // copper upper body, navy lower with copper waves cutting in, a maroon pinstripe on the wave
+    const g = ctx.createLinearGradient(0, f.Y(s.H), 0, f.Y(fl)); g.addColorStop(0, shade(op.base, 18)); g.addColorStop(1, shade(op.base, -12));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, f.W, f.H);
+    blob(ctx, f, [[-0.06, fl - 0.1], [-0.06, wb - 0.1], [0.16, wb - 0.14], [0.32, fl + 0.85], [0.46, fl + 0.5], [0.62, fl + 0.72], [0.8, wb - 0.1], [1.06, wb - 0.05], [1.06, fl - 0.1]], op.c1);
+    blob(ctx, f, [[0.4, fl - 0.1], [0.43, fl + 0.32], [0.53, fl + 0.6], [0.62, fl + 0.4], [0.68, fl - 0.1]], op.base);
+    line(ctx, f, [[0.6, fl + 0.12], [0.7, fl + 0.6], [0.84, wb - 0.22], [1.03, wb + 0.2]], op.c2, 0.06);
+    line(ctx, f, [[0.66, fl + 0.05], [0.77, fl + 0.5], [0.9, wb - 0.3], [1.03, wb - 0.08]], '#e8d2bd', 0.02);
+    line(ctx, f, [[-0.05, wb - 0.05], [1.05, wb - 0.05]], '#e8d2bd', 0.02);
+  },
+  marsaAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // sky-blue body, a white wave through the middle that curls into a swirl at the rear, navy edges
+    blob(ctx, f, [[-0.05, wb - 0.1], [0.22, wb - 0.14], [0.5, fl + 0.85], [0.72, fl + 0.45], [0.9, fl + 0.5], [1.06, fl + 0.85], [1.06, fl + 0.45], [0.88, fl + 0.18], [0.7, fl + 0.2], [0.46, fl + 0.62], [-0.05, fl + 0.85]], op.c1);
+    line(ctx, f, [[0.05, wb - 0.04], [0.3, wb - 0.08], [0.55, fl + 0.88], [0.75, fl + 0.55], [0.92, fl + 0.62], [1.03, fl + 0.95]], op.c2, 0.06);
+    line(ctx, f, [[-0.03, fl + 0.72], [0.4, fl + 0.5], [0.68, fl + 0.1]], op.c2, 0.03);
+    ctx.lineWidth = f.pyPerM * 0.05;
+    for (const [r, c, a0] of [[0.38, op.c2, 0.4], [0.27, op.c1, 3.2], [0.17, op.c2, 1.3]]) {
+      ctx.strokeStyle = c; ctx.beginPath(); ctx.ellipse(f.X(0.84), f.Y(wb - 0.42), r * f.pxPerM, r * f.pyPerM, 0, a0, a0 + 4.4); ctx.stroke();
+    }
+  },
+  nabilAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // red body; a white wedge opens from the front bumper towards the rear, navy and red ribbons on it
+    blob(ctx, f, [[-0.06, fl - 0.1], [-0.06, fl + 0.22], [0.3, fl + 0.3], [0.62, fl + 0.55], [0.85, wb - 0.32], [1.06, wb - 0.12], [1.06, fl - 0.1]], op.c1);
+    for (let k = 0; k < 3; k++) line(ctx, f, [[0.08 + k * 0.08, fl + 0.12], [0.4, fl + 0.3 - k * 0.04], [0.68, fl + 0.5 - k * 0.07], [0.88, wb - 0.4 - k * 0.1], [1.03, wb - 0.25 - k * 0.1]], k === 1 ? op.c3 : op.c2, 0.045 - k * 0.008);
+    line(ctx, f, [[-0.05, wb - 0.06], [1.05, wb - 0.06]], '#ffffff', 0.025);
+  },
+  uniqueAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // red body with the yellow / blue / green fan of arcs at the rear, a yellow band under the windows
+    const fan = (t0, c, w, top) => line(ctx, f, [[t0, fl - 0.05], [t0 + 0.06, fl + 0.5], [t0 + 0.16, wb - 0.15], [t0 + 0.3, top]], c, w);
+    for (const [t, c, w, top] of [[0.48, op.c1, 0.14, wb + 0.3], [0.56, op.c2, 0.07, wb + 0.4], [0.62, op.c3, 0.06, wb + 0.5], [0.68, op.c1, 0.1, wb + 0.6], [0.76, op.c2, 0.05, wb + 0.7]]) fan(t, c, w, top);
+    band(ctx, f, wb - 0.1, wb - 0.04, op.c1);
+    line(ctx, f, [[-0.03, fl + 0.12], [0.3, fl + 0.18], [0.5, fl + 0.12]], op.c1, 0.06);
+  },
+  deshAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // cream body over a slate-grey skirt, red and green ribbons crossing up towards the rear
+    const by = fl + (wb - fl) * 0.34;
+    band(ctx, f, 0, by, op.lower);
+    band(ctx, f, by, by + 0.035, shade(op.lower, -25));
+    line(ctx, f, [[0.3, by + 0.02], [0.55, by + 0.2], [0.78, wb - 0.3], [0.96, wb + 0.3], [1.04, s.H]], op.c2, 0.12);
+    line(ctx, f, [[0.42, by + 0.02], [0.64, by + 0.16], [0.84, wb - 0.4], [1.0, wb + 0.2], [1.05, s.H - 0.4]], op.c3, 0.09);
+    line(ctx, f, [[0.36, by + 0.02], [0.6, by + 0.2], [0.82, wb - 0.33]], '#ffffff', 0.02);
+  },
+  sfaAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // white body, a broad black swoosh from the front wheel up over the rear quarter, silver pinstripes
+    blob(ctx, f, [[0.1, fl - 0.1], [0.2, fl + 0.3], [0.45, fl + 0.45], [0.7, wb - 0.28], [0.88, wb + 0.2], [1.06, s.H], [1.06, wb - 0.4], [0.86, fl + 0.4], [0.6, fl + 0.05], [0.35, fl - 0.1]], op.c1);
+    for (const [o, c, w] of [[0.1, op.c2, 0.05], [0.2, op.c3, 0.025], [-0.08, op.c2, 0.03]]) {
+      line(ctx, f, [[0.08, fl + 0.4 + o], [0.42, fl + 0.55 + o], [0.68, wb - 0.18 + o], [0.86, wb + 0.3 + o], [1.0, s.H - 0.05]], c, w);
+    }
+  },
+  ekusheyAK(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // white body, a big yellow sweep from the front bumper to the rear roof, gold edge and charcoal pinstripe
+    blob(ctx, f, [[-0.06, fl - 0.1], [-0.06, fl + 0.2], [0.35, fl + 0.25], [0.62, fl + 0.55], [0.84, wb], [1.06, s.H], [1.06, fl - 0.1]], op.c1);
+    line(ctx, f, [[-0.03, fl + 0.28], [0.35, fl + 0.33], [0.62, fl + 0.63], [0.83, wb + 0.1], [0.98, s.H - 0.05]], op.c2, 0.05);
+    line(ctx, f, [[-0.03, fl + 0.38], [0.35, fl + 0.43], [0.6, fl + 0.72], [0.8, wb + 0.15]], op.c3, 0.02);
+  },
+  sakura(ctx, f, op, s) {
+    const fl = s.floor, wb = s.winBot;
+    // white body, a magenta wave with a pink edge rising to the rear, cherry-blossom flowers on it, green line
+    blob(ctx, f, [[-0.06, fl - 0.1], [-0.06, fl + 0.32], [0.3, fl + 0.36], [0.58, fl + 0.62], [0.8, wb - 0.05], [1.06, wb + 0.45], [1.06, fl - 0.1]], op.c1);
+    line(ctx, f, [[-0.03, fl + 0.44], [0.3, fl + 0.48], [0.58, fl + 0.74], [0.8, wb + 0.06], [1.03, wb + 0.55]], op.c2, 0.08);
+    line(ctx, f, [[-0.05, wb - 0.06], [1.05, wb - 0.06]], op.c3, 0.03);
+    const k = f.pxPerM / f.pyPerM;
+    const flower = (t, y, r) => {
+      ctx.save(); ctx.translate(f.X(t), f.Y(y)); ctx.scale(k, 1);
+      const R = r * f.pyPerM;
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        ctx.fillStyle = '#ffd6e6';
+        ctx.beginPath(); ctx.ellipse(Math.cos(a) * R * 0.55, Math.sin(a) * R * 0.55, R * 0.42, R * 0.3, a, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = '#c2185b'; ctx.beginPath(); ctx.arc(0, 0, R * 0.16, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    };
+    for (const [t, y, r] of [[0.64, fl + 0.36, 0.24], [0.76, fl + 0.62, 0.19], [0.87, fl + 0.36, 0.27], [0.95, wb - 0.22, 0.18], [0.55, fl + 0.16, 0.15]]) flower(t, y, r);
+  },
   swoosh(ctx, f, op, s) {
     const wb = s.winBot;
     blob(ctx, f, [[-0.05, 0.2], [0.2, 0.2], [0.55, wb * 0.55], [0.85, wb + 0.4], [1.05, s.H], [1.05, 0.2]], op.c1);
@@ -717,7 +870,77 @@ export function paintFront(ctx, W, H, spec, op, plate) {
   ctx.fillText(l2 || '', W / 2, Y(spec.floor + 0.17), X(pw / 2) - X(-pw / 2));
 }
 
+// AK1J rear, as on the ETS2 Bangladeshi bus mods: operator name big on the rear glass, a livery stripe,
+// the Bangla company name, a "হর্ন দিন / HORN PLEASE" panel, a chrome-framed engine grille and the plate.
+// The tall round-lamp clusters, bumper reflectors and the ladder are 3D parts (busModel.js).
+function paintRearAK(ctx, W, H, spec, op, plate) {
+  const hw = spec.W / 2 - spec.r;
+  const y0 = spec.floor + spec.r, y1 = spec.H - spec.r;
+  const X = (x) => ((x + hw) / (2 * hw)) * W;
+  const Y = (y) => ((y1 - y) / (y1 - y0)) * H;
+  const wb = spec.winBot, fl = spec.floor;
+  const g0 = ctx.createLinearGradient(0, 0, 0, H);
+  g0.addColorStop(0, shade(op.roof || op.base, 6)); g0.addColorStop(1, shade(op.lower || op.base, -6));
+  ctx.fillStyle = g0; ctx.fillRect(0, 0, W, H);
+  // lower body in the livery's accent colour with a fine contrasting line, as the sides
+  ctx.fillStyle = op.frontLower || op.c1; ctx.fillRect(0, Y(wb - 0.42), W, H - Y(wb - 0.42));
+  ctx.fillStyle = op.c2 || '#ffffff'; ctx.fillRect(0, Y(wb - 0.42) - 3, W, 5);
+  ctx.fillStyle = op.c1; ctx.fillRect(0, Y(wb - 0.01), W, Y(wb - 0.06) - Y(wb - 0.01));
+  // rear windscreen with the name on it (English header big, Bangla under it)
+  const gx0 = X(-hw + 0.1), gx1 = X(hw - 0.1);
+  const g = ctx.createLinearGradient(0, Y(spec.winTop), 0, Y(wb + 0.04));
+  g.addColorStop(0, '#34495a'); g.addColorStop(0.55, '#172530'); g.addColorStop(1, '#0b1218');
+  ctx.fillStyle = g; rr(ctx, gx0, Y(spec.winTop), gx1 - gx0, Y(wb + 0.04) - Y(spec.winTop), 18); ctx.fill();
+  ctx.fillStyle = 'rgba(210,230,245,0.08)';
+  ctx.beginPath(); ctx.moveTo(gx0 + W * 0.08, Y(spec.winTop)); ctx.lineTo(gx0 + W * 0.3, Y(spec.winTop)); ctx.lineTo(gx0 + W * 0.12, Y(wb + 0.04)); ctx.lineTo(gx0 - W * 0.1, Y(wb + 0.04)); ctx.fill();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const en = (op.header || op.en).replace(/★/g, '').trim();
+  const bn = op.bn.split(' ')[0];
+  ctx.lineJoin = 'round';
+  ctx.font = `italic 900 ${W * 0.12}px ${op.headerFont && !/[ঀ-৿]/.test(en) ? op.headerFont : SANS}`;
+  ctx.lineWidth = W * 0.012; ctx.strokeStyle = shade(op.c1 || '#222', -30);
+  const ey = Y(spec.winTop - 0.36);
+  ctx.strokeText(en, W / 2, ey, W * 0.78); ctx.fillStyle = op.headerColor || '#ffffff'; ctx.fillText(en, W / 2, ey, W * 0.78);
+  ctx.font = `bold ${W * 0.085}px ${BN_FONT}`;
+  ctx.lineWidth = W * 0.008; ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+  const by = Y(wb + 0.3);
+  ctx.strokeText(bn, W / 2, by, W * 0.6); ctx.fillStyle = '#ffffff'; ctx.fillText(bn, W / 2, by, W * 0.6);
+  // Bangla company name under the glass, in the livery's text colour
+  ctx.font = `bold ${W * 0.06}px ${BN_FONT}`;
+  ctx.fillStyle = op.text || '#111';
+  ctx.lineWidth = W * 0.006; ctx.strokeStyle = /^#(f|e)/i.test(op.text || '') ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.5)';
+  ctx.strokeText(op.bn, W / 2, Y(wb - 0.2), W * 0.6); ctx.fillText(op.bn, W / 2, Y(wb - 0.2), W * 0.6);
+  // HORN PLEASE panel
+  const hy0 = Y(wb - 0.31), hy1 = Y(wb - 0.4);
+  ctx.fillStyle = '#ffffff'; rr(ctx, X(-0.48), hy0, X(0.48) - X(-0.48), hy1 - hy0, 6); ctx.fill();
+  ctx.fillStyle = '#c62828'; ctx.font = `bold ${(hy1 - hy0) * 0.72}px ${BN_FONT}`;
+  ctx.fillText('হর্ন দিন  •  HORN PLEASE', W / 2, (hy0 + hy1) / 2 + 1, X(0.44) - X(-0.44));
+  // engine grille: chrome frame, dark louvres
+  const gT = Y(wb - 0.47), gB = Y(fl + 0.4);
+  ctx.fillStyle = '#c9ced2'; rr(ctx, X(-0.58), gT, X(0.58) - X(-0.58), gB - gT, 10); ctx.fill();
+  ctx.fillStyle = '#15171a'; rr(ctx, X(-0.54), gT + 5, X(0.54) - X(-0.54), gB - gT - 10, 8); ctx.fill();
+  const nL = 7;
+  for (let k = 0; k < nL; k++) {
+    const yy = gT + 9 + ((gB - gT - 18) / nL) * (k + 0.5);
+    ctx.fillStyle = '#4a4f55'; ctx.fillRect(X(-0.5), yy - 2, X(0.5) - X(-0.5), 3);
+    ctx.fillStyle = '#0a0b0c'; ctx.fillRect(X(-0.5), yy + 1, X(0.5) - X(-0.5), 2);
+  }
+  // number plate (Bangla, as at the front) on the panel above the bumper
+  const py0 = Y(fl + 0.37), py1 = Y(fl + 0.15);
+  ctx.fillStyle = '#18a558'; rr(ctx, X(-0.32), py0, X(0.32) - X(-0.32), py1 - py0, 5); ctx.fill();
+  ctx.strokeStyle = '#f5f5f5'; ctx.lineWidth = 2; rr(ctx, X(-0.3), py0 + 3, X(0.3) - X(-0.3), py1 - py0 - 6, 4); ctx.stroke();
+  ctx.fillStyle = '#f5f5f5'; ctx.font = `bold ${(py1 - py0) * 0.34}px ${BN_FONT}`;
+  const [l1, l2] = plate.split(' ব ');
+  ctx.fillText(`${l1} ব`, W / 2, py0 + (py1 - py0) * 0.32, X(0.28) - X(-0.28));
+  ctx.fillText(l2 || '', W / 2, py0 + (py1 - py0) * 0.72, X(0.28) - X(-0.28));
+  // road grime towards the bottom
+  const gr = ctx.createLinearGradient(0, Y(fl + 0.6), 0, H);
+  gr.addColorStop(0, 'rgba(90,75,55,0)'); gr.addColorStop(1, 'rgba(90,75,55,0.35)');
+  ctx.fillStyle = gr; ctx.fillRect(0, Y(fl + 0.6), W, H - Y(fl + 0.6));
+}
+
 export function paintRear(ctx, W, H, spec, op, plate) {
+  if (spec.cockpit === 'ak') { paintRearAK(ctx, W, H, spec, op, plate); return; }
   const hw = spec.W / 2 - spec.r;
   const y0 = spec.floor + spec.r, y1 = spec.H - spec.r;
   const X = (x) => ((x + hw) / (2 * hw)) * W;

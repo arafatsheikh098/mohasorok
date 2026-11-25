@@ -4,13 +4,15 @@
 // on the route and every bus counter in BUS_STOPS; a place without clips plays one of the line's `generic`
 // sentences (no place name) instead, so a new counter still gets a voice before the clips are regenerated.
 //
-// speaker: 'helper' | 'pax'   prio: higher wins when the queue is busy   cool: seconds before the id repeats
+// speaker: 'helper' | 'pax' | 'police'   prio: higher wins when the queue is busy   cool: seconds before the id repeats
 import { WAYPOINTS, BUS_STOPS } from './config.js';
 
 // Microsoft neural voices (edge-tts). The helper is a Bangladeshi man; passengers alternate two voices.
 export const VOICES = {
   helper: [{ id: 'pradeep', name: 'bn-BD-PradeepNeural', rate: '+8%' }],
   pax: [{ id: 'nabanita', name: 'bn-BD-NabanitaNeural', rate: '+0%' }, { id: 'bashkar', name: 'bn-IN-BashkarNeural', rate: '+0%' }],
+  // the highway police officer: the Bangladeshi male voice, slower and deeper than the helper, so the two never sound alike
+  police: [{ id: 'officer', name: 'bn-BD-PradeepNeural', rate: '-8%', pitch: '-10Hz' }],
 };
 
 // The key a place name is stored and looked up under: drop "(…)", dots and punctuation, squash spaces.
@@ -108,6 +110,61 @@ export const LINES = {
     ['আল্লাহ গো! এটা কী করলেন!', 'Oh God! What did you just do!'],
     ['ও মা গো! সাবধানে চালান!', 'Oh mother! Drive carefully!'],
     ['এই ড্রাইভার! চোখ কোথায় রাখছেন?', 'Hey driver! Where are your eyes?'],
+  ] },
+  // ---- passenger mood (src/passengers.js) ----
+  'pax.happy': { speaker: 'pax', prio: 1, cool: 90, v: [
+    ['ভাই, খুব সুন্দর চালাচ্ছেন! আরামে যাচ্ছি।', 'Brother, you drive really well! A comfortable ride.'],
+    ['মাশাআল্লাহ, ড্রাইভার ভাই একদম ঠান্ডা মাথায় চালান।', 'Mashallah, our driver is so calm at the wheel.'],
+    ['এভাবে চালালে প্রতিবার এই বাসেই যাব।', 'If you drive like this, I will take this bus every time.'],
+  ] },
+  'pax.tip': { speaker: 'pax', prio: 2, cool: 5, v: [
+    ['ভাই, এটা রাখেন, চা খাবেন। খুব ভালো চালিয়েছেন!', 'Brother, keep this, have some tea. You drove very well!'],
+    ['ধন্যবাদ ড্রাইভার সাহেব, এটা আপনার বখশিশ।', 'Thank you driver sir, this is your tip.'],
+    ['আরামে পৌঁছে দিলেন ভাই, এটা রাখেন।', 'You got us here comfortably brother, keep this.'],
+  ] },
+  'pax.uncomfortable': { speaker: 'pax', prio: 3, cool: 12, v: [
+    ['ভাই, এভাবে চালালে তো বমি চলে আসবে!', 'Brother, driving like this will make me sick!'],
+    ['এত ঝাঁকি কেন? একটু আস্তে চালান!', 'Why so much jolting? Drive a bit gently!'],
+    ['ড্রাইভার সাহেব, বাচ্চা ভয় পাচ্ছে, সাবধানে চালান।', 'Driver sir, the child is scared, drive carefully.'],
+  ] },
+  'pax.hot': { speaker: 'pax', prio: 1, cool: 60, v: [
+    ['উফ, কী গরম! জানালাটা একটু খুলে দেন।', 'Oof, so hot! Open the window a little.'],
+    ['ভাই, গাড়ি চালান, বাতাস না লাগলে তো দম বন্ধ হয়ে যাবে!', 'Brother, get moving, without a breeze we will suffocate!'],
+  ] },
+  'pax.long_wait': { speaker: 'pax', prio: 2, cool: 30, v: [
+    ['আর কতক্ষণ দাঁড়িয়ে থাকবেন? গাড়ি ছাড়েন!', 'How much longer will we stand here? Let us go!'],
+    ['ভাই, দেরি হয়ে যাচ্ছে, তাড়াতাড়ি চলেন।', 'Brother, we are getting late, let us move.'],
+    ['এখানে দাঁড়ালেন কেন? সামনে চলেন!', 'Why did you stop here? Move on!'],
+  ] },
+  // ---- weather (agent W) ----
+  'helper.rain': { speaker: 'helper', prio: 2, cool: 60, v: [
+    ['ওস্তাদ, বৃষ্টি নামছে! রাস্তা পিচ্ছিল, আস্তে চালান।', 'Boss, it is raining! The road is slippery, go slow.'],
+    ['ওস্তাদ, ওয়াইপার চালু করেন, সামনে কিছু দেখা যায় না!', 'Boss, turn on the wipers, I cannot see ahead!'],
+  ] },
+  'helper.fog': { speaker: 'helper', prio: 2, cool: 60, v: [
+    ['ওস্তাদ, সামনে কুয়াশা! ফগ লাইট জ্বালান, আস্তে যান।', 'Boss, fog ahead! Fog lights on, go slow.'],
+    ['কিছুই দেখা যায় না ওস্তাদ, হর্ন দিয়ে দিয়ে চালান।', 'Cannot see a thing boss, keep using the horn.'],
+  ] },
+  // ---- highway police and jams (agent H) ----
+  'police.stop': { speaker: 'police', prio: 4, cool: 10, v: [
+    ['গাড়ি সাইডে রাখেন! কাগজপত্র দেখান।', 'Pull over! Show your papers.'],
+    ['এই বাস, সাইড করেন! লাইসেন্স আর গাড়ির কাগজ দেখি।', 'Hey bus, pull aside! Let me see the licence and the papers.'],
+  ] },
+  'police.ok': { speaker: 'police', prio: 3, cool: 8, v: [
+    ['ঠিক আছে, কাগজপত্র সব ঠিক আছে। যান।', 'All right, the papers are in order. Go.'],
+    ['সব ঠিক আছে। সাবধানে চালাবেন।', 'Everything is fine. Drive carefully.'],
+  ] },
+  'police.fine': { speaker: 'police', prio: 4, cool: 8, v: [
+    ['আইন ভেঙেছেন, জরিমানা দিতে হবে।', 'You broke the law, you have to pay a fine.'],
+    ['ওভারস্পিড করেছেন, মামলা দিলাম। পরের বার সাবধান।', 'You were speeding, you are booked. Careful next time.'],
+  ] },
+  'helper.police': { speaker: 'helper', prio: 2, cool: 30, v: [
+    ['ওস্তাদ, সামনে পুলিশ চেকপোস্ট! আস্তে করেন।', 'Boss, police checkpoint ahead! Slow down.'],
+    ['হাইওয়ে পুলিশ দাঁড়ানো ওস্তাদ, কাগজপত্র রেডি রাখেন।', 'Highway police ahead boss, keep the papers ready.'],
+  ] },
+  'helper.jam': { speaker: 'helper', prio: 2, cool: 40, v: [
+    ['ওস্তাদ, সামনে জ্যাম! আস্তে আস্তে চলেন।', 'Boss, traffic jam ahead! Take it slow.'],
+    ['সামনে লম্বা জ্যাম ওস্তাদ, ধৈর্য ধরেন।', 'Long jam ahead boss, be patient.'],
   ] },
 };
 

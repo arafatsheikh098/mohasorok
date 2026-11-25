@@ -21,6 +21,35 @@ const KINDS = [
 const TOLL_NO_CHANGE = 320;   // m either side of the toll plaza: no overtaking
 const FLASH = [0.16, 0.32, 0.5];   // passing flash: on – off – on (s)
 
+// ---- congestion ----
+// Shared with src/world/police.js: lane closures at police checkpoints and the time of day.
+//   closures: { dir, s0 (taper starts), sc (lane fully closed), s1 (end) } — the FAST lane of that direction.
+export const roadState = { closures: [], hour: 12 };
+// how busy the N1 is at this hour (0 = empty night road, 1 = rush hour)
+export function rushLevel(h) {
+  const g = (c, w) => Math.exp(-(((h - c) ** 2) / (2 * w * w)));
+  const night = h < 5.5 || h > 23 ? 0.18 : 0;
+  return THREE.MathUtils.clamp(0.22 + 0.85 * Math.max(g(9, 1.4), g(18.5, 1.7)) - night, 0, 1);
+}
+// jam zones: Kanchpur–Signboard (Dhaka exit), Cumilla town, and the toll plaza queue (busy all day)
+export function jamZones(route) {
+  if (route._jams) return route._jams;
+  const z = [];
+  const kp = route.places.find((p) => p.en === 'Kanchpur'), cu = route.places.find((p) => p.en === 'Cumilla');
+  if (kp) z.push({ id: 'kanchpur', bn: 'কাঁচপুর', en: 'Kanchpur', s0: Math.max(140, kp.s - 380), s1: kp.s + 260, base: 0 });
+  if (cu) z.push({ id: 'cumilla', bn: 'কুমিল্লা', en: 'Cumilla', s0: cu.s - 450, s1: cu.s + 360, base: 0 });
+  if (route.tollS > 0) z.push({ id: 'toll', bn: 'টোল প্লাজা', en: 'the toll plaza', s0: route.tollS - 480, s1: route.tollS + 480, base: 0.45, toll: true });
+  route._jams = z;
+  return z;
+}
+// 0..1 congestion of a zone now, faded in over the first/last 90 m of the zone
+export function jamLevel(zone, s, hour) {
+  const edge = Math.min(s - zone.s0, zone.s1 - s);
+  if (edge <= 0) return 0;
+  const lvl = Math.max(zone.base, rushLevel(hour));
+  return lvl * Math.min(1, edge / 90);
+}
+
 export class Traffic {
   constructor(route, scene, count, playerOpId, audio, gates = []) {
     this.gates = gates;
@@ -77,6 +106,10 @@ export class Traffic {
     v.agg = v.K.agg[0] + r() * (v.K.agg[1] - v.K.agg[0]);
     // some BD bus and truck drivers never dip their lights for anyone
     v.noDip = (v.isBus || v.K.kind === 'truck') && r() < 0.18;
+    if (v.broken) { v.broken = false; this.brokenOut = false; }
+    v.shoulder = false;
+    // at busy hours, pack vehicles into a jam zone near the player (out of sight: far ahead / behind)
+    if (this._jamSpawn(v, playerS, initial)) return this._afterSpawn(v);
     for (let tries = 0; tries < 12; tries++) {
       let s;
       if (initial) s = playerS + (r() < 0.25 ? -(80 + r() * 700) : 60 + r() * 1500);
@@ -87,6 +120,41 @@ export class Traffic {
       if (this.list.every((o) => o === v || o.dir !== v.dir || Math.abs(o.d - v.d) > 2 || Math.abs(o.s - s) > 30)) { v.s = s; break; }
       v.s = s;
     }
+    this._afterSpawn(v);
+  }
+
+  _jamSpawn(v, ps, initial) {
+    const r = this.r, hour = roadState.hour;
+    for (const z of jamZones(this.route)) {
+      const mid = (z.s0 + z.s1) / 2, lvl = Math.max(z.base, rushLevel(hour));
+      if (lvl < 0.3 || z.s1 < ps - 1100 || z.s0 > ps + 1750) continue;
+      if (r() > 0.6 * lvl) continue;
+      // where in the zone we may pop a vehicle in without the player seeing it
+      const ranges = initial ? [[z.s0, z.s1]] : [[Math.max(z.s0, ps + 900), Math.min(z.s1, ps + 1750)], [Math.max(z.s0, ps - 1050), Math.min(z.s1, ps - 650)]];
+      const ok = ranges.filter(([a, b]) => b - a > 20);
+      if (!ok.length) continue;
+      const [a, b] = ok[Math.floor(r() * ok.length)];
+      for (let tries = 0; tries < 8; tries++) {
+        const s = a + r() * (b - a);
+        if (initial && Math.abs(s - ps) < 30) continue;
+        if (!this.list.every((o) => o === v || o.dir !== v.dir || Math.abs(o.d - v.d) > 2 || Math.abs(o.s - s) > (o.len + v.len) / 2 + 5)) continue;
+        v.s = s;
+        v.v = 1 + r() * 4;
+        // the odd truck has broken down in the slow lane, half on the shoulder, hazards blinking
+        if (v.K.kind === 'truck' && !this.brokenOut && !z.toll && r() < 0.35 && Math.abs(s - mid) < (z.s1 - z.s0) * 0.3) {
+          v.broken = true; this.brokenOut = true;
+          v.d = v.targetD = v.fromD = Math.sign(this.laneD(v.dir, false)) * (ROAD.median + ROAD.lane * 1.5 + 1.1);
+          v.v = 0;
+        }
+        void mid;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  _afterSpawn(v) {
+    const r = this.r;
     v.cool = 2 + r() * 3;
     v.lv = 0;
     v.plan = null;        // pending lane change: { to, t, sig } — indicator on, waiting for a gap
@@ -101,15 +169,15 @@ export class Traffic {
 
   // nearest vehicle ahead and behind v in lane d (AI or player). Gaps are bumper to bumper.
   gaps(v, d, player) {
-    const g = { ahead: 1e9, aheadV: 0, aheadP: false, behind: 1e9, behindV: 0 };
-    const look = (s, len, sp, isP) => {
+    const g = { ahead: 1e9, aheadV: 0, aheadP: false, aheadO: null, behind: 1e9, behindV: 0 };
+    const look = (s, len, sp, isP, o = null) => {
       const ds = (s - v.s) * v.dir, gap = Math.abs(ds) - (v.len + len) / 2;
-      if (ds > 0) { if (gap < g.ahead) { g.ahead = gap; g.aheadV = sp; g.aheadP = isP; } }
+      if (ds > 0) { if (gap < g.ahead) { g.ahead = gap; g.aheadV = sp; g.aheadP = isP; g.aheadO = o; } }
       else if (gap < g.behind) { g.behind = gap; g.behindV = sp; }
     };
     for (const o of this.list) {
       if (o === v || o.dir !== v.dir) continue;
-      if (Math.abs(o.d - d) < 2.4 || Math.abs(o.targetD - d) < 1.0) look(o.s, o.len, o.v, false);
+      if (Math.abs(o.d - d) < 2.4 || Math.abs(o.targetD - d) < 1.0) look(o.s, o.len, o.v, false, o);
     }
     if (player.box && Math.abs(player.d - d) < 2.6) look(player.s, player.len, (player.vs ?? player.v) * v.dir, true);
     return g;
@@ -139,6 +207,7 @@ export class Traffic {
     const route = this.route;
     const ps = player.s, pd = player.d;
     const crashes = [];
+    this.t = (this.t || 0) + dt;
     for (const v of this.list) {
       // recycle
       const rel = (v.s - ps);
@@ -185,12 +254,57 @@ export class Traffic {
       let v0 = v.v0 + (overtaking ? v.agg * 1.5 : 0);
       if (v.yieldT > 0) v0 = Math.min(v0, Math.max(4, (player.vs ?? player.v) * 0.85));
 
+      // police checkpoint: the fast lane is coned off — merge left before it, crawl past the police
+      let closed = null;
+      for (const c of roadState.closures) {
+        if (c.dir !== v.dir) continue;
+        const toStart = (c.s0 - v.s) * v.dir, toEnd = (c.s1 - v.s) * v.dir;
+        if (toStart < 220 && toEnd > 0) { closed = c; break; }
+      }
+      if (closed) {
+        const toCone = (closed.sc - v.s) * v.dir;
+        if (toCone < 120 && toCone > -60) v0 = Math.min(v0, 9 + v.agg * 2);        // ~35 km/h past the officers
+        if (this.isFast(v.d) || this.isFast(v.targetD)) {
+          const slowD = this.laneD(v.dir, false);
+          if (!v.plan || v.plan.to !== slowD) { if (Math.abs(v.targetD - slowD) > 0.5) this.plan(v, slowD, 0.7); }
+          if (this.isFast(v.d)) {
+            const coneGap = toCone - v.len / 2 - 2;     // still in the closed lane: stop before the cones
+            if (coneGap < gap) { gap = Math.max(0.1, coneGap); lv = 0; }
+          }
+        }
+      }
+
+      // jams: stop-and-go waves running back through the queue at walking pace
+      let jam = 0;
+      for (const z of jamZones(route)) {
+        if (v.s <= z.s0 || v.s >= z.s1) continue;
+        jam = jamLevel(z, v.s, roadState.hour);
+        if (z.toll && Math.abs(v.s - route.tollS) < PLAZA.reach + 20) jam = Math.min(jam, 0.3);   // the booths do their own queueing
+        break;
+      }
+      if (jam > 0.05) {
+        const wave = 0.5 + 0.5 * Math.sin(this.t * 0.14 + v.s * 0.028 * v.dir);
+        v0 = Math.min(v0, Math.max(0.8, THREE.MathUtils.lerp(v0, 1.2 + 8 * wave, jam)));
+      }
+      // CNG autos thread through the queue on the shoulder, without bothering to signal
+      if (v.K.kind === 'cng') {
+        const shD = Math.sign(this.laneD(v.dir, false)) * (route.halfAt(v.s) - v.wid / 2 - 0.95);
+        if (jam > 0.3 && !v.shoulder && gap < 18 && v.v < 5 && v.cool <= 0 && this.roomIn(v, shD, player, 0.5)) {
+          v.shoulder = true; v.fromD = v.targetD; v.targetD = shD; v.cool = 3;
+        } else if (v.shoulder && (jam < 0.15 || (gap < 6 && v.v < 0.5 && v.cool <= 0))) {
+          const slowD = this.laneD(v.dir, false);
+          if (this.roomIn(v, slowD, player, 0.5)) { v.shoulder = false; v.fromD = v.targetD; v.targetD = slowD; v.cool = 4; }
+        }
+        if (v.shoulder) v0 = Math.max(v0, 6);
+      }
+      if (v.broken) { v0 = 0; v.v = 0; }
+
       // IDM car following
       const a = v.K.a, b = 3;
       const sStar = 5 + v.v * 1.3 + (v.v * (v.v - lv)) / (2 * Math.sqrt(a * b));
       let acc = a * (1 - (v.v / v0) ** 4) - (gap < 1e8 ? a * (Math.max(0, sStar) / Math.max(0.5, gap)) ** 2 : 0);
       acc = THREE.MathUtils.clamp(acc, -9, a);
-      v.v = Math.max(0, v.v + acc * dt);
+      v.v = v.broken ? 0 : Math.max(0, v.v + acc * dt);
       v.acc = acc;
 
       // ---- lane decisions ----
@@ -207,11 +321,12 @@ export class Traffic {
           v.fromD = v.targetD; v.targetD = p.to; v.plan = null;
           v.cool = 3 + this.r() * 3;
         } else if (p.t > p.sig + 7) { v.plan = null; v.sig = 0; v.cool = 2; }   // never got a gap: give up
-      } else if (!changing && v.cool <= 0 && !nearToll) {
+      } else if (!changing && v.cool <= 0 && !nearToll && !v.broken && !v.shoulder && !closed) {
         const fastD = this.laneD(v.dir, true), slowD = this.laneD(v.dir, false);
         if (!inFast) {
           // stuck behind something slower: signal right and pull out to overtake
-          if (slowAhead && v.K.fast > 0 && this.roomIn(v, fastD, player, 1.2)) {
+          // (even a CNG or a truck pulls out when it is stuck behind something that has stopped dead)
+          if (slowAhead && (v.K.fast > 0 || (own.aheadO?.broken && gap < 25)) && this.roomIn(v, fastD, player, 1.2)) {
             this.plan(v, fastD, 2.3 - v.agg * 1.4);
             if ((v.agg > 0.55 || dim) && gap < 40) this.flash(v);    // "I'm coming past"
           }
@@ -275,9 +390,10 @@ export class Traffic {
       // ---- lights ----
       const braking = acc < -1.2;
       v.blinkT += dt;
-      const blinkOn = v.sig !== 0 && (v.blinkT % v.blinkP) < v.blinkP * 0.5;
-      if (v.sig === 0) v.blinkT = v.blinkP * 0.02;   // next signal starts with a flash, like a real relay
-      const indL = blinkOn && v.sig < 0, indR = blinkOn && v.sig > 0;
+      const hazard = v.broken;
+      const blinkOn = (v.sig !== 0 || hazard) && (v.blinkT % v.blinkP) < v.blinkP * 0.5;
+      if (v.sig === 0 && !hazard) v.blinkT = v.blinkP * 0.02;   // next signal starts with a flash, like a real relay
+      const indL = blinkOn && (v.sig < 0 || hazard), indR = blinkOn && (v.sig > 0 || hazard);
       let beam = dim ? 1 : 0;
       if (dim && (v.noDip || this.roadClear(v, player))) beam = 2;
       if (v.flashT >= 0) {

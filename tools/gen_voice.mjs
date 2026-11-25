@@ -33,7 +33,7 @@ async function render(c, file) {
   } else {
     // edge-tts writes 24 kHz 48 kbit/s mono mp3; retry a couple of times on network hiccups
     for (let i = 0; ; i++) {
-      try { await run(EDGE, ['--voice', c.voice.name, `--rate=${c.voice.rate}`, '--text', c.text, '--write-media', file]); break; }
+      try { await run(EDGE, ['--voice', c.voice.name, `--rate=${c.voice.rate}`, ...(c.voice.pitch ? [`--pitch=${c.voice.pitch}`] : []), '--text', c.text, '--write-media', file]); break; }
       catch (e) { if (i >= 4) throw e; await new Promise((r) => setTimeout(r, 2000 * (i + 1))); }
     }
   }
@@ -50,7 +50,7 @@ async function worker() {
   while (next < clips.length) {
     const c = clips[next++];
     // the file name follows the text and voice, so an unchanged line is not re-downloaded
-    const f = `${hash(`${engine}|${c.voice.name}|${c.voice.rate}|${c.text}`)}.mp3`;
+    const f = `${hash(`${engine}|${c.voice.name}|${c.voice.rate}|${c.voice.pitch ? `${c.voice.pitch}|` : ''}${c.text}`)}.mp3`;
     const file = path.join(outDir, f);
     let dur;
     try {

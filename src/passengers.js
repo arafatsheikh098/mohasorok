@@ -2,7 +2,7 @@
 // (BUS_STOPS pickup), and get down only at the drop points after Cumilla and at the destination terminal,
 // through the front-left door (G). Fares by distance, stop requests, missed stops, counters that fill up again.
 import * as THREE from 'three';
-import { ROAD, BUS_STOPS, FARE_PER_KM, AC_FARE_FACTOR, MIN_FARE, REAL_ROUTE_KM, COUNTER_REFILL } from './config.js';
+import { ROAD, BUS_STOPS, FARE_PER_KM, AC_FARE_FACTOR, MIN_FARE, REAL_ROUTE_KM, COUNTER_REFILL, SPEED_LIMIT } from './config.js';
 import { setBusDoor } from './busModel.js';
 import { makeCanvas, canvasTexture, concreteTexture, BN_FONT, EN_FONT } from './textures.js';
 import { ribbon } from './world/road.js';
@@ -16,6 +16,20 @@ const ANNOUNCE = 450;           // m before a requested stop the passengers ring
 const SHIRTS = [0xf2f2ee, 0x3d6fb6, 0xc23b3b, 0x2f7d4a, 0xe0b43a, 0x7a4a9e, 0x23303c, 0xd98c4a, 0x9fc4de];
 const LOWER = [0x2b5aa0, 0x3c8a5a, 0x5b3a2e, 0x1f2633, 0x8a2f5c, 0xc94f7c, 0xe0a030, 0x4d4d55];   // lungi, pants, sari
 const SKIN = [0x8d5a3b, 0x6e4329, 0xa36a45, 0x5c3a23];
+// passenger mood (0–100): what the people aboard think of the ride
+const MOOD = {
+  start: 80,
+  jolt: 4, hardJolt: 8,          // sharp cornering (|latAcc| > 3.4 / 5 m/s²) or hard braking (lonAcc < -5.5 / -7.5)
+  crash: 15,                     // each crash (player.crashes goes up)
+  speeding: 1.5,                 // per second above SPEED_LIMIT + 10 km/h
+  tired: 0.3,                    // per second once 3 game-hours pass without a rest-stop break
+  wait: 0.6, waitAfter: 45,      // per second once the bus has stood still 45 s outside a stop/rest/terminal
+  heat: 0.15,                    // per second in a non-AC bus, 11:00–16:00, crawling below 15 km/h
+  smooth: 0.35,                  // per second of calm driving at 30 km/h … the limit
+  rest: 20,                      // a rest-stop break
+};
+// tip per passenger at drop-off: nothing below mood 65, up to 10 % of the fare at 100
+export const tipFor = (fare, mood) => Math.round((fare * 0.1 * Math.max(0, Math.min(1, (mood - 65) / 35))) / 10) * 10;
 
 function panel(w, h, bg, draw) {
   const [c, x] = makeCanvas(w, h);
@@ -49,7 +63,8 @@ export class Passengers {
       { kind: 'end', end: 0, s: 0, side: 1, bn: 'ঢাকা (সায়েদাবাদ)', en: 'Dhaka (Sayedabad)' },
       { kind: 'end', end: 1, s: route.length, side: -1, bn: 'চট্টগ্রাম (এ.কে. খান)', en: 'Chattogram (A.K. Khan)' },
     ];
-    this.stats = { aboard: 0, capacity: 36, fares: 0, carried: 0, boarded: 0, missed: 0 };
+    this.stats = { aboard: 0, capacity: 36, fares: 0, tips: 0, mood: MOOD.start, carried: 0, boarded: 0, missed: 0 };
+    this.mood = MOOD.start;
     this._buildFigures(scene);
     this._buildCounters(scene, chunks);
     hud.addMarkers?.(this.counters.map((c) => ({ p: route.pointAt(c.s, c.side * (ROAD.half + 3)), icon: '🚏', col: '#2ecc71' })));
@@ -278,7 +293,9 @@ export class Passengers {
     this.stop = null; this.door = false; this.cool = 0; this.leaveWarn = 0; this.promptKey = '';
     this.finished = false; this.doorT = 0;
     setBusDoor(this.player.bus, 0);
-    Object.assign(this.stats, { aboard: 0, capacity: this.capacity(), fares: 0, carried: 0, boarded: 0, missed: 0 });
+    Object.assign(this.stats, { aboard: 0, capacity: this.capacity(), fares: 0, tips: 0, mood: MOOD.start, carried: 0, boarded: 0, missed: 0 });
+    this.mood = MOOD.start;
+    this.mt = { joltCool: 0, sayCool: 0, happyCool: 60, stillT: 0, crashes: this.player.crashes || 0, breaks: this.player.breaks || 0 };
     this.player.pax = this.stats;
     // people waiting at the pickup counters (drop points only see people getting down)
     for (const c of this.counters) {
@@ -399,6 +416,7 @@ export class Passengers {
     this.doorT = (this.doorT || 0) + Math.max(-dt * 1.4, Math.min(dt * 1.4, want - (this.doorT || 0)));
     setBusDoor(p.bus, this.doorT);
     if (this.stop) this._serve(dt);
+    this._mood(dt);
     this._refill(dt);
     this._walk(dt);
     this._requests();
@@ -418,6 +436,8 @@ export class Passengers {
       const ai = this.aboard.indexOf(pax);
       if (ai >= 0) this.aboard.splice(ai, 1);
       this.stats.carried++;
+      const tip = tipFor(pax.fare, this.mood);
+      if (tip) { this.stats.tips += tip; st.tips = (st.tips || 0) + tip; }
       const f = this._fig(dp.x, dp.y, dp.z, Math.atan2(dp.lx, dp.lz));
       if (f) {
         const tgt = st.here.kind === 'counter' ? st.here.spots[Math.floor(this.r() * st.here.spots.length)] : null;
@@ -426,7 +446,7 @@ export class Passengers {
         f.ty = tgt ? tgt.y : dp.y;
         f.onArrive = () => this._drop(f);
       }
-      if (!st.off.length) voice.say('pax.thanks');
+      if (!st.off.length) voice.say(st.tips ? 'pax.tip' : 'pax.thanks');
       st.t = 0.7;
       return;
     }
@@ -452,7 +472,7 @@ export class Passengers {
     if (st.doneT < 0) {
       st.doneT = 1.3;
       const msg = [];
-      if (st.nOff) msg.push(`${st.nOff} got down`);
+      if (st.nOff) msg.push(`${st.nOff} got down${st.tips ? ` · tips ৳ ${st.tips.toLocaleString('en-IN')}` : ''}`);
       if (st.nOn) msg.push(`${st.nOn} boarded · fares ৳ ${st.fares.toLocaleString('en-IN')}`);
       if (msg.length) this.hud.toast(`🚌 <span class="bn">${st.here.bn.split(' (')[0]}</span> — ${msg.join(' · ')}`, 'good', 3200);
       if (st.nOn) voice.say('helper.board_done');
@@ -557,7 +577,71 @@ export class Passengers {
     return best ? { stop: best, n: this.aboard.filter((x) => x.dest === best).length, km: Math.abs(this.route.realKm(best.s) - this.route.realKm(p.s)) } : null;
   }
 
+  // ------------------------------------------------------------ mood
+  // What the passengers aboard think of the ride. Rough driving, crashes, speeding, long stretches without a
+  // break, standing around and heat lower it; calm driving and rest stops raise it. It sets the tips at drop-off,
+  // and unhappy passengers complain (this replaces the old toast-only comfort complaints).
+  _mood(dt) {
+    const p = this.player, ph = p.phys, m = this.mt;
+    if (!m) return;
+    const kmh = Math.abs(ph.v) * 3.6, n = this.aboard.length;
+    m.joltCool -= dt; m.sayCool -= dt; m.happyCool -= dt;
+    let d = 0;
+    const lat = Math.abs(ph.latAcc || 0), lon = ph.lonAcc || 0;
+    if (n && m.joltCool <= 0 && (lat > 3.4 || lon < -5.5) && kmh > 8) {
+      const hard = lat > 5 || lon < -7.5;
+      d -= hard ? MOOD.hardJolt : MOOD.jolt;
+      m.joltCool = 1.5;
+      p.rating = Math.max(1, p.rating - (hard ? 0.15 : 0.08));
+      if (m.sayCool <= 0) { voice.say(lon < -5.5 ? 'pax.slow' : 'pax.uncomfortable'); m.sayCool = 7; }
+      this.hud.toast(`<span class="bn">${['আস্তে চালান!', 'ড্রাইভার ভাই, সাবধানে!', 'পেটের ভাত উল্টে যাবে!'][Math.floor(this.r() * 3)]}</span> — ${lon < -5.5 ? 'hard braking' : 'sharp turn'}, passengers unhappy`, 'bad', 2400);
+    }
+    if ((p.crashes || 0) > m.crashes) { d -= MOOD.crash * ((p.crashes || 0) - m.crashes); m.crashes = p.crashes || 0; }
+    if ((p.breaks || 0) > m.breaks) { d += MOOD.rest; m.breaks = p.breaks || 0; if (n) setTimeout(() => voice.say('pax.happy'), 3500); }
+    if (kmh > SPEED_LIMIT + 10) d -= MOOD.speeding * dt;
+    if ((p.sinceBreak || 0) > 180 && !(p.resting > 0)) d -= MOOD.tired * dt;
+    // standing still where nothing is happening
+    const busy = this.stop || this.door || p.resting > 0 || p.refuelling || p.inTerminal || this._counterAt() || this.route.restAt?.(p.s, p.d);
+    m.stillT = kmh < 2 && !busy ? m.stillT + dt : 0;
+    if (m.stillT > MOOD.waitAfter) {
+      d -= MOOD.wait * dt;
+      if (n && m.sayCool <= 0) { voice.say('pax.long_wait'); m.sayCool = 40; }
+    }
+    // heat in a non-AC bus in the afternoon, when there is no breeze
+    const hour = (((p.clockMin || 0) / 60) % 24 + 24) % 24;
+    if (!p.bus.spec.ac && hour > 11 && hour < 16 && kmh < 15 && n) {
+      d -= MOOD.heat * dt;
+      if (m.sayCool <= 0 && this.r() < dt * 0.05) { voice.say('pax.hot'); m.sayCool = 60; }
+    }
+    // calm, steady driving wins them back
+    if (kmh > 30 && kmh <= SPEED_LIMIT + 5 && lat < 2 && lon > -3) d += MOOD.smooth * dt;
+    if (!n) d = (MOOD.start - this.mood) * 0.05 * dt;     // nobody aboard: the next passengers start fresh
+    this.mood = Math.max(0, Math.min(100, this.mood + d));
+    this.stats.mood = Math.round(this.mood);
+    if (n && this.mood > 88 && m.happyCool <= 0 && kmh > 30) { m.happyCool = 150 + this.r() * 90; voice.say('pax.happy'); }
+    if (n && this.mood < 35 && m.sayCool <= 0) { m.sayCool = 25; voice.say('pax.uncomfortable'); p.rating = Math.max(1, p.rating - 0.05); }
+  }
+
+  _moodUI() {
+    let el = $('trip-mood');
+    if (!el) {
+      const trip = $('trip');
+      if (!trip) return;
+      const row = document.createElement('div');
+      row.className = 'r';
+      row.innerHTML = 'Mood <b id="trip-mood"></b>';
+      const after = $('trip-rating')?.parentElement;
+      if (after && after.parentElement === trip) after.after(row); else trip.appendChild(row);
+      el = $('trip-mood');
+    }
+    const v = this.stats.mood, face = v >= 80 ? '😊' : v >= 60 ? '🙂' : v >= 40 ? '😐' : v >= 20 ? '😟' : '😡';
+    const col = v >= 65 ? '#7CFC9A' : v >= 40 ? '#ffd54f' : '#ff5252';
+    const txt = `${face} ${v}%${this.stats.tips ? ` · tips ৳ ${this.stats.tips.toLocaleString('en-IN')}` : ''}`;
+    if (el.textContent !== txt) { el.textContent = txt; el.style.color = col; }
+  }
+
   _ui() {
+    this._moodUI();
     const s = this.stats;
     s.aboard = this.aboard.length; s.capacity = this.capacity();
     const seats = $('trip-seats'), fares = $('trip-fares'), next = $('trip-stop');
@@ -575,6 +659,7 @@ export class Passengers {
     this.finished = true;
     if (this.aboard.length) {
       this.stats.carried += this.aboard.length;
+      for (const x of this.aboard) this.stats.tips += tipFor(x.fare, this.mood);
       this.aboard = [];
       voice.say('helper.arrive', { place: this.ends[1 - this.originEnd].bn.split(' (')[0] });
     }

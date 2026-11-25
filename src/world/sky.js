@@ -58,6 +58,24 @@ export class SkySystem {
     this.stars.visible = false;
     scene.add(this.stars);
 
+    // weather overlay (src/world/weather.js): cloud cover 0..1 (overcast → heavy rain), fog 0..1, lightning flash
+    this.wx = { cloud: 0, fog: 0, flash: 0, envCloud: 0, envFog: 0 };
+    // a grey dome over the physical sky: low cloud / fog hides the blue sky and the horizon
+    // (drawn right after the sky and before everything else, inside the sky box and the mirror cameras' range)
+    this.sky.renderOrder = -2;
+    this.dome = new THREE.Mesh(new THREE.SphereGeometry(450, 32, 16), new THREE.ShaderMaterial({
+      uniforms: { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, aTop: { value: 0 }, aHor: { value: 0 } },
+      vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform vec3 top; uniform vec3 hor; uniform float aTop; uniform float aHor; varying vec3 vP;
+        void main(){ float k = smoothstep(-0.05, 0.55, vP.y); gl_FragColor = vec4(mix(hor, top, k), mix(aHor, aTop, k)); }`,
+      depthTest: false, depthWrite: false, side: THREE.BackSide, fog: false,
+      blending: THREE.CustomBlending, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+    }));
+    this.dome.frustumCulled = false;
+    this.dome.renderOrder = -1;
+    this.dome.visible = false;
+    scene.add(this.dome);
+
     this.pmrem = new THREE.PMREMGenerator(renderer);
     this.skyScene = new THREE.Scene();
     this.sunDir = new THREE.Vector3();
@@ -94,7 +112,39 @@ export class SkySystem {
     if (envDue) this.envHour = h;
   }
 
-  apply(t, rebuildEnv = true) {
+  // cloud / fog change: re-light the scene (the environment map only when the look moved a lot)
+  setWeather({ cloud = 0, fog = 0 } = {}) {
+    const w = this.wx;
+    const big = Math.abs(cloud - w.envCloud) > 0.12 || Math.abs(fog - w.envFog) > 0.15;
+    if (Math.abs(cloud - w.cloud) < 0.004 && Math.abs(fog - w.fog) < 0.004 && !big) return;
+    w.cloud = cloud; w.fog = fog;
+    if (this.base) this.apply(this.base, big);
+  }
+
+  // the time-of-day look with the weather on top
+  weathered(t) {
+    const k = this.wx.cloud, f = this.wx.fog;
+    if (k < 0.001 && f < 0.001) return t;
+    const o = { ...t };
+    const lerpC = (a, b, x) => new THREE.Color(a).lerp(new THREE.Color(b), THREE.MathUtils.clamp(x, 0, 1)).getHex();
+    const rainGrey = t.night ? 0x14181e : 0x7d868e, fogGrey = t.night ? 0x262a31 : 0xb4b9bd;
+    o.turb = t.turb + (20 - t.turb) * k;
+    o.ray = t.ray * (1 - 0.75 * k);
+    o.mie = t.mie + 0.03 * k;
+    o.sun = t.sun * (1 - 0.85 * k) * (1 - 0.6 * f);
+    o.sunCol = lerpC(t.sunCol, 0xe2e8ee, k);
+    o.hemi = t.hemi * (1 + 0.3 * k);
+    o.hemiSky = lerpC(t.hemiSky, rainGrey, 0.75 * k + 0.5 * f);
+    o.fog = lerpC(lerpC(t.fog, rainGrey, 0.8 * k), fogGrey, f * 0.85);
+    o.fogD = t.fogD * (1 + 2.5 * k) + k * k * 0.0016 + f * f * 0.016;
+    o.exposure = t.exposure * (1 - 0.1 * k);
+    o.env = t.env * (1 - 0.35 * k);
+    return o;
+  }
+
+  apply(base, rebuildEnv = true) {
+    this.base = base;
+    const t = this.weathered(base);
     this.preset = t;
     this.night = t.night;
     const u = this.sky.material.uniforms;
@@ -102,7 +152,16 @@ export class SkySystem {
     u.rayleigh.value = t.ray;
     u.mieCoefficient.value = t.mie;
     u.mieDirectionalG.value = 0.8;
-    u.cloudCoverage.value = t.night ? 0.15 : 0.32;
+    const k = this.wx.cloud, f = this.wx.fog;
+    u.cloudCoverage.value = (t.night ? 0.15 : 0.32) + 0.6 * k;
+    u.cloudDensity.value = 0.35 + 0.5 * k;
+    // the grey dome: fog hides everything far away, rain clouds hide most of the sky
+    const dm = this.dome.material.uniforms;
+    dm.hor.value.setHex(t.fog);
+    dm.top.value.setHex(t.fog).multiplyScalar(t.night ? 1 : 0.86);
+    dm.aHor.value = Math.min(1, Math.max(f * 1.1, k * 0.92));
+    dm.aTop.value = Math.min(1, Math.max(f * 0.95, k * 0.85));
+    this.dome.visible = dm.aHor.value > 0.01;
     const phi = THREE.MathUtils.degToRad(90 - t.elev);
     const theta = THREE.MathUtils.degToRad(t.az);
     this.sunDir.setFromSphericalCoords(1, phi, theta);
@@ -118,13 +177,15 @@ export class SkySystem {
     this.hemi.color.setHex(t.hemiSky);
     this.hemi.groundColor.setHex(t.hemiGround);
     this.hemi.intensity = t.hemi;
+    this.hemiBase = t.hemi;
     this.scene.fog.color.setHex(t.fog);
     this.scene.fog.density = t.fogD;
-    this.stars.visible = t.night;
+    this.stars.visible = t.night && k < 0.5 && f < 0.4;
 
     // environment map: a controlled sky gradient (the physical Sky shader is far too bright as an env map)
     this.scene.environmentIntensity = t.env;
     if (!rebuildEnv) return;
+    this.wx.envCloud = k; this.wx.envFog = f;
     this.buildEnvScene(t);
     if (this.envRT) this.envRT.dispose();
     this.envRT = this.pmrem.fromScene(this.skyScene, 0.02, 0.1, 500);
@@ -154,6 +215,12 @@ export class SkySystem {
   update(dt, focus, camera) {
     this.sky.position.copy(camera.position);
     this.stars.position.copy(camera.position);
+    this.dome.position.copy(camera.position);
+    // lightning: a short bright flash of sky light
+    if (this.wx.flash > 0 || this.flashOn) {
+      this.flashOn = this.wx.flash > 0;
+      this.hemi.intensity = (this.hemiBase ?? this.hemi.intensity) + this.wx.flash * 3.5;
+    }
     this.sky.material.uniforms.time.value += dt;
     // shadow box follows the bus, snapped to texels to avoid shimmering
     const texel = (this.shadowArea * 2) / this.sun.shadow.mapSize.x;

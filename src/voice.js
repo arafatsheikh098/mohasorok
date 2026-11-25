@@ -11,7 +11,7 @@ const KEEP_DECODED = 24;     // decoded clips kept in memory (a decoded clip is 
 // English names for the subtitle gloss
 const EN = { 'সায়েদাবাদ': 'Sayedabad', 'চট্টগ্রাম': 'Chattogram', 'ঢাকা': 'Dhaka', 'এ কে খান': 'A.K. Khan', 'মহিপাল': 'Mohipal' };
 for (const w of WAYPOINTS) EN[placeKey(w.bn)] ??= w.en.split(' (')[0];
-const LABEL = { helper: ['🧑‍🔧', 'হেলপার'], pax: ['🧳', 'যাত্রী'] };
+const LABEL = { helper: ['🧑‍🔧', 'হেলপার'], pax: ['🧳', 'যাত্রী'], police: ['👮', 'পুলিশ'] };
 
 class Voice {
   constructor() {
@@ -182,7 +182,7 @@ class Voice {
         background:rgba(12,16,22,.78);border:1px solid rgba(255,255,255,.14);border-left:4px solid #ffb300;border-radius:9px;
         padding:8px 14px;color:#fff;font-size:16px;line-height:1.35;pointer-events:none;opacity:0;transition:opacity .25s;z-index:5;text-align:left}
         #voice-sub.on{opacity:1}#voice-sub.pax{border-left-color:#4aa3ff}#voice-sub b{font-weight:700;margin-right:6px;color:#ffd54f}
-        #voice-sub.pax b{color:#9fd0ff}#voice-sub small{display:block;color:#b8c2cc;font-size:12px;margin-top:2px}
+        #voice-sub.pax b{color:#9fd0ff}#voice-sub.police{border-left-color:#ef5350}#voice-sub.police b{color:#ffab91}#voice-sub small{display:block;color:#b8c2cc;font-size:12px;margin-top:2px}
         @media (max-width:820px){#voice-sub{font-size:14px}}`;
       document.head.appendChild(st);
       this.el = document.createElement('div');
@@ -193,6 +193,7 @@ class Voice {
     const [icon, who] = LABEL[item.speaker];
     this.el.innerHTML = `<b>${icon} ${who}:</b>${esc(item.bn)}<small>${esc(item.en)}</small>`;
     this.el.classList.toggle('pax', item.speaker === 'pax');
+    this.el.classList.toggle('police', item.speaker === 'police');
     this.el.classList.add('on');
     this.placeSub();
     clearInterval(this.subI);

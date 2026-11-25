@@ -1,5 +1,6 @@
 import { ROAD, SPEED_LIMIT } from './config.js';
 import { BN_FONT, EN_FONT } from './textures.js';
+import { taka, fmtDuration } from './career.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -202,24 +203,44 @@ export class HUD {
     dial(222, 80, 66, st.rpm, 3000, 500, 'x1000 rpm', 2300);
   }
 
-  arrival(st, opName, dest = 'Chattogram') {
+  // money = the career settlement for this trip (career.finishTrip), shown as a profit breakdown
+  arrival(st, opName, dest = 'Chattogram', money = null) {
     const el = $('arrival');
     el.style.display = 'flex';
     $('arr-title').textContent = `Arrived in ${dest}`;
     $('arr-bn').textContent = dest === 'Dhaka' ? 'ঢাকায় স্বাগতম!' : 'চট্টগ্রামে স্বাগতম!';
     const avg = st.elapsed > 1 ? this.route.realKm(this.route.length) / (st.elapsed / 3600) : 0;
-    $('arrival-body').innerHTML = `
-      <div class="row"><span>Operator</span><b>${opName}</b></div>
-      <div class="row"><span>Route</span><b>${dest === 'Dhaka' ? 'Chattogram → Dhaka' : 'Dhaka → Chattogram'} (N1)</b></div>
-      <div class="row"><span>Toll + diesel</span><b>৳ ${Math.round(st.fuelCost + st.tollCost).toLocaleString('en-IN')}</b></div>
-      <div class="row"><span>Drive time</span><b>${fmtTime(st.elapsed)}</b></div>
-      <div class="row"><span>Average (map) speed</span><b>${avg.toFixed(0)} km/h</b></div>
-      <div class="row"><span>Collisions</span><b>${st.crashes}</b></div>
-      <div class="row"><span>Fines</span><b>৳ ${st.fines.toLocaleString('en-IN')}</b></div>
-      ${st.pax ? `<div class="row"><span>Passengers carried</span><b>${st.pax.carried}${st.pax.missed ? ` · ${st.pax.missed} missed stops` : ''}</b></div>
-      <div class="row"><span>Fares collected</span><b>৳ ${st.pax.fares.toLocaleString('en-IN')}</b></div>
-      <div class="row"><span>Trip profit</span><b>৳ ${Math.round(st.pax.fares - st.fuelCost - st.tollCost - st.fines).toLocaleString('en-IN')}</b></div>` : ''}
-      <div class="row"><span>Passenger rating</span><b class="stars">${'★'.repeat(Math.round(st.rating))}${'☆'.repeat(5 - Math.round(st.rating))}</b></div>`;
+    const row = (k, v, cls = '') => `<div class="row ${cls}"><span>${k}</span><b>${v}</b></div>`;
+    const stars = `<b class="stars">${'★'.repeat(Math.round(st.rating))}${'☆'.repeat(5 - Math.round(st.rating))}</b>`;
+    let html = `<div class="arr-cols"><div class="arr-col">
+      <div class="arr-h">Trip</div>
+      ${row('Operator', opName)}
+      ${row('Route', dest === 'Dhaka' ? 'Ctg → Dhaka' : 'Dhaka → Ctg')}
+      ${row('Drive time', `${fmtTime(st.elapsed)}${money?.record && money.prevBest != null ? ' <span class="rec">★ new record</span>' : ''}`)}
+      ${row('Average (map) speed', `${avg.toFixed(0)} km/h`)}
+      ${row('Collisions', st.crashes)}
+      ${st.pax ? row('Passengers carried', `${st.pax.carried}${st.pax.missed ? ` · ${st.pax.missed} missed` : ''}`) : ''}
+      <div class="row"><span>Passenger rating</span>${stars}</div>
+    </div>`;
+    if (money) {
+      html += `<div class="arr-col">
+      <div class="arr-h">Money</div>
+      ${row('Fares', taka(money.fares), 'in')}
+      ${money.tips ? row('Tips', taka(money.tips), 'in') : ''}
+      ${row('Diesel', taka(-money.diesel), 'out')}
+      ${row('Toll', taka(-money.tolls), 'out')}
+      ${money.fines ? row('Fines & damage', taka(-money.fines), 'out') : ''}
+      ${row('Driver + helper wages', taka(-money.wages), 'out')}
+      ${row('Trip profit', taka(money.profit), `total ${money.profit >= 0 ? 'in' : 'out'}`)}
+      ${row('Company bank', taka(money.balance), 'bank')}
+    </div>`;
+    } else {
+      html += `<div class="arr-col"><div class="arr-h">Money</div>
+      ${row('Toll + diesel', taka(st.fuelCost + st.tollCost))}${row('Fines', taka(st.fines))}
+      ${st.pax ? row('Fares collected', taka(st.pax.fares)) : ''}</div>`;
+    }
+    $('arrival-body').innerHTML = html + '</div>';
+    void fmtDuration;
   }
 }
 
