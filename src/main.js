@@ -7,7 +7,7 @@ import { ROAD, CHUNK, VIEW_CHUNKS, QUALITY, SPEED_LIMIT, TOLL_FEE, DIESEL_PRICE,
 import { buildFacilities } from './world/facilities.js';
 import { buildAICams } from './world/aicams.js';
 import { Mirrors } from './mirrors.js';
-import { resolveImpulse } from './collide.js';
+import { resolveImpulse, obbOverlap } from './collide.js';
 import { loadCustomSkins, openSkinEditor, deleteSkin } from './skins.js';
 import { setMaxAnisotropy, makeCanvas, toBn } from './textures.js';
 import { SkySystem, TIMES, TIME_ORDER } from './world/sky.js';
@@ -255,23 +255,24 @@ function constrain(dt) {
     }
   }
   // solid objects: toll islands & gates, fuel-station pillars, pumps and shop
+  // The bus is tested as a rotated box in (d, s) space. (An axis-aligned box around an angled bus is far
+  // wider than the bus, so turning into a fuel-station lane used to catch pillars and pumps it never touched,
+  // and the nose-on stop left the bus jammed with no speed to steer away.)
   for (const o of facilities.obstacles) {
     if (o.gate && o.gate.open > 0.55) continue;
-    const ds0 = s + halfAlong - o.s0, ds1 = o.s1 - (s - halfAlong);
-    if (ds0 <= 0 || ds1 <= 0) continue;
-    const dd0 = d + halfAcross - o.d0, dd1 = o.d1 - (d - halfAcross);
-    if (dd0 <= 0 || dd1 <= 0) continue;
-    const pens = [[ds0, 0, -1], [ds1, 0, 1], [dd0, 1, -1], [dd1, 1, 1]].sort((x, y) => x[0] - y[0]);
-    const [amt, axis, sg] = pens[0];
-    let impact;
-    if (axis === 0) {
-      phys.pos.x += tx * amt * sg; phys.pos.z += tz * amt * sg; s += amt * sg;
-      impact = Math.abs(phys.v);
-      phys.v = 0;
-    } else {
-      phys.pos.x += -tz * amt * sg; phys.pos.z += tx * amt * sg; d += amt * sg;
-      impact = Math.abs(phys.v * Math.sin(rel));
-      phys.v *= 0.8;
+    if (s + halfAlong < o.s0 || s - halfAlong > o.s1 || d + halfAcross < o.d0 || d - halfAcross > o.d1) continue;
+    const n = obbOverlap({ x: d, z: s, yaw: -rel, hw: spec.W / 2, hl: spec.L / 2 },
+      { x: (o.d0 + o.d1) / 2, z: (o.s0 + o.s1) / 2, yaw: 0, hw: (o.d1 - o.d0) / 2, hl: (o.s1 - o.s0) / 2 });
+    if (!n) continue;
+    const ds = n.depth * n.nz, dd = n.depth * n.nx;          // push the bus out along the contact normal
+    phys.pos.x += tx * ds - tz * dd; phys.pos.z += tz * ds + tx * dd;
+    s += ds; d += dd;
+    // how much of the bus's heading points into the obstacle: nose-on stops it, a glancing touch only scrapes
+    const fn = Math.cos(rel) * n.nz - Math.sin(rel) * n.nx;
+    let impact = 0;
+    if (phys.v * fn < 0) {
+      impact = Math.abs(phys.v * fn);
+      phys.v = Math.abs(fn) > 0.8 ? 0 : phys.v * (1 - Math.abs(fn));
     }
     wallHit(impact, o.gate ? 'Hit the toll barrier! Stop before the gate and wait.' : 'Crashed into a concrete island!');
   }

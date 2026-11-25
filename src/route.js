@@ -103,6 +103,13 @@ export class Route {
       while (this.bridgeAt(u) || this.bridgeAt(u + 200) || this.bridgeAt(u - 200) || Math.abs(u - this.tollS) < 300) u += 150;
       this.uturns.push({ s: u, s0: u - UTURN_GAP / 2, s1: u + UTURN_GAP / 2 });
     }
+    // a median opening in front of every filling station, so buses on the far carriageway can cross in
+    // (and back out again after refuelling); skip it where a U-turn already opens onto the forecourt
+    for (const st of this.stations) {
+      if (this.uturns.some((u) => u.s1 > st.s0 && u.s0 < st.s1)) continue;
+      this.uturns.push({ s: st.sc, s0: st.sc - UTURN_GAP / 2, s1: st.sc + UTURN_GAP / 2, station: true });
+    }
+    this.uturns.sort((a, b) => a.s - b.s);
 
     // hills / sea ranges
     const hillStart = this.places.find((p) => p.hills);
