@@ -514,8 +514,9 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     divider.position.y = -mh * 0.18;
     head.add(divider);
     if (op.mirrorTip) {
-      const tip = new THREE.Mesh(new RoundedBoxGeometry(mw + 0.01, mh * 0.4, 0.11, 2, 0.04), new THREE.MeshStandardMaterial({ color: op.mirrorTip, roughness: 0.4 }));
-      tip.position.y = -mh * 0.3;
+      // coloured tip on the housing only: set back so its face stays behind the glass (z 0.052)
+      const tip = new THREE.Mesh(new RoundedBoxGeometry(mw + 0.01, mh * 0.4, 0.1, 2, 0.04), new THREE.MeshStandardMaterial({ color: op.mirrorTip, roughness: 0.4 }));
+      tip.position.set(0, -mh * 0.3, -0.014);
       head.add(tip);
     }
     const mg = new THREE.Mesh(new THREE.PlaneGeometry(mw - 0.06, mh - 0.08), M.mirror);
