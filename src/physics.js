@@ -120,14 +120,18 @@ export class BusPhysics {
     } else this.v = 0;
     this.lonAcc = (this.v - v0) / Math.max(dt, 1e-4);
 
-    // steering: speed sensitive limit and rate
-    // speed-sensitive lock: never more than ~5 m/s² of cornering, like a real loaded bus
-    const maxSteer = Math.min(0.62 / (1 + (speed / 14) ** 2), Math.atan((5.0 * this.wheelbase) / Math.max(1, speed * speed)));
+    // steering: speed-sensitive lock sized so full lock always gives ~6 m/s² of cornering
+    // (about 0.6 g, what a coach on good tyres can hold). Before, a grip cap and an extra
+    // understeer factor stacked up to only ~3 m/s² at 90 km/h, so curves and quick
+    // overtakes could not be made.
+    const under = 1 / (1 + (speed / 40) ** 2 * 0.5);
+    const A_MAX = 6.0;
+    const maxSteer = Math.min(0.62 / (1 + (speed / 14) ** 2), Math.atan((A_MAX * this.wheelbase) / Math.max(1, speed * speed * under)));
+    this.maxSteer = maxSteer;
     const target = input.steer * maxSteer;
-    const rate = (input.steer === 0 ? 2.4 : 1.6) * (1 / (1 + speed / 20)) + 0.4;
+    const rate = (input.steer === 0 ? 2.4 : 1.8) * (1 / (1 + speed / 25)) + 0.5;
     this.steer += THREE.MathUtils.clamp(target - this.steer, -rate * dt, rate * dt);
 
-    const under = 1 / (1 + (speed / 32) ** 2 * 0.8);
     const yawRate = (this.v * Math.tan(this.steer) * under) / this.wheelbase;
     this.yaw += yawRate * dt;
     this.latAcc = this.v * yawRate;

@@ -372,7 +372,9 @@ function placeBusModel(dt) {
   bus.pivot.rotation.set(phys.pitch, 0, phys.roll);
   for (const w of bus.wheels.front) w.rotation.y = phys.steer;
   for (const w of bus.wheels.all) w.rotation.x = phys.wheelSpin;
-  if (bus.steeringWheel) bus.steeringWheel.rotation.z = phys.steer * 18;
+  // the wheel turns with how hard you steer: a real coach has a slower ratio at speed, but a tiny
+  // wheel movement looks unresponsive, so the visual ratio grows with speed
+  if (bus.steeringWheel) bus.steeringWheel.rotation.z = THREE.MathUtils.clamp(phys.steer * 18 * (1 + Math.abs(phys.v) / 12), -2.7, 2.7);
   if (bus.fan) bus.fan.rotation.z += 0.9;
   if (bus.gearLever) {
     // H-pattern: 1/2 left, 3/4 middle, 5/6 right, R far left-forward

@@ -53,14 +53,18 @@ export class Route {
       this.px[i] = dense[j].x + (dense[j + 1].x - dense[j].x) * f;
       this.pz[i] = dense[j].z + (dense[j + 1].z - dense[j].z) * f;
     }
-    for (let i = 0; i < N; i++) {
-      const a = Math.max(0, i - 2), b = Math.min(N - 1, i + 2);
+    // Squeezing the real N1 to 1:12 leaves some hairpin-tight bends (down to ~70 m radius) that
+    // no bus could take at highway speed. Smooth the centreline (Gaussian, ~±90 m) and resample.
+    this.smoothCentreline(150, 3);
+    const N2 = this.N;
+    for (let i = 0; i < N2; i++) {
+      const a = Math.max(0, i - 2), b = Math.min(N2 - 1, i + 2);
       const dx = this.px[b] - this.px[a], dz = this.pz[b] - this.pz[a];
       const l = Math.hypot(dx, dz) || 1;
       this.tx[i] = dx / l;
       this.tz[i] = dz / l;
     }
-    this.length = (N - 1) * this.DS;
+    this.length = (N2 - 1) * this.DS;
 
     // places along the road
     this.bridges = [];
@@ -174,6 +178,42 @@ export class Route {
   uturnAt(s) {
     for (const u of this.uturns) if (s > u.s0 && s < u.s1) return u;
     return null;
+  }
+
+  smoothCentreline(r, passes) {
+    const w = [];
+    for (let k = -r; k <= r; k++) w.push(Math.exp(-(k * k) / (2 * (r / 3) ** 2)));
+    let X = this.px, Z = this.pz;
+    const n = X.length;
+    for (let pass = 0; pass < passes; pass++) {
+      const nx = new Float64Array(n), nz = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        let sx = 0, sz = 0, sw = 0;
+        for (let k = -r; k <= r; k++) {
+          const j = i + k;
+          if (j < 0 || j >= n) continue;          // ends keep their position
+          const g = w[k + r];
+          sx += X[j] * g; sz += Z[j] * g; sw += g;
+        }
+        nx[i] = sx / sw; nz[i] = sz / sw;
+      }
+      X = nx; Z = nz;
+    }
+    // resample at the original spacing
+    const cum = [0];
+    for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(X[i] - X[i - 1], Z[i] - Z[i - 1]));
+    const N = Math.floor(cum[n - 1] / this.DS) + 1;
+    this.px = new Float64Array(N); this.pz = new Float64Array(N);
+    this.tx = new Float64Array(N); this.tz = new Float64Array(N);
+    let j = 0;
+    for (let i = 0; i < N; i++) {
+      const s = i * this.DS;
+      while (j < n - 2 && cum[j + 1] < s) j++;
+      const f = (s - cum[j]) / Math.max(1e-6, cum[j + 1] - cum[j]);
+      this.px[i] = X[j] + (X[j + 1] - X[j]) * f;
+      this.pz[i] = Z[j] + (Z[j + 1] - Z[j]) * f;
+    }
+    this.N = N;
   }
 
   stationAt(s, d) {

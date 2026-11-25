@@ -328,6 +328,9 @@ export function buildFacilities(route, scene, chunks) {
     chunks.register(mesh, (a + b) / 2, (b - a) / 2 + 50);
   }
 
+  // ------------------------------------------------------------ curve warnings + chevrons
+  buildCurveSigns(route, scene, chunks);
+
   // ------------------------------------------------------------ rest stops (highway restaurants)
   route.rests.forEach((r, ri) => buildRestStop(route, scene, chunks, obstacles, mats, r, ri));
 
@@ -344,6 +347,69 @@ export function buildFacilities(route, scene, chunks) {
       }
     },
   };
+}
+
+// yellow chevron board / curve warning; dir = +1 arrow points right, -1 left (as the driver sees it)
+const chevTex = {}, warnTex = {};
+function chevronTexture(dir) {
+  return chevTex[dir] ||= textPanel(256, 320, '#ffd400', (x, w, h) => {
+    x.fillStyle = '#111';
+    for (const cx of [-45, 45]) {
+      const bx = w / 2 + cx * dir;
+      x.beginPath();
+      x.moveTo(bx - dir * 40, 50); x.lineTo(bx + dir * 30, h / 2); x.lineTo(bx - dir * 40, h - 50);
+      x.lineTo(bx - dir * 5, h - 50); x.lineTo(bx + dir * 65, h / 2); x.lineTo(bx - dir * 5, 50);
+      x.closePath(); x.fill();
+    }
+  });
+}
+function curveWarnTexture(dir) {
+  return warnTex[dir] ||= textPanel(512, 512, '#f4f4f4', (x, w) => {
+    x.save(); x.translate(w / 2, w / 2); x.rotate(Math.PI / 4);
+    x.fillStyle = '#111'; x.fillRect(-170, -170, 340, 340);
+    x.fillStyle = '#ffd400'; x.fillRect(-155, -155, 310, 310);
+    x.restore();
+    x.strokeStyle = '#111'; x.lineWidth = 34; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(w / 2 - dir * 10, 360); x.lineTo(w / 2 - dir * 10, 250); x.quadraticCurveTo(w / 2 - dir * 10, 180, w / 2 + dir * 70, 170); x.stroke();
+    x.fillStyle = '#111'; x.beginPath(); x.moveTo(w / 2 + dir * 120, 170); x.lineTo(w / 2 + dir * 60, 125); x.lineTo(w / 2 + dir * 60, 215); x.fill();
+    x.font = `bold 44px ${BN_FONT}`; x.fillText('বিপজ্জনক বাঁক', w / 2, 440);
+  });
+}
+
+// chevrons on the outside of every bend tighter than ~600 m, and a warning sign 200 m before it
+function buildCurveSigns(route, scene, chunks) {
+  const R = (s) => { let dy = route.yawAt(s + 15) - route.yawAt(s - 15); dy = Math.atan2(Math.sin(dy), Math.cos(dy)); return 30 / Math.max(1e-6, Math.abs(dy)); };
+  const bends = [];
+  let cur = null;
+  for (let s = 200; s < route.length - 200; s += 10) {
+    if (R(s) < 600) { if (!cur) cur = { a: s, b: s, min: 1e9, at: s }; cur.b = s; const r = R(s); if (r < cur.min) { cur.min = r; cur.at = s; } }
+    else if (cur) { bends.push(cur); cur = null; }
+  }
+  if (cur) bends.push(cur);
+  const busy = (s) => route.bridgeAt(s) || route.uturnAt(s) || Math.abs(s - route.tollS) < 150 ||
+    [...route.stations, ...route.rests].some((st) => s > st.s0 - 30 && s < st.s1 + 30);
+  for (const bend of bends) {
+    // which side is the inside of the bend: the side whose offset point is closer to a point further along
+    const ahead = route.pointAt(bend.at + 40, 0), pL = route.pointAt(bend.at, 20), pR = route.pointAt(bend.at, -20);
+    const inside = Math.hypot(pL.x - ahead.x, pL.z - ahead.z) < Math.hypot(pR.x - ahead.x, pR.z - ahead.z) ? 1 : -1;
+    const grp = new THREE.Group();
+    for (const c of [-1, 1]) {                  // each carriageway; side -1 drives towards larger s
+      const dirS = c < 0 ? 1 : -1;
+      // +d is the driver's right on side -1, his left on side +1
+      const arrow = inside * (c < 0 ? 1 : -1);
+      const outerD = inside === c ? c * (ROAD.median - 0.45) : c * (ROAD.half + 1.2);   // outside edge of this carriageway
+      const n = Math.min(8, Math.max(3, Math.round((bend.b - bend.a) / 35)));
+      for (let k = 0; k < n; k++) {
+        const s = bend.a + ((bend.b - bend.a) * (k + 0.5)) / n;
+        if (busy(s)) continue;
+        addSign(grp, null, route, s, outerD, c > 0, chevronTexture(arrow), 0.8, 1.0, 0.8);
+      }
+      const ws = (dirS > 0 ? bend.a : bend.b) - dirS * 200;
+      if (!busy(ws)) addSign(grp, null, route, ws, c * (ROAD.half + 2), c > 0, curveWarnTexture(arrow), 1.5, 1.5, 1.6);
+    }
+    scene.add(grp);
+    chunks.register(grp, (bend.a + bend.b) / 2, (bend.b - bend.a) / 2 + 300);
+  }
 }
 
 // restaurant front: two floors, shop windows below, balcony windows above
