@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ROAD, CHUNK } from '../config.js';
+import { ROAD, CHUNK, PLAZA } from '../config.js';
 import {
   rng, paddyTexture, PADDY_TILE, grassTexture, facadeTexture, FACADE_BAY, FACADE_HEIGHT, FLOOR_H, tinTexture,
   shopSignTexture, SHOP_COUNT, billboardTexture, BILLBOARD_COUNT, directionSignTexture, placeSignTexture,
@@ -218,7 +218,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
     const B = new Batch();
     const validAt = (s, d, x, z, margin = 4) => {
       const pr = route.project(x, z, Math.round(s / route.DS));
-      if (Math.abs(pr.d) < ROAD.toe + margin) return false;
+      if (Math.abs(pr.d) < route.halfAt(pr.s) + ROAD.embank + margin) return false;
       if (nearStation(pr.s, pr.d, 15)) return false;
       if (rivers.length && inWater(x, z, margin)) return false;
       return true;
@@ -319,7 +319,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
     let prev = null;
     for (let s = s0; s < s1; s += 45) {
       const d = -(ROAD.toe + 3.5);
-      if (route.bridgeAt(s) || nearStation(s, d, 10)) { prev = null; continue; }
+      if (route.bridgeAt(s) || nearStation(s, d, 10) || route.plazaW(s) > 0) { prev = null; continue; }
       route.pointAt(s, d, p);
       p.y = 0;
       q.setFromAxisAngle(UP, route.yawAt(s) + Math.PI / 2);
@@ -385,8 +385,8 @@ export function buildScenery(route, scene, chunks, quality, water) {
       // town ground
       for (const side of [-1, 1]) {
         const cols = side < 0
-          ? [{ d: -(ROAD.toe + 70), y: () => 0.05, u: 0 }, { d: -ROAD.toe + 0.5, y: () => 0.05, u: 6 }]
-          : [{ d: ROAD.toe - 0.5, y: () => 0.05, u: 0 }, { d: ROAD.toe + 70, y: () => 0.05, u: 6 }];
+          ? [{ d: (x) => -(route.halfAt(x) + ROAD.embank + 70), y: () => 0.05, u: 0 }, { d: (x) => -(route.halfAt(x) + ROAD.embank) + 0.5, y: () => 0.05, u: 6 }]
+          : [{ d: (x) => route.halfAt(x) + ROAD.embank - 0.5, y: () => 0.05, u: 0 }, { d: (x) => route.halfAt(x) + ROAD.embank + 70, y: () => 0.05, u: 6 }];
         const tg = new THREE.Mesh(ribbon(route, a, b, 8, cols, 12), mats.town);
         tg.receiveShadow = true;
         group.add(tg);
@@ -395,7 +395,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
         let s = a + r() * 6;
         let counterDone = 0;
         while (s < b) {
-          if (route.bridgeAt(s) || nearStation(s, side * 20, 5)) { s += 20; continue; }
+          if (route.bridgeAt(s) || nearStation(s, side * 20, 5) || route.plazaW(s) > 0 || route.plazaW(s + 16) > 0) { s += 20; continue; }   // no shops on the toll apron
           const w = 7 + r() * 8;
           const floors = big ? 3 + Math.floor(r() * 6) : 2 + Math.floor(r() * 3);
           const h = floors * FLOOR_H + 0.4;
@@ -446,7 +446,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
       }
       // median street lights
       for (let s = a; s < b; s += 36) {
-        if (route.uturnAt(s) || route.uturnAt(s + 3) || route.uturnAt(s - 3)) continue;
+        if (route.uturnAt(s) || route.uturnAt(s + 3) || route.uturnAt(s - 3) || Math.abs(s - route.tollS) < 12) continue;
         route.pointAt(s, 0, p);
         const h0 = route.roadHeight(s) + 0.27;
         B.add('metal', new THREE.CylinderGeometry(0.08, 0.12, 9, 6).translate(p.x, h0 + 4.5, p.z));
@@ -469,7 +469,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
       if (route.bridgeAt(s) || s < 30) continue;
       const km = Math.round(route.realKm(route.length) - route.realKm(s));
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.9, 0.16), new THREE.MeshStandardMaterial({ map: kmPostTexture(km), roughness: 0.7 }));
-      route.pointAt(s, -(ROAD.half + 0.6), post.position);
+      route.pointAt(s, -(route.halfAt(s) + 0.6), post.position);
       post.position.y = route.roadHeight(s) + 0.2;
       post.rotation.y = route.yawAt(s) + Math.PI;
       post.castShadow = true;
@@ -481,7 +481,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
       if (!town(s) && !route.bridgeAt(s)) {
         const side = r() < 0.5 ? -1 : 1;
         const bb = new THREE.Group();
-        route.pointAt(s, side * (ROAD.toe + 12), p);
+        route.pointAt(s, side * (route.halfAt(s) + ROAD.embank + 12), p);
         bb.position.set(p.x, 0, p.z);
         bb.rotation.y = route.yawAt(s) + Math.PI + side * -0.35 + (side > 0 ? 0 : 0);
         const panel = new THREE.Mesh(new THREE.PlaneGeometry(12, 6), mats.billboards[Math.floor(r() * BILLBOARD_COUNT)]);
@@ -595,7 +595,7 @@ function buildSigns(route, scene, chunks, mats) {
   const items = [];
   // direction signs every ~3 km game distance
   for (let s = 400; s < L - 300; s += 1900) {
-    if (route.bridgeAt(s) || route.bridgeAt(s + 20)) s += 300;
+    if (route.bridgeAt(s) || route.bridgeAt(s + 20) || Math.abs(s - route.tollS) < PLAZA.reach + 70) s += 300;
     const ahead = majors.filter((p) => p.s > s + 200).slice(0, 2);
     const lines = ahead.map((p) => [p.bn.split(' (')[0], p.en.split(' (')[0], kmTo(s, p)]);
     if (!lines.length || lines[lines.length - 1][1] !== end.en.split(' (')[0]) lines.push([end.bn.split(' (')[0], end.en.split(' (')[0], kmTo(s, end)]);

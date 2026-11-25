@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ROAD } from './config.js';
+import { ROAD, PLAZA } from './config.js';
 import { buildBus, BUS_TYPES, setBusLights } from './busModel.js';
 import { buildTruck, buildCar, buildMicrobus, buildCNG, setVehicleLights } from './trafficModels.js';
 import { OPERATORS } from './operators.js';
@@ -93,7 +93,7 @@ export class Traffic {
     v.sig = 0;            // indicator: -1 left, +1 right (relative to the vehicle)
     v.keepT = 0;          // time the left lane has been clear while sitting in the fast lane
     v.flashT = -1; v.flashCool = 0; v.stuckT = 0;
-    v.tollPaid = false; v.tollWait = 0; v.yieldT = 0;
+    v.tollPaid = false; v.tollWait = 0; v.yieldT = 0; v.booth = null;
     v.prevS = v.s;   // so a respawn never counts as passing a camera
   }
 
@@ -167,6 +167,9 @@ export class Traffic {
         }
       }
       if (tollDist < -30) v.tollPaid = false;
+      // pick a booth as the road starts to fan out; after the islands, merge back into the lanes
+      if (v.booth === null && tollDist > 25 && tollDist < PLAZA.reach + 60) v.booth = this.pickBooth(v);
+      if (v.booth !== null && tollDist < -(PLAZA.islandLen / 2 + v.len / 2)) v.booth = null;
       const nearToll = Math.abs(v.s - route.tollS) < TOLL_NO_CHANGE;
 
       // let the player in when they signal into our lane
@@ -246,13 +249,19 @@ export class Traffic {
       }
 
       // ---- sideways motion: eases in and out like a real lane change ----
-      let tD = v.targetD;
-      if (Math.abs(v.s - route.tollS) < 45) tD = Math.sign(tD) * (this.isFast(tD) ? TOLL.laneFast : TOLL.laneSlow);
-      const want = THREE.MathUtils.clamp((tD - v.d) * 0.9, -v.K.lat, v.K.lat);
-      const latAcc = 0.7 * dt;
+      let tD = v.booth !== null ? -v.dir * PLAZA.laneC(v.booth) : v.targetD;
+      // never steer off the apron while it narrows again
+      const room = route.halfAt(v.s + v.dir * 10) - v.wid / 2 - 0.9;
+      tD = THREE.MathUtils.clamp(tD, -room, room);
+      // slow manoeuvring across the wide apron: allow a sharper sideways move
+      const latMax = v.K.lat * (route.plazaW(v.s) > 0 ? 1.8 : 1);
+      const want = THREE.MathUtils.clamp((tD - v.d) * 0.9, -latMax, latMax);
+      const latAcc = (route.plazaW(v.s) > 0 ? 1.2 : 0.7) * dt;
       v.lv += THREE.MathUtils.clamp(want - v.lv, -latAcc, latAcc);
       if (Math.abs(tD - v.d) < 0.02 && Math.abs(v.lv) < 0.05) { v.d = tD; v.lv = 0; }
       v.d += v.lv * dt;
+      const edge = route.halfAt(v.s) - v.wid / 2 - 0.3;      // the apron narrows after the booths: stay on it
+      if (Math.abs(v.d) > edge) { v.d = Math.sign(v.d) * edge; v.lv = 0; }
       v.prevS = v.s;
       v.s += v.v * v.dir * dt;
 
@@ -315,6 +324,20 @@ export class Traffic {
     const pSame = (player.side < 0) === (v.dir > 0);
     if (player.box && (pSame ? pds > 0 && pds < 110 : pds > 0 && pds < 260)) return false;
     return true;
+  }
+
+  // the booth with the shortest queue, not too far across from where we are
+  pickBooth(v) {
+    const n = PLAZA.booths, q = new Array(n).fill(0);
+    for (const o of this.list) if (o !== v && o.dir === v.dir && o.booth !== null && !o.tollPaid) q[o.booth]++;
+    const slowKind = v.K.kind === 'truck' || v.K.kind === 'cng';
+    let best = 0, bc = 1e9;
+    for (let i = 0; i < n; i++) {
+      const cross = Math.abs(PLAZA.laneC(i) - Math.abs(v.d));
+      const c = q[i] * 16 + cross * 0.7 + (slowKind ? (n - 1 - i) * 2 : 0) + this.r() * 4;
+      if (c < bc) { bc = c; best = i; }
+    }
+    return best;
   }
 
   nearestGate(v) {

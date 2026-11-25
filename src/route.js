@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { REST_STOPS, WAYPOINTS, MAP_SCALE, ROAD, REAL_ROUTE_KM, FUEL_STATIONS, UTURN_SPACING, UTURN_GAP } from './config.js';
+import { REST_STOPS, WAYPOINTS, MAP_SCALE, ROAD, REAL_ROUTE_KM, FUEL_STATIONS, UTURN_SPACING, UTURN_GAP, PLAZA } from './config.js';
 
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
@@ -237,6 +237,15 @@ export class Route {
     return null;
   }
 
+  // 0..1: how far the road has widened for the toll plaza at s
+  plazaW(s) {
+    if (this.tollS === undefined) return 0;   // still building the route
+    const x = Math.abs(s - this.tollS);
+    return x <= PLAZA.flat ? 1 : x >= PLAZA.reach ? 0 : smooth(1 - (x - PLAZA.flat) / PLAZA.taper);
+  }
+  // paved half-width of the carriageway pair at s (wider at the toll plaza)
+  halfAt(s) { return ROAD.half + (PLAZA.half - ROAD.half) * this.plazaW(s); }
+
   // road surface height (centreline, with bridge ramps)
   roadHeight(s) {
     let h = ROAD.baseHeight;
@@ -252,10 +261,11 @@ export class Route {
   heightAt(s, d) {
     const h = this.roadHeight(s);
     const ad = Math.abs(d);
-    if (ad <= ROAD.half) return h;
+    const half = this.halfAt(s);
+    if (ad <= half) return h;
     if (this.bridgeAt(s)) return h; // off the deck there is nothing, the walls keep you on
     if (this.paved(s, d)) return h; // paved forecourt / rest-stop lot
-    const t = (ad - ROAD.half) / ROAD.embank;
+    const t = (ad - half) / ROAD.embank;
     return t >= 1 ? 0 : h * (1 - t);
   }
 

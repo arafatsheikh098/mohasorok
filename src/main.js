@@ -278,7 +278,7 @@ function constrain(dt) {
   // ends of the route
   if (s < 3) { phys.pos.x += tx * (3 - s); phys.pos.z += tz * (3 - s); s = 3; }
   if (s > route.length - 3) { const m = s - (route.length - 3); phys.pos.x -= tx * m; phys.pos.z -= tz * m; s = route.length - 3; }
-  phys.offroad = Math.abs(d) > ROAD.half + 0.6 && !route.paved(s, d) ? 1 : 0;
+  phys.offroad = Math.abs(d) > route.halfAt(s) + 0.6 && !route.paved(s, d) ? 1 : 0;
   player.s = s; player.d = d; player.v = phys.v;
   player.vs = phys.v * Math.cos(rel);
   player.heading = Math.cos(rel) >= 0 ? 1 : -1;

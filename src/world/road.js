@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ROAD, CHUNK } from '../config.js';
+import { ROAD, CHUNK, PLAZA } from '../config.js';
 import {
   asphaltTexture, grassTexture, curbTexture, concreteTexture, waterNormalTexture, ASPHALT_TILE,
   makeCanvas, canvasTexture, BN_FONT, EN_FONT,
@@ -21,7 +21,7 @@ export function ribbon(route, s0, s1, step, cols, vScale) {
     const h = route.roadHeight(s);
     for (let j = 0; j < nc; j++) {
       const c = cols[j];
-      route.pointAt(s, c.d, tmp);
+      route.pointAt(s, typeof c.d === 'function' ? c.d(s) : c.d, tmp);
       const k = i * nc + j;
       pos[k * 3] = tmp.x;
       pos[k * 3 + 1] = c.y(s, h);
@@ -54,6 +54,7 @@ export function buildRoad(route, scene, chunks) {
     curb: new THREE.MeshStandardMaterial({ map: curbTexture(), roughness: 0.8 }),
     concrete: new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.85 }),
     bridgeConcrete: new THREE.MeshStandardMaterial({ map: concreteTexture(9, '#b9b5aa'), roughness: 0.8 }),
+    plaza: new THREE.MeshStandardMaterial({ map: concreteTexture(4, '#a9aaa6'), roughness: 0.85 }),
   };
   const M = ROAD.median, H = ROAD.half, T = ROAD.toe;
   const asphaltCols = (side) => side < 0
@@ -67,9 +68,15 @@ export function buildRoad(route, scene, chunks) {
     [{ d: M - 0.12, y: R(0.27), u: 0 }, { d: M, y: R(0.25), u: 0.3 }, { d: M, y: R(0), u: 0.6 }],
   ];
   const embank = [
-    [{ d: -T, y: G(0), u: 0 }, { d: -H, y: R(0), u: 2 }],
-    [{ d: H, y: R(0), u: 0 }, { d: T, y: G(0), u: 2 }],
+    [{ d: (s) => -route.halfAt(s) - ROAD.embank, y: G(0), u: 0 }, { d: (s) => -route.halfAt(s), y: R(0), u: 2 }],
+    [{ d: (s) => route.halfAt(s), y: R(0), u: 0 }, { d: (s) => route.halfAt(s) + ROAD.embank, y: G(0), u: 2 }],
   ];
+  void T;
+  // toll plaza apron: concrete, as wide as the plaza needs (route.halfAt)
+  const plaza = route.tollS > 0 ? [{ s0: route.tollS - PLAZA.reach, s1: route.tollS + PLAZA.reach }] : [];
+  const plazaCols = (side) => side < 0
+    ? [{ d: (s) => -route.halfAt(s), y: R(0), u: 0 }, { d: -M, y: R(0), u: 3 }]
+    : [{ d: M, y: R(0), u: 0 }, { d: (s) => route.halfAt(s), y: R(0), u: 3 }];
 
   const n = Math.ceil(route.length / CHUNK);
   for (let c = 0; c < n; c++) {
@@ -81,7 +88,11 @@ export function buildRoad(route, scene, chunks) {
       m.castShadow = shadow;
       group.add(m);
     };
-    for (const side of [-1, 1]) add(ribbon(route, s0, s1, 4, asphaltCols(side), ASPHALT_TILE), mats.asphalt);
+    for (const [a, b] of splitAround(plaza, s0, s1)) for (const side of [-1, 1]) add(ribbon(route, a, b, 4, asphaltCols(side), ASPHALT_TILE), mats.asphalt);
+    for (const pz of plaza) {
+      if (pz.s1 <= s0 || pz.s0 >= s1) continue;
+      for (const side of [-1, 1]) add(ribbon(route, Math.max(s0, pz.s0), Math.min(s1, pz.s1), 2, plazaCols(side), 6), mats.plaza);
+    }
     // median (with openings for U-turns, paved inside the gap)
     for (const [a, b] of splitAround(route.uturns, s0, s1)) {
       add(ribbon(route, a, b, 4, medianTop, 3), mats.median);

@@ -2,15 +2,15 @@
 // Everything solid is also returned as (s, d) rectangles so the bus can collide with it.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { ROAD, TOLL_FEE, DIESEL_PRICE } from '../config.js';
+import { ROAD, TOLL_FEE, DIESEL_PRICE, PLAZA } from '../config.js';
 import { makeCanvas, canvasTexture, concreteTexture, grassTexture, curbTexture, BN_FONT, EN_FONT, toBn } from '../textures.js';
 import { ribbon } from './road.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildBus } from '../busModel.js';
 import { OPERATORS } from '../operators.js';
 
-// toll lane geometry (|d| values); the plaza uses the paved shoulder so lanes are wider
-export const TOLL = { islandA: 6.0, islandB: 10.3, islandW: 0.6, laneFast: 3.65, laneSlow: 8.15, half: 10, gateOff: 5 };
+// barrier sits gateOff metres past the booth line (towards the exit)
+export const TOLL = { gateOff: 5 };
 
 const R = (dy) => (s, h) => h + dy;
 const G = (y) => () => y;
@@ -20,6 +20,12 @@ function textPanel(w, h, bg, draw) {
   x.fillStyle = bg; x.fillRect(0, 0, w, h);
   x.textAlign = 'center'; x.textBaseline = 'middle';
   draw(x, w, h);
+  return canvasTexture(c, { repeat: false });
+}
+
+function drumTexture() {
+  const [c, x] = makeCanvas(32, 128);
+  for (let i = 0; i < 4; i++) { x.fillStyle = i % 2 ? '#ffd400' : '#d32f2f'; x.fillRect(0, i * 32, 32, 32); }
   return canvasTexture(c, { repeat: false });
 }
 
@@ -51,72 +57,110 @@ export function buildFacilities(route, scene, chunks) {
     grp.position.set(p.x, h, p.z);
     grp.rotation.y = route.yawAt(sT);
     const X = (d) => -d; // local x = -d
-    const W = (ROAD.half + 1.5) * 2;
-    const canopy = new THREE.Mesh(new RoundedBoxGeometry(W, 1.1, 15, 2, 0.2), new THREE.MeshStandardMaterial({ color: 0x1f5fa8, roughness: 0.45, metalness: 0.3 }));
+    const W = (PLAZA.half + 1.2) * 2;
+    const canopy = new THREE.Mesh(new RoundedBoxGeometry(W, 1.1, 15, 2, 0.2), new THREE.MeshStandardMaterial({ color: 0xe8ecef, roughness: 0.45, metalness: 0.3 }));
     canopy.position.y = 7.2; canopy.castShadow = true;
     grp.add(canopy);
     const signTex = textPanel(2048, 150, '#1f5fa8', (x, w, hh) => {
       x.fillStyle = '#fff'; x.font = `bold 92px ${BN_FONT}`; x.fillText('মেঘনা–গোমতী সেতু টোল প্লাজা', w * 0.38, hh / 2 + 4);
       x.font = `bold 60px ${EN_FONT}`; x.fillText(`TOLL PLAZA · BUS ৳${TOLL_FEE}`, w * 0.82, hh / 2 + 2);
     });
-    for (const z of [7.52, -7.52]) {
-      const sg = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.6, 1.0), new THREE.MeshBasicMaterial({ map: signTex }));
-      sg.position.set(0, 7.2, z);
+    // one name board over each carriageway, on the face the drivers see
+    const span = PLAZA.half - ROAD.median;
+    for (const sd of [-1, 1]) {
+      const sg = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(span - 1, 14), 1.0), new THREE.MeshBasicMaterial({ map: signTex }));
+      const z = sd < 0 ? -7.52 : 7.52;      // traffic on the left carriageway comes from -z
+      sg.position.set(X(sd * (ROAD.median + span / 2)), 7.2, z);
       if (z < 0) sg.rotation.y = Math.PI;
       grp.add(sg);
     }
-    const islandGeo = new THREE.BoxGeometry(TOLL.islandW, 0.25, 22);
-    const boothGeo = new RoundedBoxGeometry(0.9, 2.6, 3, 2, 0.08);
+    const IL = PLAZA.islandLen;
+    const islandGeo = new RoundedBoxGeometry(PLAZA.islandW, 0.25, IL, 2, 0.12);
+    const boothGeo = new RoundedBoxGeometry(1.05, 2.5, 3, 2, 0.08);
+    const boothRoof = new THREE.BoxGeometry(1.35, 0.3, 3.4);
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0xc62828, roughness: 0.5 });
+    const pillarGeo = new THREE.BoxGeometry(0.45, 6.7, 0.45);
+    const drumGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.9, 14);
+    const drumMat = new THREE.MeshStandardMaterial({ map: drumTexture(), roughness: 0.5 });
+    const lineMat = new THREE.MeshStandardMaterial({ color: 0xf2f2ea, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2 });
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xe0b43a, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2 });
     for (const sd of [-1, 1]) {
-      for (const di of [TOLL.islandA, TOLL.islandB]) {
-        const d = sd * di;
+      const dir = sd < 0 ? 1 : -1;          // traffic travels +s on the left (sd=-1), -s on the right
+      const approach = -dir;               // local z of the side vehicles arrive from
+      for (let i = 0; i < PLAZA.booths; i++) {
+        const d = sd * PLAZA.islandC(i);
         const isl = new THREE.Mesh(islandGeo, mats.curb);
         isl.position.set(X(d), 0.12, 0);
         grp.add(isl);
         const booth = new THREE.Mesh(boothGeo, mats.white);
-        booth.position.set(X(d), 1.5, sd < 0 ? -1.5 : 1.5);
+        booth.position.set(X(d), 1.5, approach * 1.2);
         booth.castShadow = true;
-        grp.add(booth);
-        const win = new THREE.Mesh(new THREE.PlaneGeometry(0.02 + 2.2, 1.0), mats.glass);
-        win.rotation.y = Math.PI / 2 * (d < 0 ? 1 : -1);
-        win.position.set(X(d) + (d < 0 ? 0.46 : -0.46), 1.8, booth.position.z);
-        grp.add(win);
+        const roof = new THREE.Mesh(boothRoof, roofMat);
+        roof.position.set(X(d), 2.9, approach * 1.2);
+        grp.add(booth, roof);
+        for (const sx of [-1, 1]) {      // a window on both sides: the booth serves the lanes either side
+          const win = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.0), mats.glass);
+          win.rotation.y = (Math.PI / 2) * sx;
+          win.position.set(X(d) + sx * 0.54, 1.8, booth.position.z);
+          grp.add(win);
+        }
         for (const z of [-6.5, 6.5]) {
-          const pil = new THREE.Mesh(new THREE.BoxGeometry(0.45, 6.7, 0.45), mats.concrete);
+          const pil = new THREE.Mesh(pillarGeo, mats.concrete);
           pil.position.set(X(d), 3.6, z);
           grp.add(pil);
         }
-        obstacles.push({ s0: sT - 11, s1: sT + 11, d0: d - TOLL.islandW / 2, d1: d + TOLL.islandW / 2 });
-      }
-      // gates for both lanes of this carriageway; traffic travels +s on the left (sd=-1), -s on the right
-      const dir = sd < 0 ? 1 : -1;
-      const gs = sT + dir * TOLL.gateOff;
-      const lanes = [
-        { c: TOLL.laneFast, from: TOLL.islandA - TOLL.islandW / 2, to: ROAD.median + 0.1 },
-        { c: TOLL.laneSlow, from: TOLL.islandB - TOLL.islandW / 2, to: TOLL.islandA + TOLL.islandW / 2 },
-      ];
-      for (const ln of lanes) {
-        const len = ln.from - ln.to;
+        // striped drum on the nose of the island facing the traffic
+        const drum = new THREE.Mesh(drumGeo, drumMat);
+        drum.position.set(X(d), 0.7, approach * (IL / 2 - 0.4));
+        drum.castShadow = true;
+        grp.add(drum);
+        obstacles.push({ s0: sT - IL / 2, s1: sT + IL / 2, d0: d - PLAZA.islandW / 2, d1: d + PLAZA.islandW / 2 });
+
+        // barrier for booth lane i (between the median/previous island and island i)
+        const gs = sT + dir * TOLL.gateOff;
+        const from = PLAZA.islandC(i) - PLAZA.islandW / 2;
+        const to = i === 0 ? ROAD.median + 0.1 : PLAZA.islandC(i - 1) + PLAZA.islandW / 2;
+        const len = from - to;
         const pivot = new THREE.Group();
-        pivot.position.set(X(sd * ln.from), 1.05, gs - sT);
+        pivot.position.set(X(sd * from), 1.05, gs - sT);
         const post = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.1, 0.3), new THREE.MeshStandardMaterial({ color: 0xffc107, roughness: 0.5 }));
         post.position.y = -0.5;
         pivot.add(post);
         const arm = new THREE.Mesh(new THREE.BoxGeometry(len, 0.09, 0.09), mats.arm);
-        // the arm reaches towards the median
-        arm.position.x = X(sd) * -1 * 0 + (sd < 0 ? -len / 2 : len / 2);
+        arm.position.x = sd < 0 ? -len / 2 : len / 2;      // the arm reaches towards the median
         pivot.add(arm);
         grp.add(pivot);
         const lamp = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2020, emissiveIntensity: 2 });
         const lampMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.1), lamp);
-        lampMesh.position.set(X(sd * ln.c), 6.45, -dir * 7.6);
+        lampMesh.position.set(X(sd * PLAZA.laneC(i)), 6.45, approach * 7.6);
         grp.add(lampMesh);
-        const gate = { s: gs, d: sd * ln.c, dir, side: sd, pivot, lamp, open: 0, openT: 0, holdPlayer: false,
-          openSign: sd < 0 ? -1 : 1, d0: sd < 0 ? -ln.from : ln.to, d1: sd < 0 ? -ln.to : ln.from };
+        const gate = { s: gs, d: sd * PLAZA.laneC(i), dir, side: sd, pivot, lamp, open: 0, openT: 0, holdPlayer: false,
+          openSign: sd < 0 ? -1 : 1, d0: sd < 0 ? -from : to, d1: sd < 0 ? -to : from };
         gates.push(gate);
         obstacles.push({ s0: gs - 0.2, s1: gs + 0.2, d0: gate.d0, d1: gate.d1, gate });
       }
     }
+    // painted lines on the apron: yellow median edge, white outer edge, and the lane lines that fan out to the booths
+    const marks = new THREE.Group();
+    const strip = (d, w, a, b, mat) => {
+      const g = ribbon(route, a, b, 2, [{ d: (x) => d(x) - w / 2, y: R(0.025), u: 0 }, { d: (x) => d(x) + w / 2, y: R(0.025), u: 1 }], 10);
+      marks.add(new THREE.Mesh(g, mat));
+    };
+    const z0 = sT - PLAZA.reach, z1 = sT + PLAZA.reach;
+    const spread = (x) => (route.halfAt(x) - ROAD.median) / (PLAZA.half - ROAD.median);   // 0 = normal road, 1 = full plaza
+    for (const sd of [-1, 1]) {
+      strip(() => sd * (ROAD.median + 0.25), 0.15, z0, z1, yellowMat);
+      strip((x) => sd * (route.halfAt(x) - 0.45), 0.2, z0, z1, lineMat);
+      for (let i = 0; i < PLAZA.booths - 1; i++) {
+        const dl = (x) => sd * (ROAD.median + (PLAZA.islandC(i) - ROAD.median) * spread(x));
+        const far = PLAZA.flat + PLAZA.taper * 0.7;
+        strip(dl, 0.15, sT - far, sT - IL / 2, lineMat);
+        strip(dl, 0.15, sT + IL / 2, sT + far, lineMat);
+      }
+    }
+    marks.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
+    scene.add(marks);
+    chunks.register(marks, sT, PLAZA.reach);
     scene.add(grp);
     chunks.register(grp, sT, 60);
     // advance warning signs

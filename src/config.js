@@ -41,6 +41,15 @@ ROAD.toe = ROAD.half + ROAD.embank;                 // bottom of embankment
 // lane centre offsets for traffic heading TO Chattogram (forward). Oncoming = positive mirror.
 ROAD.laneCenters = [-(ROAD.median + ROAD.lane * 1.5), -(ROAD.median + ROAD.lane * 0.5)]; // [slow(left), fast(right)]
 
+// Toll plaza: the road fans out to a wide concrete apron with a row of booths for ~200 m
+// (40 m full width either side of the booths, 60 m tapers), so queues spread over many lanes.
+export const PLAZA = { booths: 5, laneW: 3.6, islandW: 1.4, flat: 40, taper: 60, apron: 1.0, islandLen: 22 };
+PLAZA.pitch = PLAZA.laneW + PLAZA.islandW;
+PLAZA.laneC = (i) => ROAD.median + PLAZA.laneW / 2 + i * PLAZA.pitch;              // booth lane centre |d|, 0 = by the median
+PLAZA.islandC = (i) => ROAD.median + PLAZA.laneW + PLAZA.islandW / 2 + i * PLAZA.pitch;  // island to the outside of lane i
+PLAZA.half = PLAZA.islandC(PLAZA.booths - 1) + PLAZA.islandW / 2 + PLAZA.apron;  // paved half-width at the booths
+PLAZA.reach = PLAZA.flat + PLAZA.taper;
+
 export const CHUNK = 500;          // scenery chunk length (m of road)
 export const VIEW_CHUNKS = 5;      // chunks visible ahead/behind
 
