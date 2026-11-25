@@ -87,3 +87,10 @@ export const FUEL_STATIONS = [
 ];
 export const UTURN_SPACING = 2300;    // m of game road between median openings
 export const UTURN_GAP = 36;          // length of a median opening
+
+// ---- passengers: roadside bus counters and fares ----
+// towns (WAYPOINTS en names) with a bus counter on both carriageways
+export const BUS_STOPS = ['Kanchpur', 'Mograpara (Sonargaon)', 'Daudkandi', 'Chandina', 'Cumilla', 'Feni (Mohipal)', 'Mirsharai', 'Sitakunda'];
+export const FARE_PER_KM = 2.2;       // ৳ per real km, non-AC intercity (AC buses charge AC_FARE_FACTOR more)
+export const AC_FARE_FACTOR = 1.6;
+export const MIN_FARE = 60;           // ৳, shortest hop

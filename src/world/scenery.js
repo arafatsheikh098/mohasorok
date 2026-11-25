@@ -198,7 +198,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
   const smokes = [];
   const smokeMat = new THREE.SpriteMaterial({ map: smokeTexture(), transparent: true, depthWrite: false, fog: true });
   const town = (s) => route.places.find((p) => p.town && Math.abs(s - p.s) < p.town / 2);
-  const nearStation = (s, d, m = 0) => [...route.stations, ...route.rests].some((st) => s > st.s0 - m - 20 && s < st.s1 + m + 20 && Math.sign(d) === st.side && Math.abs(d) < st.dOut + m + 8);
+  const nearStation = (s, d, m = 0) => [...route.stations, ...route.rests, ...route.terminals].some((st) => s > st.s0 - m - 20 && s < st.s1 + m + 20 && Math.sign(d) === st.side && Math.abs(d) < st.dOut + m + 8);
   const p = new THREE.Vector3();
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), col = new THREE.Color();
   const n = Math.ceil(route.length / CHUNK);
@@ -466,7 +466,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
     // km posts every 5 real km
     const kmStep = (5 / route.realKm(route.length)) * route.length;
     for (let s = Math.ceil(s0 / kmStep) * kmStep; s < s1; s += kmStep) {
-      if (route.bridgeAt(s) || s < 30) continue;
+      if (route.bridgeAt(s) || s < 30 || route.terminalAt(s, -(ROAD.half + 1))) continue;
       const km = Math.round(route.realKm(route.length) - route.realKm(s));
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.9, 0.16), new THREE.MeshStandardMaterial({ map: kmPostTexture(km), roughness: 0.7 }));
       route.pointAt(s, -(route.halfAt(s) + 0.6), post.position);

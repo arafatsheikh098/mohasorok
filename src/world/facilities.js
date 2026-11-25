@@ -8,6 +8,7 @@ import { ribbon } from './road.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildBus } from '../busModel.js';
 import { OPERATORS } from '../operators.js';
+import { buildTerminals } from './terminal.js';
 
 // barrier sits gateOff metres past the booth line (towards the exit)
 export const TOLL = { gateOff: 5 };
@@ -283,6 +284,7 @@ export function buildFacilities(route, scene, chunks) {
     x.font = `bold 44px ${EN_FONT}`; x.fillText('U-TURN 250 m', w / 2, 460);
   });
   for (const u of route.uturns) {
+    if (u.terminal) continue;          // the terminals put up their own signs
     addSign(scene, chunks, route, u.s - 250, -(ROAD.half + 2), false, uTex, 2, 2);
     addSign(scene, chunks, route, u.s + 250, ROAD.half + 2, true, uTex, 2, 2);
   }
@@ -377,6 +379,9 @@ export function buildFacilities(route, scene, chunks) {
 
   // ------------------------------------------------------------ rest stops (highway restaurants)
   route.rests.forEach((r, ri) => buildRestStop(route, scene, chunks, obstacles, mats, r, ri));
+
+  // ------------------------------------------------------------ bus terminals at both ends (trips start and end here)
+  buildTerminals(route, scene, chunks, obstacles);
 
   // ------------------------------------------------------------ runtime
   return {

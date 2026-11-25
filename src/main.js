@@ -22,8 +22,10 @@ import { Traffic } from './traffic.js';
 import { CameraRig, CAM_MODES } from './camera.js';
 import { HUD } from './hud.js';
 import { GameAudio } from './audio.js';
+import { voice } from './voice.js';
 import { MusicPlayer, fmtSize, parseYouTube } from './music.js';
 import { Input } from './input.js';
+import { Passengers } from './passengers.js';
 
 const $ = (id) => document.getElementById(id);
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -72,6 +74,7 @@ function saveSettings() {
   try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, dir, seats, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;
+let passengers;   // bus counters, boarding / alighting (src/passengers.js)
 const audio = new GameAudio();
 const music = new MusicPlayer();
 const input = new Input();
@@ -147,9 +150,13 @@ function resetPlayer(s, d) {
 }
 
 // trip start: Sayedabad heading south-east, or A.K. Khan (Chattogram) heading back to Dhaka
+// both start parked in a bay of the bus terminal, nose towards the exit gate
 function startPoint() {
-  return settings.dir === 'dhk' ? [route.length - 60, -ROAD.laneCenters[0]] : [60, ROAD.laneCenters[0]];
+  const t = route.terminals.find((x) => x.end === (settings.dir === 'dhk' ? 1 : 0));
+  return [t.bay.s, t.bay.d];
 }
+// the terminal the trip ends at
+function destTerminal() { return route.terminals.find((x) => x.end === (settings.dir === 'dhk' ? 0 : 1)); }
 function restartTrip() {
   resetPlayer(...startPoint());
   Object.assign(player, { elapsed: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false,
@@ -157,7 +164,8 @@ function restartTrip() {
   for (const g of facilities.gates) { g.holdPlayer = false; g.openT = 0; }
   traffic.init(player.s);
   setTime(settings.time);                       // clock back to the chosen start time
-  Object.assign(player, { sinceBreak: 0, breaks: 0, breakWarned: false, resting: 0, restPrompt: false });
+  Object.assign(player, { sinceBreak: 0, breaks: 0, breakWarned: false, resting: 0, restPrompt: false, termHint: false, inTerminal: route.terminalAt(player.s, player.d) });
+  passengers?.reset(settings.dir);
 }
 
 // rest stops: stop in the lot and press F for a 20-minute passenger break (clock moves on, passengers happier)
@@ -205,7 +213,25 @@ function wallHit(impact, msg) {
     player.crashes++;
     player.fines += dmg;
     hud.toast(`${msg} Damage ৳ ${dmg.toLocaleString('en-IN')}`, 'bad');
+    crashVoice();
   } else hud.toast(msg, 'bad');
+}
+
+// ---------- helper & passenger voices (src/voice.js) ----------
+function crashVoice() { voice.say('pax.crash'); voice.say('helper.crash'); }
+const vstate = { fast: 0, indL: false, indR: false };
+function voiceLogic(dt) {
+  const kmh = Math.abs(player.phys.v) * 3.6;
+  // speeding for a few seconds: the helper or a passenger complains
+  vstate.fast = kmh > SPEED_LIMIT + 10 ? vstate.fast + dt : Math.max(0, vstate.fast - dt * 2);
+  if (vstate.fast > 4) { vstate.fast = 0; voice.say(Math.random() < 0.5 ? 'helper.slow' : 'pax.slow'); }
+  // the helper watches the sides when you signal: right = pulling out to overtake, left = moving back in
+  const ad = Math.abs(player.d);
+  const near = (inner, back, ahead) => traffic.list.some((v) => Math.sign(v.d) === player.side &&
+    (inner ? Math.abs(v.d) < ad - 1.5 : Math.abs(v.d) > ad + 1.5) && (v.s - player.s) * player.heading > -back && (v.s - player.s) * player.heading < ahead);
+  if (player.indR && !vstate.indR && kmh > 25 && near(true, 25, 8)) voice.say('helper.overtake_wait');
+  if (player.indL && !vstate.indL && kmh > 25 && ad < ROAD.median + ROAD.lane && !near(false, 14, 14) && Math.random() < 0.5) voice.say('helper.left_clear');
+  vstate.indL = player.indL; vstate.indR = player.indR;
 }
 
 function constrain(dt) {
@@ -281,6 +307,7 @@ function constrain(dt) {
   if (s > route.length - 3) { const m = s - (route.length - 3); phys.pos.x -= tx * m; phys.pos.z -= tz * m; s = route.length - 3; }
   phys.offroad = Math.abs(d) > route.halfAt(s) + 0.6 && !route.paved(s, d) ? 1 : 0;
   player.s = s; player.d = d; player.v = phys.v;
+  player.inTerminal = route.terminalAt(s, d);
   player.vs = phys.v * Math.cos(rel);
   player.heading = Math.cos(rel) >= 0 ? 1 : -1;
 }
@@ -297,6 +324,7 @@ function tollLogic(dt) {
     if (!inLane || g.holdPlayer) continue;
     if (ahead > 0 && ahead < 70 && player.promptCool <= 0) {
       hud.toast(`<span class="bn">টোল প্লাজা</span> — stop at the barrier to pay ৳${TOLL_FEE}`, '', 3000);
+      voice.say('helper.toll');
       player.promptCool = 12;
     }
     if (ahead > 0 && ahead < player.len / 2 + 8 && Math.abs(ph.v) < 0.8) {
@@ -320,7 +348,7 @@ function fuelLogic(dt) {
     player.fuel = Math.max(0, player.fuel - (realKm / BUS_KM_PER_LITRE) * (0.45 + 0.9 * ph.throttle) - dt * 0.0012);
   }
   const frac = player.fuel / TANK_LITRES;
-  if (frac < 0.15 && player.fuelWarn < 1) { player.fuelWarn = 1; hud.toast('⛽ Fuel low (15%) — refuel at the next filling station', 'bad', 4500); }
+  if (frac < 0.15 && player.fuelWarn < 1) { player.fuelWarn = 1; hud.toast('⛽ Fuel low (15%) — refuel at the next filling station', 'bad', 4500); voice.say('helper.fuel'); }
   if (frac < 0.05 && player.fuelWarn < 2) { player.fuelWarn = 2; hud.toast('⛽ Fuel reserve! The engine will stop soon', 'bad', 4500); }
   if (player.fuel <= 0 && player.fuelWarn < 3) { player.fuelWarn = 3; hud.toast('Out of fuel! Press R and refuel… (call the supervisor)', 'bad', 5000); player.fuel = 0; }
   const st = route.stationAt(player.s, player.d);
@@ -434,10 +462,17 @@ function events(dt) {
     player.complainCool = 7;
   }
   player.lastS = s;
-  const toCtg = player.side < 0 && s >= route.length - 45;
-  const toDhaka = player.side > 0 && s <= 45;
-  if (toCtg || toDhaka) {
+  // arrival: stop inside the destination terminal (fallback: the very end of the road)
+  const dest = destTerminal(), toCtg = dest.end === 1;
+  const gate = (dest.exitS0 + dest.exitS1) / 2;
+  if (!player.termHint && Math.abs(s - gate) < 450) {
+    player.termHint = true;
+    hud.toast(`🚌 <span class="bn">${dest.bn}</span><br><small>Cross at the median opening by the gate, drive into the yard and stop to finish the trip</small>`, 'good', 5500);
+  }
+  const atEnd = toCtg ? s >= route.length - 4 : s <= 4;
+  if ((player.inTerminal === dest && Math.abs(player.phys.v) < 0.5) || atEnd) {
     state = 'arrived';
+    passengers?.finishTrip();          // everyone still aboard gets down at the terminal
     hud.arrival(player, settings.op.en, toCtg ? 'Chattogram' : 'Dhaka');
     audio.horn(false);
     $('prompt').style.display = 'none';
@@ -497,6 +532,7 @@ function handleCrashes(crashes) {
       audio.crash(closing);
       rig.shake = Math.min(1, closing / 8);
       hud.toast(`Collision with a ${KIND_NAME[v.K.kind]} at ${Math.round(kmh)} km/h! Damage ৳ ${dmg.toLocaleString('en-IN')}`, 'bad');
+      crashVoice();
     }
   }
 }
@@ -543,6 +579,7 @@ function initSeatPanel() {
 // ---------- keys ----------
 function handleKeys() {
   if (input.hit('KeyM')) { audio.setMuted(!audio.muted); }
+  if (input.hit('KeyK')) hud.toast(voice.toggle() ? '🗣️ Helper & passenger voices on (K)' : '🔇 Helper & passenger voices off (K)', '', 2000);
   if (input.hit('KeyB')) {
     if (!music.tracks.length) hud.toast('🎵 No songs yet: add your own in the menu → Music', '', 3000);
     else music.toggle();
@@ -767,6 +804,7 @@ function toMenu() {
 function startDrive() {
   audio.init();
   music.attach(audio.ctx);
+  voice.init(audio.ctx, audio.master, () => audio.muted);
   audio.resume();
   saveSettings();
   if (IS_TOUCH) {
@@ -789,6 +827,7 @@ function startDrive() {
   updateMusicBox();
   perf.t = 0; perf.n = 0; perf.warm = 0; perf.slow = 0;
   hud.toast(`<span class="bn">${settings.op.bn}</span> · ${BUS_TYPES[settings.type].name}<br><small>${settings.dir === 'dhk' ? 'A.K. Khan → Sayedabad (Dhaka)' : 'Sayedabad → Chattogram'} via N1. Drive on the LEFT.${IS_TOUCH ? ' Turn the wheel, hold GAS / BRAKE.' : ' Mirrors: V · Refuel: F'}</small>`, 'good', 5000);
+  voice.say('helper.depart', { place: settings.dir === 'dhk' ? 'ঢাকা' : 'চট্টগ্রাম', placeEn: settings.dir === 'dhk' ? 'Dhaka' : 'Chattogram' });
 }
 
 // ---------- automatic graphics reduction on slow devices ----------
@@ -848,6 +887,8 @@ function frame(now) {
     placeBusModel(dt);
     tollLogic(dt);
     fuelLogic(dt);
+    voiceLogic(dt);
+    passengers.update(dt, input);
     restLogic(dt);
     indicatorLogic(dt);
     facilities.update(dt);
@@ -953,6 +994,7 @@ async function boot() {
   mirrors = new Mirrors(renderer, scene);
   if (mirrors_defaultOff) { mirrors.hudOn = false; mirrors.lowRes = true; }
   hud = new HUD(route, road.water);
+  passengers = new Passengers({ route, scene, chunks, hud, player });
   rig = new CameraRig(camera, route);
   initSeatPanel();
   initMusicUI();

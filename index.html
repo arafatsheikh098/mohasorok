@@ -33,6 +33,7 @@
   #t-gas { right: max(18px, env(safe-area-inset-right)); bottom: 18px; width: 82px; height: 150px; font-size: 13px; background: rgba(40,140,70,.55); }
   #t-brake { right: calc(max(18px, env(safe-area-inset-right)) + 96px); bottom: 18px; width: 96px; height: 110px; font-size: 13px; background: rgba(170,40,40,.55); }
   #t-horn { right: calc(max(18px, env(safe-area-inset-right)) + 96px); bottom: 142px; width: 96px; height: 46px; }
+  #t-door { right: calc(max(18px, env(safe-area-inset-right)) + 96px); bottom: 196px; width: 96px; height: 40px; background: rgba(46,204,113,.35); }
   #t-indl { left: 200px; bottom: 120px; width: 54px; height: 44px; font-size: 20px; }
   #t-indr { left: 262px; bottom: 120px; width: 54px; height: 44px; font-size: 20px; }
   #touch .tray { display: none; }
@@ -144,6 +145,8 @@
   .arrows span.on { color: #2bff6a; text-shadow: 0 0 12px #2bff6a; }
   #fuelbar { height: 6px; background: #1d2630; border-radius: 3px; margin-top: 6px; overflow: hidden; }
   #fuel-fill { display: block; height: 100%; width: 50%; background: #ffb300; }
+  #paxprompt { display: none; position: absolute; left: 50%; bottom: 176px; transform: translateX(-50%); background: var(--bg); border: 1px solid var(--line); border-left: 4px solid #f2c31b; padding: 10px 16px; border-radius: 9px; font-size: 14px; white-space: nowrap; }
+  #paxprompt small { color: var(--mut); }
   #prompt { display: none; position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); background: var(--bg); border: 1px solid var(--line); border-left: 4px solid #2ecc71; padding: 12px 18px; border-radius: 9px; font-size: 15px; }
   #seat-btn { pointer-events: auto; cursor: pointer; padding: 8px 12px; font-weight: 700; font-size: 13px; color: var(--txt); display: none; }
   #seat { position: absolute; right: 18px; top: 66px; width: 300px; padding: 12px 14px; pointer-events: auto; display: none; z-index: 14; font-size: 12px; color: var(--mut); touch-action: none; }
@@ -228,6 +231,7 @@
   #seat .seat-foot .btn { margin: 0; padding: 7px 12px; }
   #toasts { top: 64px; transform: translateX(-50%) scale(.8); }
     #prompt { bottom: 200px; font-size: 13px; }
+    #paxprompt { bottom: 244px; font-size: 13px; }
     #t-cam, #t-mirror, #t-reset, #t-pause, #t-seat { top: 6px !important; }
     #seat { top: 54px; right: 8px; width: 260px; padding: 8px 10px; }
     #seat label { margin: 4px 0; }
@@ -256,6 +260,7 @@
     #t-gas { right: max(8px, env(safe-area-inset-right)); bottom: 10px; width: 62px; height: 116px; font-size: 12px; background: rgba(40,140,70,.4); }
     #t-brake { right: calc(max(8px, env(safe-area-inset-right)) + 70px); bottom: 10px; width: 70px; height: 80px; font-size: 12px; background: rgba(170,40,40,.4); }
     #t-horn { right: calc(max(8px, env(safe-area-inset-right)) + 70px); bottom: 98px; width: 70px; height: 30px; font-size: 11px; }
+    #t-door { right: calc(max(8px, env(safe-area-inset-right)) + 70px); bottom: 134px; width: 70px; height: 30px; font-size: 11px; }
     #t-cam { right: max(8px, env(safe-area-inset-right)); top: 6px !important; width: 40px; height: 34px; font-size: 15px; }
     #t-more { right: calc(max(8px, env(safe-area-inset-right)) + 46px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
     #t-pause { right: calc(max(8px, env(safe-area-inset-right)) + 92px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
@@ -286,6 +291,7 @@
   <div class="tb" id="t-gas">GAS</div>
   <div class="tb" id="t-brake">BRAKE</div>
   <div class="tb" id="t-horn">📯 HORN</div>
+  <div class="tb" id="t-door">🚪 DOOR</div>
   <div class="tb" id="t-indl">◀</div>
   <div class="tb" id="t-indr">▶</div>
   <div class="tb" id="t-cam">🎥</div>
@@ -359,7 +365,7 @@
     <div class="keys">
       <kbd>W</kbd>/<kbd>S</kbd> throttle / brake (hold <kbd>S</kbd> to reverse) · <kbd>A</kbd>/<kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
       <kbd>H</kbd> horn · <kbd>Q</kbd>/<kbd>E</kbd> indicators · <kbd>L</kbd> lights · <kbd>X</kbd> cruise · <kbd>C</kbd> / <kbd>1</kbd>–<kbd>4</kbd> camera<br>
-      <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>T</kbd> time of day · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>B</kbd>/<kbd>N</kbd> music play / next · <kbd>F1</kbd> help · mouse drag = look · <kbd>Alt</kbd>+arrows = adjust seat<br>
+      <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>G</kbd> door (passengers) · <kbd>T</kbd> time of day · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>B</kbd>/<kbd>N</kbd> music play / next · <kbd>F1</kbd> help · mouse drag = look · <kbd>Alt</kbd>+arrows = adjust seat<br>
       Stop at the toll gate to pay · turn round at U-turn gaps in the median to drive back to Dhaka
     </div>
   </div>
@@ -375,6 +381,9 @@
     <div class="r">Toll + diesel <b id="trip-costs">-</b></div>
     <div class="r">Fines <b id="trip-fines">-</b></div>
     <div class="r">Collisions <b id="trip-crashes">0</b></div>
+    <div class="r">Seats <b id="trip-seats">0 / 36</b></div>
+    <div class="r">Fares <b id="trip-fares">৳ 0</b></div>
+    <div class="r">Next stop <b id="trip-stop">—</b></div>
     <div class="r">Passengers <b id="trip-rating" class="stars">★★★★★</b></div>
   </div>
   <div id="place" class="card"><div id="place-now"></div></div>
@@ -391,14 +400,15 @@
   <div id="help" class="card">
     <kbd>W</kbd> throttle · <kbd>S</kbd> brake/reverse<br><kbd>A</kbd> <kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
     <kbd>H</kbd> horn (traffic ahead moves over)<br><kbd>Q</kbd> <kbd>E</kbd> indicators · <kbd>L</kbd> lights<br>
-    <kbd>X</kbd> cruise control · <kbd>C</kbd> camera<br><kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel at a pump<br>Stop at toll gates · U-turn at median gaps<br><kbd>T</kbd> time of day · <kbd>R</kbd> reset<br><kbd>P</kbd> pause · <kbd>M</kbd> mute
+    <kbd>X</kbd> cruise control · <kbd>C</kbd> camera<br><kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel at a pump<br><kbd>G</kbd> door: stop at a 🚏 counter to pick up / drop passengers<br>Stop at toll gates · U-turn at median gaps<br><kbd>T</kbd> time of day · <kbd>R</kbd> reset<br><kbd>P</kbd> pause · <kbd>M</kbd> mute
   </div>
   <div id="dashbox">
     <canvas id="dash" width="300" height="160"></canvas>
-    <div id="indicators"><span class="ind" id="ind-l">◀</span><span class="ind" id="ind-lights">LIGHTS</span><span class="ind" id="ind-cruise">CRUISE</span><span class="ind" id="ind-r">▶</span></div>
+    <div id="indicators"><span class="ind" id="ind-l">◀</span><span class="ind" id="ind-lights">LIGHTS</span><span class="ind" id="ind-cruise">CRUISE</span><span class="ind" id="ind-door">DOOR</span><span class="ind" id="ind-r">▶</span></div>
   </div>
   <div id="speedbox" class="card"><div class="arrows"><span id="hud-il">◀</span><span id="hud-ir">▶</span></div><div id="speed-big">0</div><div class="u">km/h</div><div id="gear">N</div><div id="fuelbar"><i id="fuel-fill"></i></div></div>
   <div id="prompt"></div>
+  <div id="paxprompt"></div>
   <div id="musicbox" class="card">
     <div id="mus-title">🎵 No song</div>
     <div class="mus-row"><button id="mus-prev" title="Previous (Shift+N)">⏮</button><button id="mus-play" title="Play / pause (B)">▶</button><button id="mus-next" title="Next (N)">⏭</button>

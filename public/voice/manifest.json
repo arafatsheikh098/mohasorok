@@ -1,0 +1,541 @@
+{
+ "engine": "edge",
+ "clips": {
+  "helper.call|0|pradeep|ঢাকা": {
+   "f": "4ac379eed5f7.mp3",
+   "dur": 5.184
+  },
+  "helper.call|0|pradeep|চট্টগ্রাম": {
+   "f": "af136302eb84.mp3",
+   "dur": 5.448
+  },
+  "helper.call|1|pradeep|ঢাকা": {
+   "f": "2367071c5829.mp3",
+   "dur": 4.368
+  },
+  "helper.call|1|pradeep|চট্টগ্রাম": {
+   "f": "9b03fa00608b.mp3",
+   "dur": 4.68
+  },
+  "helper.call|2|pradeep|চট্টগ্রাম": {
+   "f": "f536e265072c.mp3",
+   "dur": 3.888
+  },
+  "helper.call|2|pradeep|ঢাকা": {
+   "f": "4a0ecd1b4e7e.mp3",
+   "dur": 3.672
+  },
+  "helper.board_done|0|pradeep|": {
+   "f": "e987d261d8d9.mp3",
+   "dur": 3.384
+  },
+  "helper.board_done|1|pradeep|": {
+   "f": "0005f49bd6fb.mp3",
+   "dur": 2.4
+  },
+  "helper.board_done|2|pradeep|": {
+   "f": "c7494dc90268.mp3",
+   "dur": 2.664
+  },
+  "helper.next_stop|0|pradeep|কাঁচপুর": {
+   "f": "2ffaa57acd56.mp3",
+   "dur": 4.008
+  },
+  "helper.next_stop|0|pradeep|মোগরাপাড়া": {
+   "f": "43e31aa148e0.mp3",
+   "dur": 4.152
+  },
+  "helper.next_stop|0|pradeep|দাউদকান্দি": {
+   "f": "ef9ba964d528.mp3",
+   "dur": 4.2
+  },
+  "helper.next_stop|0|pradeep|কুমিল্লা": {
+   "f": "41640130432f.mp3",
+   "dur": 4.056
+  },
+  "helper.next_stop|0|pradeep|ফেনী": {
+   "f": "e0ba6973c6d6.mp3",
+   "dur": 3.912
+  },
+  "helper.next_stop|0|pradeep|চান্দিনা": {
+   "f": "e85b1e890196.mp3",
+   "dur": 4.056
+  },
+  "helper.next_stop|0|pradeep|মীরসরাই": {
+   "f": "f8880e70833b.mp3",
+   "dur": 4.08
+  },
+  "helper.next_stop|0|pradeep|ঢাকা": {
+   "f": "af10eb83b545.mp3",
+   "dur": 3.888
+  },
+  "helper.next_stop|0|pradeep|চট্টগ্রাম": {
+   "f": "48d6ef830649.mp3",
+   "dur": 4.104
+  },
+  "helper.next_stop|1|pradeep|কাঁচপুর": {
+   "f": "b0245912de4e.mp3",
+   "dur": 3.696
+  },
+  "helper.next_stop|1|pradeep|দাউদকান্দি": {
+   "f": "d1ff11387a3e.mp3",
+   "dur": 3.888
+  },
+  "helper.next_stop|1|pradeep|মোগরাপাড়া": {
+   "f": "209837fc8ada.mp3",
+   "dur": 3.864
+  },
+  "helper.next_stop|1|pradeep|কুমিল্লা": {
+   "f": "be70135dae04.mp3",
+   "dur": 3.696
+  },
+  "helper.next_stop|1|pradeep|চান্দিনা": {
+   "f": "463aba5e82d3.mp3",
+   "dur": 3.696
+  },
+  "helper.next_stop|1|pradeep|ফেনী": {
+   "f": "be5ece9e0c4c.mp3",
+   "dur": 3.576
+  },
+  "helper.next_stop|1|pradeep|মীরসরাই": {
+   "f": "dafbcc499250.mp3",
+   "dur": 3.744
+  },
+  "helper.next_stop|1|pradeep|সীতাকুণ্ড": {
+   "f": "b400b07f9b0c.mp3",
+   "dur": 3.864
+  },
+  "helper.next_stop|1|pradeep|ঢাকা": {
+   "f": "05cb75fc9531.mp3",
+   "dur": 3.6
+  },
+  "helper.next_stop|1|pradeep|চট্টগ্রাম": {
+   "f": "9a8087bedf35.mp3",
+   "dur": 3.744
+  },
+  "helper.next_stop|0|pradeep|সীতাকুণ্ড": {
+   "f": "4ce3451bbcb4.mp3",
+   "dur": 4.2
+  },
+  "helper.arrive|0|pradeep|ঢাকা": {
+   "f": "e8dcac51b01a.mp3",
+   "dur": 4.608
+  },
+  "helper.arrive|0|pradeep|চট্টগ্রাম": {
+   "f": "6801432b0661.mp3",
+   "dur": 4.872
+  },
+  "helper.arrive|1|pradeep|ঢাকা": {
+   "f": "e0fddc056b00.mp3",
+   "dur": 3.96
+  },
+  "helper.arrive|1|pradeep|চট্টগ্রাম": {
+   "f": "e35c45982814.mp3",
+   "dur": 4.128
+  },
+  "helper.depart|1|pradeep|ঢাকা": {
+   "f": "a7ce3ac45a48.mp3",
+   "dur": 3.984
+  },
+  "helper.depart|1|pradeep|চট্টগ্রাম": {
+   "f": "4f130e12c023.mp3",
+   "dur": 4.2
+  },
+  "helper.slow|0|pradeep|": {
+   "f": "f27cc8f806c1.mp3",
+   "dur": 4.272
+  },
+  "helper.depart|0|pradeep|ঢাকা": {
+   "f": "962e520b73f9.mp3",
+   "dur": 4.296
+  },
+  "helper.slow|1|pradeep|": {
+   "f": "b2b2da30b27e.mp3",
+   "dur": 3.264
+  },
+  "helper.depart|0|pradeep|চট্টগ্রাম": {
+   "f": "a3950b22e4e2.mp3",
+   "dur": 4.56
+  },
+  "helper.crash|0|pradeep|": {
+   "f": "74727f470ecd.mp3",
+   "dur": 3
+  },
+  "helper.left_clear|0|pradeep|": {
+   "f": "c50354cb81fa.mp3",
+   "dur": 2.88
+  },
+  "helper.overtake_wait|0|pradeep|": {
+   "f": "04e29a52a83b.mp3",
+   "dur": 3.936
+  },
+  "helper.overtake_wait|1|pradeep|": {
+   "f": "e90b8e621cd3.mp3",
+   "dur": 2.832
+  },
+  "helper.left_clear|1|pradeep|": {
+   "f": "94c529d2af44.mp3",
+   "dur": 2.328
+  },
+  "helper.toll|0|pradeep|": {
+   "f": "6e54aae42e69.mp3",
+   "dur": 3.912
+  },
+  "helper.fuel|0|pradeep|": {
+   "f": "082762b57bd8.mp3",
+   "dur": 4.416
+  },
+  "helper.toll|1|pradeep|": {
+   "f": "d4024d3dc53e.mp3",
+   "dur": 3.216
+  },
+  "helper.fuel|1|pradeep|": {
+   "f": "93a2854824f6.mp3",
+   "dur": 3
+  },
+  "pax.stop_request|0|nabanita|কাঁচপুর": {
+   "f": "ef986f41cc6b.mp3",
+   "dur": 2.448
+  },
+  "helper.uturn|0|pradeep|": {
+   "f": "ff9404a7fdea.mp3",
+   "dur": 2.352
+  },
+  "pax.stop_request|0|nabanita|দাউদকান্দি": {
+   "f": "0c864ee4394b.mp3",
+   "dur": 2.616
+  },
+  "pax.stop_request|0|nabanita|মোগরাপাড়া": {
+   "f": "6eb46018513e.mp3",
+   "dur": 2.568
+  },
+  "pax.stop_request|0|nabanita|চান্দিনা": {
+   "f": "693622c7b54e.mp3",
+   "dur": 2.496
+  },
+  "pax.stop_request|0|nabanita|কুমিল্লা": {
+   "f": "a6d98b869c22.mp3",
+   "dur": 2.4
+  },
+  "helper.crash|1|pradeep|": {
+   "f": "a7e41625492d.mp3",
+   "dur": 3.552
+  },
+  "pax.stop_request|0|nabanita|সীতাকুণ্ড": {
+   "f": "1ef894f6490f.mp3",
+   "dur": 2.616
+  },
+  "pax.stop_request|0|nabanita|মীরসরাই": {
+   "f": "dd0ecf72c6f9.mp3",
+   "dur": 2.496
+  },
+  "pax.stop_request|0|nabanita|ফেনী": {
+   "f": "63bb43fac70d.mp3",
+   "dur": 2.328
+  },
+  "pax.stop_request|0|bashkar|কাঁচপুর": {
+   "f": "a0c73873c911.mp3",
+   "dur": 2.664
+  },
+  "pax.stop_request|0|nabanita|ঢাকা": {
+   "f": "748ceb7e4148.mp3",
+   "dur": 2.304
+  },
+  "pax.stop_request|0|nabanita|চট্টগ্রাম": {
+   "f": "1f87d96bbb56.mp3",
+   "dur": 2.544
+  },
+  "pax.stop_request|0|bashkar|দাউদকান্দি": {
+   "f": "f8a301d6cd65.mp3",
+   "dur": 2.784
+  },
+  "pax.stop_request|0|bashkar|মোগরাপাড়া": {
+   "f": "a6333a8b1f4a.mp3",
+   "dur": 2.688
+  },
+  "pax.stop_request|0|bashkar|চান্দিনা": {
+   "f": "7d091ea65b67.mp3",
+   "dur": 2.568
+  },
+  "pax.stop_request|0|bashkar|কুমিল্লা": {
+   "f": "19400e05829f.mp3",
+   "dur": 2.496
+  },
+  "pax.stop_request|0|bashkar|ফেনী": {
+   "f": "2e0719f8ecd4.mp3",
+   "dur": 2.376
+  },
+  "pax.stop_request|0|bashkar|সীতাকুণ্ড": {
+   "f": "2b1c0b1362bf.mp3",
+   "dur": 2.688
+  },
+  "pax.stop_request|0|bashkar|মীরসরাই": {
+   "f": "55c4c8553524.mp3",
+   "dur": 2.592
+  },
+  "pax.stop_request|0|bashkar|ঢাকা": {
+   "f": "da18d74f87ac.mp3",
+   "dur": 2.448
+  },
+  "pax.stop_request|0|bashkar|চট্টগ্রাম": {
+   "f": "852f58a31ded.mp3",
+   "dur": 2.736
+  },
+  "pax.stop_request|1|nabanita|কাঁচপুর": {
+   "f": "57767803143b.mp3",
+   "dur": 2.784
+  },
+  "pax.stop_request|1|nabanita|মোগরাপাড়া": {
+   "f": "ea43126d6d6f.mp3",
+   "dur": 2.856
+  },
+  "pax.stop_request|1|nabanita|দাউদকান্দি": {
+   "f": "d79421f5b502.mp3",
+   "dur": 2.928
+  },
+  "pax.stop_request|1|nabanita|কুমিল্লা": {
+   "f": "f061bb9cb4e3.mp3",
+   "dur": 2.712
+  },
+  "pax.stop_request|1|nabanita|চান্দিনা": {
+   "f": "ff802cec9d26.mp3",
+   "dur": 2.832
+  },
+  "pax.stop_request|1|nabanita|সীতাকুণ্ড": {
+   "f": "08faf70aa7af.mp3",
+   "dur": 2.928
+  },
+  "pax.stop_request|1|nabanita|মীরসরাই": {
+   "f": "287347d6e1ae.mp3",
+   "dur": 2.784
+  },
+  "pax.stop_request|1|nabanita|চট্টগ্রাম": {
+   "f": "fcccae50706c.mp3",
+   "dur": 2.904
+  },
+  "pax.stop_request|1|nabanita|ঢাকা": {
+   "f": "737cdb8d17df.mp3",
+   "dur": 2.664
+  },
+  "pax.stop_request|1|bashkar|কাঁচপুর": {
+   "f": "0e1df718eaf0.mp3",
+   "dur": 3.12
+  },
+  "pax.stop_request|1|nabanita|ফেনী": {
+   "f": "2a73238f7d5a.mp3",
+   "dur": 2.616
+  },
+  "pax.stop_request|1|bashkar|মোগরাপাড়া": {
+   "f": "beefb1cffb50.mp3",
+   "dur": 3.384
+  },
+  "pax.stop_request|1|bashkar|দাউদকান্দি": {
+   "f": "cc047beae0ca.mp3",
+   "dur": 3.384
+  },
+  "pax.stop_request|1|bashkar|কুমিল্লা": {
+   "f": "6e98822182b4.mp3",
+   "dur": 2.976
+  },
+  "pax.stop_request|1|bashkar|চান্দিনা": {
+   "f": "87467f65d5e9.mp3",
+   "dur": 3.144
+  },
+  "pax.stop_request|1|bashkar|ফেনী": {
+   "f": "3188c08bd1f9.mp3",
+   "dur": 2.832
+  },
+  "pax.stop_request|1|bashkar|মীরসরাই": {
+   "f": "f1b51608f8b0.mp3",
+   "dur": 3.216
+  },
+  "pax.stop_request|1|bashkar|সীতাকুণ্ড": {
+   "f": "3812dd84ae6f.mp3",
+   "dur": 3.24
+  },
+  "pax.stop_request|1|bashkar|ঢাকা": {
+   "f": "c4cac2b93f29.mp3",
+   "dur": 2.976
+  },
+  "pax.stop_request|1|bashkar|চট্টগ্রাম": {
+   "f": "1683c0356996.mp3",
+   "dur": 3.24
+  },
+  "pax.stop_request|2|nabanita|মোগরাপাড়া": {
+   "f": "ddd04707671b.mp3",
+   "dur": 2.664
+  },
+  "pax.stop_request|2|nabanita|দাউদকান্দি": {
+   "f": "9275bd1b306f.mp3",
+   "dur": 2.736
+  },
+  "pax.stop_request|2|nabanita|চান্দিনা": {
+   "f": "5c4b07406354.mp3",
+   "dur": 2.616
+  },
+  "pax.stop_request|2|nabanita|কাঁচপুর": {
+   "f": "8eb4062135f4.mp3",
+   "dur": 2.544
+  },
+  "pax.stop_request|2|nabanita|ফেনী": {
+   "f": "5dbe907768c3.mp3",
+   "dur": 2.4
+  },
+  "pax.stop_request|2|nabanita|মীরসরাই": {
+   "f": "a646f63acbfa.mp3",
+   "dur": 2.592
+  },
+  "pax.stop_request|2|nabanita|কুমিল্লা": {
+   "f": "7d84c7f57e36.mp3",
+   "dur": 2.568
+  },
+  "pax.stop_request|2|nabanita|সীতাকুণ্ড": {
+   "f": "6fc80f7c6b74.mp3",
+   "dur": 2.712
+  },
+  "pax.stop_request|2|bashkar|কাঁচপুর": {
+   "f": "f52353ee43fd.mp3",
+   "dur": 3.096
+  },
+  "pax.stop_request|2|bashkar|মোগরাপাড়া": {
+   "f": "9abf41fcb8f9.mp3",
+   "dur": 3.168
+  },
+  "pax.stop_request|2|nabanita|চট্টগ্রাম": {
+   "f": "c0fdd33b30f4.mp3",
+   "dur": 2.688
+  },
+  "pax.stop_request|2|bashkar|দাউদকান্দি": {
+   "f": "e91fdd7d2cd5.mp3",
+   "dur": 3.12
+  },
+  "pax.stop_request|2|bashkar|চান্দিনা": {
+   "f": "e4b9a8424898.mp3",
+   "dur": 3.024
+  },
+  "pax.stop_request|2|bashkar|কুমিল্লা": {
+   "f": "25e92ff9ce83.mp3",
+   "dur": 2.856
+  },
+  "pax.stop_request|2|bashkar|ফেনী": {
+   "f": "5881bf3815fe.mp3",
+   "dur": 2.76
+  },
+  "pax.stop_request|2|bashkar|মীরসরাই": {
+   "f": "9fc83e2bf7d9.mp3",
+   "dur": 3.024
+  },
+  "pax.stop_request|2|bashkar|সীতাকুণ্ড": {
+   "f": "13bb2ebe5055.mp3",
+   "dur": 3.168
+  },
+  "pax.stop_request|2|bashkar|ঢাকা": {
+   "f": "5f0e3c596d0b.mp3",
+   "dur": 2.832
+  },
+  "pax.stop_request|2|bashkar|চট্টগ্রাম": {
+   "f": "d2e9fc950cca.mp3",
+   "dur": 3.096
+  },
+  "pax.thanks|0|nabanita|": {
+   "f": "c28716a56a7f.mp3",
+   "dur": 1.872
+  },
+  "pax.thanks|0|bashkar|": {
+   "f": "7e4acadb5f8f.mp3",
+   "dur": 2.04
+  },
+  "pax.stop_request|2|nabanita|ঢাকা": {
+   "f": "1dd30ba4a040.mp3",
+   "dur": 2.424
+  },
+  "pax.thanks|1|nabanita|": {
+   "f": "86c656c18240.mp3",
+   "dur": 1.896
+  },
+  "pax.thanks|1|bashkar|": {
+   "f": "5a3c1fd68c0b.mp3",
+   "dur": 2.016
+  },
+  "pax.thanks|2|bashkar|": {
+   "f": "97e67337a84d.mp3",
+   "dur": 3.072
+  },
+  "pax.thanks|2|nabanita|": {
+   "f": "f60dceaf0027.mp3",
+   "dur": 2.688
+  },
+  "pax.missed|0|bashkar|": {
+   "f": "325fd7fa4a7c.mp3",
+   "dur": 3.168
+  },
+  "pax.missed|0|nabanita|": {
+   "f": "d55c46930441.mp3",
+   "dur": 3.096
+  },
+  "pax.missed|1|bashkar|": {
+   "f": "8d931e730978.mp3",
+   "dur": 4.824
+  },
+  "pax.missed|1|nabanita|": {
+   "f": "a955558f0de7.mp3",
+   "dur": 4.488
+  },
+  "pax.missed|2|bashkar|": {
+   "f": "fc1de8d060bd.mp3",
+   "dur": 2.952
+  },
+  "pax.slow|0|bashkar|": {
+   "f": "82896935da43.mp3",
+   "dur": 4.536
+  },
+  "pax.slow|0|nabanita|": {
+   "f": "0f9f0019d3b3.mp3",
+   "dur": 4.344
+  },
+  "pax.missed|2|nabanita|": {
+   "f": "6e80610af601.mp3",
+   "dur": 2.76
+  },
+  "pax.slow|1|bashkar|": {
+   "f": "103903fb74e2.mp3",
+   "dur": 4.68
+  },
+  "pax.slow|1|nabanita|": {
+   "f": "a8ed593c10cd.mp3",
+   "dur": 4.536
+  },
+  "pax.slow|2|bashkar|": {
+   "f": "9e9ad9ef499f.mp3",
+   "dur": 3
+  },
+  "pax.slow|2|nabanita|": {
+   "f": "d981efa3ec37.mp3",
+   "dur": 2.904
+  },
+  "pax.crash|0|bashkar|": {
+   "f": "4e7fd2c18390.mp3",
+   "dur": 3.552
+  },
+  "pax.crash|0|nabanita|": {
+   "f": "42e73e129407.mp3",
+   "dur": 3.504
+  },
+  "pax.crash|1|bashkar|": {
+   "f": "4c8bf3e2baff.mp3",
+   "dur": 3.6
+  },
+  "pax.crash|2|nabanita|": {
+   "f": "47c3d80c2a20.mp3",
+   "dur": 3.672
+  },
+  "pax.crash|2|bashkar|": {
+   "f": "c64f5ecda93c.mp3",
+   "dur": 4.008
+  },
+  "pax.crash|1|nabanita|": {
+   "f": "f707fa73f084.mp3",
+   "dur": 3.504
+  }
+ }
+}

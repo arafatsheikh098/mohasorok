@@ -26,6 +26,9 @@ export class HUD {
     ];
   }
 
+  // extra minimap markers (bus counters etc.): [{ p: Vector3, icon, col }]
+  addMarkers(list) { this.markers.push(...list); }
+
   toast(html, cls = '', ms = 3200) {
     const el = document.createElement('div');
     el.className = 'toast ' + cls;
@@ -213,6 +216,9 @@ export class HUD {
       <div class="row"><span>Average (map) speed</span><b>${avg.toFixed(0)} km/h</b></div>
       <div class="row"><span>Collisions</span><b>${st.crashes}</b></div>
       <div class="row"><span>Fines</span><b>৳ ${st.fines.toLocaleString('en-IN')}</b></div>
+      ${st.pax ? `<div class="row"><span>Passengers carried</span><b>${st.pax.carried}${st.pax.missed ? ` · ${st.pax.missed} missed stops` : ''}</b></div>
+      <div class="row"><span>Fares collected</span><b>৳ ${st.pax.fares.toLocaleString('en-IN')}</b></div>
+      <div class="row"><span>Trip profit</span><b>৳ ${Math.round(st.pax.fares - st.fuelCost - st.tollCost - st.fines).toLocaleString('en-IN')}</b></div>` : ''}
       <div class="row"><span>Passenger rating</span><b class="stars">${'★'.repeat(Math.round(st.rating))}${'☆'.repeat(5 - Math.round(st.rating))}</b></div>`;
   }
 }

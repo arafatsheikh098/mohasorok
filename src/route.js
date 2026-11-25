@@ -96,6 +96,23 @@ export class Route {
       while (busy(sc)) sc += 120;
       return { ...r, sc, s0: sc - 75, s1: sc + 75, dIn: ROAD.half, dOut: ROAD.half + 42 };
     });
+    // bus terminals at both ends of the route: a walled yard beside the carriageway the trip departs on.
+    // Sayedabad (route start) is on side -1, buses leave towards +s; A.K. Khan (route end) on side +1, leaving towards -s.
+    // The exit gap in the roadside wall is at the departure end, with a median opening in front of it so
+    // arriving buses on the other carriageway can cross in.
+    const TL = 120, TD = 42, EXIT = 30;
+    this.terminals = [
+      { id: 'sayedabad', bn: 'সায়েদাবাদ বাস টার্মিনাল', en: 'Sayedabad Bus Terminal', end: 0, side: -1, s0: 8, s1: 8 + TL },
+      { id: 'akkhan', bn: 'এ. কে. খান বাস টার্মিনাল', en: 'A.K. Khan Bus Terminal', end: 1, side: 1, s0: this.length - 8 - TL, s1: this.length - 8 },
+    ].map((t) => {
+      const dir = t.side < 0 ? 1 : -1;                       // direction of travel when leaving
+      const closed = dir > 0 ? t.s0 : t.s1;                  // the walled-off end, away from the exit
+      const exitS0 = dir > 0 ? t.s1 - EXIT : t.s0, exitS1 = dir > 0 ? t.s1 : t.s0 + EXIT;
+      return { ...t, sc: (t.s0 + t.s1) / 2, dIn: ROAD.half, dOut: ROAD.half + TD, dir, closed, exitS0, exitS1,
+        // the player's bay: first row, near the closed end, nose towards the exit
+        bay: { s: closed + dir * 22, d: t.side * (ROAD.half + 12) } };
+    });
+
     // U-turn openings in the median
     this.uturns = [];
     for (let s = 1500; s < this.length - 800; s += UTURN_SPACING) {
@@ -108,6 +125,10 @@ export class Route {
     for (const st of this.stations) {
       if (this.uturns.some((u) => u.s1 > st.s0 && u.s0 < st.s1)) continue;
       this.uturns.push({ s: st.sc, s0: st.sc - UTURN_GAP / 2, s1: st.sc + UTURN_GAP / 2, station: true });
+    }
+    for (const t of this.terminals) {
+      const c = (t.exitS0 + t.exitS1) / 2;
+      this.uturns.push({ s: c, s0: c - UTURN_GAP / 2, s1: c + UTURN_GAP / 2, terminal: true });
     }
     this.uturns.sort((a, b) => a.s - b.s);
 
@@ -237,7 +258,14 @@ export class Route {
     return null;
   }
   // paved ground beside the road (fuel forecourt or rest-stop lot)
-  paved(s, d) { return this.stationAt(s, d) || this.restAt(s, d); }
+  // the bus terminal yard (s, d) is inside, or null
+  terminalAt(s, d) {
+    for (const t of this.terminals || []) {
+      if (s > t.s0 && s < t.s1 && Math.sign(d) === Math.sign(t.side) && Math.abs(d) > ROAD.half - 1 && Math.abs(d) < t.dOut) return t;
+    }
+    return null;
+  }
+  paved(s, d) { return this.stationAt(s, d) || this.restAt(s, d) || this.terminalAt(s, d); }
 
   bridgeAt(s) {
     for (const b of this.bridges) if (s > b.s0 && s < b.s1) return b;
