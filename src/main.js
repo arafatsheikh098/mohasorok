@@ -22,6 +22,7 @@ import { Traffic } from './traffic.js';
 import { CameraRig, CAM_MODES } from './camera.js';
 import { HUD } from './hud.js';
 import { GameAudio } from './audio.js';
+import { MusicPlayer, fmtSize } from './music.js';
 import { Input } from './input.js';
 
 const $ = (id) => document.getElementById(id);
@@ -72,6 +73,7 @@ function saveSettings() {
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;
 const audio = new GameAudio();
+const music = new MusicPlayer();
 const input = new Input();
 const touch = new TouchControls(input);
 let state = 'loading';
@@ -538,6 +540,11 @@ function initSeatPanel() {
 // ---------- keys ----------
 function handleKeys() {
   if (input.hit('KeyM')) { audio.setMuted(!audio.muted); }
+  if (input.hit('KeyB')) {
+    if (!music.tracks.length) hud.toast('🎵 No songs yet: add your own in the menu → Music', '', 3000);
+    else music.toggle();
+  }
+  if (input.hit('KeyN') && music.tracks.length) { if (input.has('ShiftLeft', 'ShiftRight')) music.prev(); else music.next(); }
   if (state === 'drive' || state === 'paused') {
     if (input.hit('KeyP') || input.hit('Escape')) togglePause();
   }
@@ -583,9 +590,56 @@ function handleKeys() {
   if (input.hit('F1')) { const h = $('help'); h.style.display = h.style.display === 'block' ? 'none' : 'block'; }
 }
 
+// ---------- music: menu list + in-game player ----------
+function renderMusicList() {
+  const el = $('music-list');
+  el.innerHTML = music.tracks.length ? '' : '<div class="empty">No songs yet. Add MP3/M4A files from your phone or computer.</div>';
+  music.tracks.forEach((t, k) => {
+    const row = document.createElement('div');
+    row.className = 'trk' + (k === music.i && music.playing ? ' on' : '');
+    row.innerHTML = `<button title="Play">${k === music.i && music.playing ? '⏸' : '▶'}</button><span></span><small>${fmtSize(t.size)}</small><button title="Remove">✕</button>`;
+    row.querySelector('span').textContent = t.name;
+    const [pb, xb] = row.querySelectorAll('button');
+    pb.onclick = () => { if (k === music.i) music.toggle(); else music.play(k); };
+    xb.onclick = () => music.remove(t.id);
+    el.appendChild(row);
+  });
+}
+function updateMusicBox() {
+  const has = music.tracks.length > 0;
+  $('musicbox').style.display = has && state !== 'menu' ? 'block' : 'none';
+  $('mus-title').textContent = music.current ? `🎵 ${music.current.name}` : '🎵 Press ▶ to play your songs';
+  $('mus-play').textContent = music.playing ? '⏸' : '▶';
+}
+function initMusicUI() {
+  $('music-add').onclick = () => $('music-file').click();
+  $('music-file').onchange = async (e) => {
+    const files = [...e.target.files];
+    e.target.value = '';
+    if (!files.length) return;
+    const n = await music.add(files);
+    hud.toast(n ? `🎵 Added ${n} song${n > 1 ? 's' : ''}` : 'Those files are not audio files', n ? 'good' : 'bad', 2500);
+  };
+  $('music-auto').checked = music.auto;
+  $('music-auto').onchange = (e) => { music.auto = e.target.checked; music.save(); };
+  $('music-shuffle').checked = music.shuffle;
+  $('music-shuffle').onchange = (e) => { music.shuffle = e.target.checked; music.save(); };
+  $('mus-prev').onclick = () => music.prev();
+  $('mus-next').onclick = () => music.next();
+  $('mus-play').onclick = () => music.toggle();
+  $('mus-vol').value = music.vol;
+  $('mus-vol').oninput = (e) => music.setVolume(+e.target.value);
+  for (const id of ['mus-prev', 'mus-next', 'mus-play', 'mus-vol']) $(id).addEventListener('pointerup', (e) => e.currentTarget.blur());
+  music.onChange((kind) => {
+    renderMusicList(); updateMusicBox();
+    if (kind === 'track' && state === 'drive') hud.toast(`🎵 ${music.current.name}`, '', 2200);
+  });
+  renderMusicList();
+}
+
 function togglePause() {
-  if (state === 'drive') { state = 'paused'; $('pause').style.display = 'flex'; audio.horn(false); audio.ctx?.suspend(); }
-  else if (state === 'paused') { state = 'drive'; $('pause').style.display = 'none'; audio.ctx?.resume(); }
+  if (state === 'drive') { state = 'paused'; $('pause').style.display = 'flex'; audio.horn(false); audio.ctx?.suspend(); music.hold(true); }
+  else if (state === 'paused') { state = 'drive'; $('pause').style.display = 'none'; audio.ctx?.resume(); music.hold(false); }
 }
 
 // ---------- menu ----------
@@ -687,12 +741,14 @@ function toMenu() {
   $('menu').style.display = 'block';
   hud.show(false);
   audio.horn(false);
+  updateMusicBox();
   restartTrip();
   rig.setMode('chase');
 }
 
 function startDrive() {
   audio.init();
+  music.attach(audio.ctx);
   audio.resume();
   saveSettings();
   if (IS_TOUCH) {
@@ -711,6 +767,8 @@ function startDrive() {
   $('menu').style.display = 'none';
   hud.show(true);
   state = 'drive';
+  if (music.auto && music.tracks.length && !music.playing) music.play();
+  updateMusicBox();
   perf.t = 0; perf.n = 0; perf.warm = 0; perf.slow = 0;
   hud.toast(`<span class="bn">${settings.op.bn}</span> · ${BUS_TYPES[settings.type].name}<br><small>${settings.dir === 'dhk' ? 'A.K. Khan → Sayedabad (Dhaka)' : 'Sayedabad → Chattogram'} via N1. Drive on the LEFT.${IS_TOUCH ? ' Turn the wheel, hold GAS / BRAKE.' : ' Mirrors: V · Refuel: F'}</small>`, 'good', 5000);
 }
@@ -860,6 +918,8 @@ async function boot() {
   if (IS_PHONE) mirrors_defaultOff = true;
   await msg('Loading your skins…');
   OPERATORS.push(...(await loadCustomSkins()));
+  await msg('Loading your music…');
+  await music.load();
   await msg('Tracing N1 from real coordinates…');
   route = new Route();
   chunks = new Chunks();
@@ -877,6 +937,7 @@ async function boot() {
   hud = new HUD(route, road.water);
   rig = new CameraRig(camera, route);
   initSeatPanel();
+  initMusicUI();
   applySeat();
   await msg('Painting the buses…');
   createPlayerBus();

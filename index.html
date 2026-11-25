@@ -45,7 +45,8 @@
   #t-seat { right: calc(max(18px, env(safe-area-inset-right)) + 300px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
   #t-lights { right: calc(max(18px, env(safe-area-inset-right)) + 360px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
   #t-fuel { right: calc(max(18px, env(safe-area-inset-right)) + 420px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
-  #t-cruise { right: calc(max(18px, env(safe-area-inset-right)) + 480px); top: 62px; width: 80px; height: 40px; font-size: 12px; }
+  #t-music { right: calc(max(18px, env(safe-area-inset-right)) + 480px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
+  #t-cruise { right: calc(max(18px, env(safe-area-inset-right)) + 540px); top: 62px; width: 80px; height: 40px; font-size: 12px; }
   #rotate { display: none; position: fixed; inset: 0; z-index: 90; background: #0b0f13; color: var(--txt); align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; padding: 30px; }
   #rotate b { font-size: 22px; }
   @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
@@ -178,6 +179,25 @@
   .btn { pointer-events: auto; background: var(--acc); color: #1a0e02; border: 0; padding: 11px 20px; border-radius: 8px; font-weight: 800; cursor: pointer; margin: 4px; }
   .btn.ghost { background: rgba(255,255,255,.08); color: var(--txt); }
 
+  /* ---------- music ---------- */
+  .h3note { font-weight: 500; color: var(--mut); font-size: 11px; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+  #music-list { max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  #music-list .empty { color: var(--mut); font-size: 12px; padding: 6px 2px; }
+  .trk { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; font-size: 13px; }
+  .trk.on { border-color: var(--acc); background: rgba(255,138,28,.12); }
+  .trk span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trk small { color: var(--mut); font-size: 11px; }
+  .trk button { background: none; border: 0; color: var(--txt); cursor: pointer; font-size: 14px; padding: 2px 4px; }
+  .music-actions { display: flex; align-items: center; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+  .music-actions .btn { margin: 0; padding: 8px 14px; }
+  .chk { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--txt); cursor: pointer; }
+  .chk input { accent-color: var(--acc); }
+  #musicbox { position: absolute; left: 18px; bottom: 190px; padding: 8px 12px; width: 250px; pointer-events: auto; display: none; }
+  #mus-title { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
+  .mus-row { display: flex; align-items: center; gap: 6px; }
+  .mus-row button { background: rgba(255,255,255,.08); border: 1px solid var(--line); color: var(--txt); border-radius: 6px; width: 34px; height: 28px; cursor: pointer; font-size: 13px; }
+  .mus-row input { flex: 1; accent-color: var(--acc); min-width: 0; }
+
   /* ---------- phones in landscape (must stay last so it wins) ---------- */
   @media (max-height: 520px) {
     #trip { transform: scale(.6); transform-origin: top left; left: 8px; top: 8px; }
@@ -236,7 +256,9 @@
     #t-seat { right: calc(max(8px, env(safe-area-inset-right)) + 230px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
     #t-lights { right: calc(max(8px, env(safe-area-inset-right)) + 276px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
     #t-fuel { right: calc(max(8px, env(safe-area-inset-right)) + 322px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
-    #t-cruise { right: calc(max(8px, env(safe-area-inset-right)) + 368px); top: 6px !important; width: 64px; height: 34px; font-size: 11px; }
+    #t-music { right: calc(max(8px, env(safe-area-inset-right)) + 368px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
+    #t-cruise { right: calc(max(8px, env(safe-area-inset-right)) + 414px); top: 6px !important; width: 64px; height: 34px; font-size: 11px; }
+    #musicbox { left: 50%; bottom: 8px; transform: translateX(-50%) scale(.82); transform-origin: bottom center; }
     #touch.open ~ #hud #place, body.tray-open #place { display: none; }
   }
 </style>
@@ -264,6 +286,7 @@
   <div class="tb tray" id="t-seat">🪑</div>
   <div class="tb tray" id="t-lights">💡</div>
   <div class="tb tray" id="t-fuel">⛽</div>
+  <div class="tb tray" id="t-music">🎵</div>
   <div class="tb tray" id="t-cruise">CRUISE</div>
 </div>
 <div id="about"><div class="card">
@@ -310,12 +333,21 @@
       <button data-v="low">Low</button>
     </div>
 
+    <h3>Music 🎵 <small class="h3note">your own songs · saved only in this browser, never uploaded</small></h3>
+    <div id="music-list"></div>
+    <div class="music-actions">
+      <button class="btn ghost" id="music-add">＋ Add songs</button>
+      <label class="chk"><input type="checkbox" id="music-auto"> Play while driving</label>
+      <label class="chk"><input type="checkbox" id="music-shuffle"> Shuffle</label>
+    </div>
+    <input type="file" id="music-file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac" multiple hidden>
+
     <button id="start">START TRIP ▸ <span class="bn" id="start-route">ঢাকা → চট্টগ্রাম</span></button>
     <div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="about-open" style="margin:0;flex:1">About &amp; credits</button></div>
     <div class="keys">
       <kbd>W</kbd>/<kbd>S</kbd> throttle / brake (hold <kbd>S</kbd> to reverse) · <kbd>A</kbd>/<kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
       <kbd>H</kbd> horn · <kbd>Q</kbd>/<kbd>E</kbd> indicators · <kbd>L</kbd> lights · <kbd>X</kbd> cruise · <kbd>C</kbd> / <kbd>1</kbd>–<kbd>4</kbd> camera<br>
-      <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>T</kbd> time of day · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>F1</kbd> help · mouse drag = look · <kbd>Alt</kbd>+arrows = adjust seat<br>
+      <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>T</kbd> time of day · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>B</kbd>/<kbd>N</kbd> music play / next · <kbd>F1</kbd> help · mouse drag = look · <kbd>Alt</kbd>+arrows = adjust seat<br>
       Stop at the toll gate to pay · turn round at U-turn gaps in the median to drive back to Dhaka
     </div>
   </div>
@@ -355,6 +387,11 @@
   </div>
   <div id="speedbox" class="card"><div class="arrows"><span id="hud-il">◀</span><span id="hud-ir">▶</span></div><div id="speed-big">0</div><div class="u">km/h</div><div id="gear">N</div><div id="fuelbar"><i id="fuel-fill"></i></div></div>
   <div id="prompt"></div>
+  <div id="musicbox" class="card">
+    <div id="mus-title">🎵 No song</div>
+    <div class="mus-row"><button id="mus-prev" title="Previous (Shift+N)">⏮</button><button id="mus-play" title="Play / pause (B)">▶</button><button id="mus-next" title="Next (N)">⏭</button>
+      <input type="range" id="mus-vol" min="0" max="1" step="0.05" title="Music volume"></div>
+  </div>
   <div id="gpsbox" class="card">
     <canvas id="gps" width="320" height="220"></canvas>
     <div id="gpsbar"><div id="trip-next"></div><div class="limit">80</div></div>

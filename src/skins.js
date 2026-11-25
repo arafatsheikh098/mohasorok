@@ -3,27 +3,11 @@
 // Skins are stored only in this browser (IndexedDB) — nothing is uploaded anywhere.
 import { shade } from './textures.js';
 
-const DB = 'mohasorok', STORE = 'skins';
-function db() {
-  return new Promise((res, rej) => {
-    const r = indexedDB.open(DB, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' });
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  });
-}
-async function tx(mode, fn) {
-  const d = await db();
-  return new Promise((res, rej) => {
-    const t = d.transaction(STORE, mode);
-    const out = fn(t.objectStore(STORE));
-    t.oncomplete = () => res(out?.result ?? out);
-    t.onerror = () => rej(t.error);
-  });
-}
-const getAll = () => tx('readonly', (s) => s.getAll());
-const put = (rec) => tx('readwrite', (s) => s.put(rec));
-export const deleteSkin = (id) => tx('readwrite', (s) => s.delete(id));
+import * as store from './store.js';
+// shared database with the music player (store.js)
+const getAll = () => store.getAll('skins');
+const put = (rec) => store.put('skins', rec);
+export const deleteSkin = (id) => store.del('skins', id);
 
 function loadImage(blob) {
   return new Promise((res, rej) => {

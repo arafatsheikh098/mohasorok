@@ -58,7 +58,7 @@ export class TouchControls {
       el.addEventListener('pointerdown', (e) => { e.preventDefault(); input.pressed.add(code); el.classList.add('down'); setTimeout(() => el.classList.remove('down'), 150); });
     };
     tap('t-indl', 'KeyQ'); tap('t-indr', 'KeyE'); tap('t-cam', 'KeyC'); tap('t-lights', 'KeyL');
-    tap('t-mirror', 'KeyV'); tap('t-fuel', 'KeyF'); tap('t-pause', 'KeyP'); tap('t-reset', 'KeyR'); tap('t-cruise', 'KeyX');
+    tap('t-mirror', 'KeyV'); tap('t-fuel', 'KeyF'); tap('t-pause', 'KeyP'); tap('t-reset', 'KeyR'); tap('t-cruise', 'KeyX'); tap('t-music', 'KeyB');
     // ☰ opens the tray of less-used buttons; it closes again after one of them is used
     const setTray = (on) => { this.root.classList.toggle('open', on); document.body.classList.toggle('tray-open', on); };
     document.getElementById('t-more')?.addEventListener('pointerdown', (e) => { e.preventDefault(); setTray(!this.root.classList.contains('open')); });

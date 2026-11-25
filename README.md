@@ -20,6 +20,7 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **Dhaka → Chatt
   - realistic collisions and a top speed of 140 km/h
   - **AI traffic cameras** on poles over the road. They flash for every vehicle that passes and fine you above 80 km/h. Each one has an "এআই ক্যামেরা" warning sign 150 m before it.
 - **Rest stops:** four highway restaurants (near Cumilla and Mirsharai, both directions) with bus bays, tea stalls and parked buses. Stop in the lot and press **F** for a 20-minute passenger break. After 3 hours on the road the passengers ask for one.
+- **Your own music:** add songs in the menu (**Music 🎵 → ＋ Add songs**, MP3/M4A/WAV/OGG…). They stay saved in your browser and are never uploaded. A small player shows while you drive: ⏮ ⏯ ⏭ and volume, **B** play/pause, **N** next song (Shift+N previous), 🎵 in the ☰ tray on phones. Optional shuffle and auto-play when a trip starts.
 - **Time of day:** you choose the start time (morning, noon, afternoon, evening or night), then the clock keeps running while you drive (12 game minutes per real minute). The sun moves across the sky through dawn, noon, the golden evening and dusk into night, and the headlights and street lights come on by themselves.
 
 ## Controls
@@ -32,6 +33,7 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **Dhaka → Chatt
 | Camera | C or 1–4 (1 = driver's seat) | 🎥 · drag the view to look around |
 | Lights / cruise / refuel | L / X / F | 💡 / CRUISE / ⛽ |
 | Screen mirrors / reset / pause | V / R / P | 🪞 / ↺ / ⏸ |
+| Music play-pause / next | B / N (Shift+N previous) | 🎵 in ☰, or the on-screen player |
 | Adjust driver's seat | **🪑 Seat** button in cabin view, or Alt + ← → ↑ ↓ (move), Alt + PgUp/PgDn (height), Alt + [ ] (field of view) | 🪑 then sliders |
 
 A gamepad also works: the left stick steers, RT is throttle, LT is brake, and A is the horn.
