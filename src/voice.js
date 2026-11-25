@@ -151,6 +151,15 @@ class Voice {
     const place = LINES[item.id].places ? item.place : '';
     const ids = [item.voice, ...VOICES[item.speaker].map((v) => v.id).filter((x) => x !== item.voice)];
     for (const vid of ids) { const c = m[clipKey(item.id, item.k, vid, place)]; if (c) return c; }
+    // no clip for this place (e.g. a counter added since the clips were made): say a sentence without the name
+    const gen = LINES[item.id].generic;
+    if (gen?.length) {
+      const g = Math.floor(Math.random() * gen.length);
+      for (const vid of ids) {
+        const c = m[clipKey(item.id, `g${g}`, vid, '')];
+        if (c) { [item.bn, item.en] = gen[g]; return c; }
+      }
+    }
     return null;
   }
 

@@ -530,19 +530,41 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     }
   }
   // Bangladeshi touches on the AK1J body
-  if (s.cockpit === 'ak') {
+  // entrance door on the left (every bus type): dark doorway + two glass leaves on hinges at their outer
+  // edges, so they swing out when the helper opens the door (setBusDoor)
+  const doorLeaves = [];
+  {
     const glassMat = interior ? M.glassPlayer : M.glassAI;
-    // real entrance door on the left: black frame + two glass leaves
     const dz0 = s.front - 0.5, dz1 = s.front - 1.4, dh = s.winTop - s.floor - 0.05;
     const frame = new THREE.Mesh(new THREE.BoxGeometry(0.03, dh, dz0 - dz1), M.dark);
     frame.position.set(s.W / 2 + 0.01, s.floor + dh / 2, (dz0 + dz1) / 2);
     exterior.add(frame);
+    // each leaf is a solid door: aluminium frame with a glass panel on both faces, so it reads clearly
+    // both shut (framed glass on the dark doorway) and open (a slab standing out from the side)
+    const lw = (dz0 - dz1) / 2 - 0.05, lh = dh - 0.1;
+    const leafFrame = new THREE.MeshStandardMaterial({ color: 0x9aa3aa, metalness: 0.7, roughness: 0.35 });
+    const leafPane = new THREE.MeshStandardMaterial({ color: 0x2c4a5e, metalness: 0.6, roughness: 0.12, emissive: 0x0b1820 });
+    const leafGeo = new THREE.BoxGeometry(0.04, lh, lw), paneGeo = new THREE.PlaneGeometry(lw - 0.1, lh * 0.62);
+    void glassMat;
     for (const k of [0, 1]) {
-      const leaf = new THREE.Mesh(new THREE.PlaneGeometry((dz0 - dz1) / 2 - 0.06, dh - 0.12), glassMat);
-      leaf.rotation.y = Math.PI / 2;
-      leaf.position.set(s.W / 2 + 0.028, s.floor + dh / 2 + 0.02, dz0 - (dz0 - dz1) * (0.25 + k * 0.5));
-      exterior.add(leaf);
+      const hinge = k === 0 ? dz0 - 0.025 : dz1 + 0.025, out = k === 0 ? -1 : 1;    // leaf 0 hangs from the front edge
+      const pivot = new THREE.Group();
+      pivot.position.set(s.W / 2 + 0.035, s.floor + dh / 2 + 0.02, hinge);
+      const leaf = new THREE.Mesh(leafGeo, leafFrame);
+      leaf.position.z = out * lw / 2;
+      leaf.castShadow = true;
+      for (const fx of [-1, 1]) {
+        const pane = new THREE.Mesh(paneGeo, leafPane);
+        pane.rotation.y = fx * Math.PI / 2;
+        pane.position.set(fx * 0.022, lh * 0.13, 0);
+        leaf.add(pane);
+      }
+      pivot.add(leaf);
+      exterior.add(pivot);
+      doorLeaves.push({ pivot, sign: out });
     }
+  }
+  if (s.cockpit === 'ak') {
     // chrome air horns on the roof cap
     for (const sx of [-1, 1]) {
       const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.42, 12, 1, true), M.chrome);
@@ -632,7 +654,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     wheels.all.push(rw);
   }
 
-  const bus = { root, pivot, body, exterior, wheels, mats, spec: s, type, op, plate, mirrorGlass, driver: eye };
+  const bus = { root, pivot, body, exterior, wheels, mats, spec: s, type, op, plate, mirrorGlass, driver: eye, doorLeaves };
   if (interior) addInterior(bus, r);
   return bus;
 }
@@ -1067,6 +1089,7 @@ function addInterior(bus, r) {
   // entrance door (left): glass panel and steps
   const door = plane(0.95, s.winTop - (floorY - 0.6), tint, s.W / 2 - 0.05, (s.winTop + floorY - 0.6) / 2, s.front - 0.78, -Math.PI / 2);
   door.renderOrder = 3;
+  bus.doorInner = door;           // folds away with the outside leaves (setBusDoor)
   for (let k = 0; k < 3; k++) add(new THREE.BoxGeometry(0.55, 0.06, 0.3), std(0x3a3a3a, 0.9), s.W / 2 - 0.35, floorY - 0.2 - k * 0.35, s.front - 0.55 - k * 0.12);
   add(new THREE.CylinderGeometry(0.02, 0.02, 1.4, 8), M.chrome, s.W / 2 - 0.35, floorY + 0.5, s.front - 1.3);
 
@@ -1115,6 +1138,15 @@ function addInterior(bus, r) {
   bus.dashLight = dashLight;
   g.traverse((o) => { if (o.isMesh && !o.material?.isMeshBasicMaterial) o.receiveShadow = true; });
   void r;
+}
+
+// entrance door: t = 0 closed … 1 fully open (the two leaves swing out about their outer hinges)
+export function setBusDoor(bus, t) {
+  if (!bus?.doorLeaves || bus.doorT === t) return;
+  bus.doorT = t;
+  const e = t * t * (3 - 2 * t), a = e * 1.45;
+  for (const { pivot, sign } of bus.doorLeaves) pivot.rotation.y = sign * a;     // free edge swings out (+x = the bus's left)
+  if (bus.doorInner) { bus.doorInner.scale.x = 1 - 0.85 * e; bus.doorInner.visible = e < 0.98; }
 }
 
 export function setBusLights(bus, { head = false, high = false, brake = false, indL = false, indR = false, reverse = false, night = false }) {

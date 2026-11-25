@@ -1,7 +1,8 @@
 // Voice lines for the bus helper (হেলপার) and passengers, in clear colloquial Bangladeshi Bangla.
 // Shared by the runtime (src/voice.js) and the clip generator (tools/gen_voice.mjs).
-// Every (line, variant, voice, place) is a whole pre-made sentence; `{place}` lines are only generated for
-// the places in their `places` list, other places fall back to browser speech / subtitle only.
+// Every (line, variant, voice, place) is a whole pre-made sentence. `{place}` lines are generated for every town
+// on the route and every bus counter in BUS_STOPS; a place without clips plays one of the line's `generic`
+// sentences (no place name) instead, so a new counter still gets a voice before the clips are regenerated.
 //
 // speaker: 'helper' | 'pax'   prio: higher wins when the queue is busy   cool: seconds before the id repeats
 import { WAYPOINTS, BUS_STOPS } from './config.js';
@@ -15,9 +16,12 @@ export const VOICES = {
 // The key a place name is stored and looked up under: drop "(…)", dots and punctuation, squash spaces.
 export const placeKey = (s) => String(s).replace(/\(.*?\)/g, ' ').replace(/[.,!?।'"]/g, ' ').replace(/\s+/g, ' ').trim();
 
-// trip ends (what the helper calls out) and the bus-counter towns (where passengers get on and off)
+// trip ends (what the helper calls out), and every town + bus counter a passenger could get down at
 const DEST = ['ঢাকা', 'চট্টগ্রাম'];
-const STOPS = BUS_STOPS.map((en) => WAYPOINTS.find((w) => w.en === en)).filter(Boolean).map((w) => placeKey(w.bn));
+const TOWNS = WAYPOINTS.filter((w) => w.town).map((w) => placeKey(w.bn));
+const COUNTERS = Object.values(BUS_STOPS).flatMap((d) => [...(d.pickup || []), ...(d.drop || [])])
+  .map((x) => x.bn || WAYPOINTS.find((w) => w.en === x.place)?.bn).filter(Boolean).map(placeKey);
+const STOPS = [...new Set([...TOWNS, ...COUNTERS])].filter((x) => !DEST.includes(x));
 export const PLACE_SETS = { dest: DEST, stops: [...STOPS, ...DEST] };
 
 export const LINES = {
@@ -25,6 +29,8 @@ export const LINES = {
     ['{place}! {place}! উঠেন উঠেন, সিট খালি আছে!', '{place}! {place}! Hop on, seats free!'],
     ['{place}, {place}! আসেন আসেন, গাড়ি এখনই ছাড়বে!', '{place}, {place}! Come on, we leave right now!'],
     ['{place} যাবেন? উঠে পড়েন, তাড়াতাড়ি!', 'Going to {place}? Get on, quick!'],
+  ], generic: [
+    ['উঠেন উঠেন, সিট খালি আছে! গাড়ি এখনই ছাড়বে!', 'Hop on, seats free! We leave right now!'],
   ] },
   'helper.board_done': { speaker: 'helper', prio: 3, cool: 4, v: [
     ['ওস্তাদ, যান যান! ডাবল!', 'Boss, go go! All in!'],
@@ -34,14 +40,20 @@ export const LINES = {
   'helper.next_stop': { speaker: 'helper', prio: 2, cool: 20, places: 'stops', v: [
     ['সামনে {place}! যারা নামবেন, রেডি হন!', '{place} ahead! Those getting off, get ready!'],
     ['{place} চলে আসছে, যারা নামবেন দরজার কাছে আসেন!', '{place} is coming, those getting off come to the door!'],
+  ], generic: [
+    ['সামনের স্টপে যারা নামবেন, দরজার কাছে আসেন!', 'Those getting off at the next stop, come to the door!'],
   ] },
   'helper.arrive': { speaker: 'helper', prio: 3, cool: 10, places: 'dest', v: [
     ['{place} চলে আসছি! সবাই নামেন, মালপত্র দেখে নিয়েন!', 'We are at {place}! Everyone off, mind your luggage!'],
     ['শেষ স্টপ, {place}! আস্তে আস্তে নামেন!', 'Last stop, {place}! Step down carefully!'],
+  ], generic: [
+    ['শেষ স্টপ চলে আসছি! সবাই নামেন, মালপত্র দেখে নিয়েন!', 'Last stop! Everyone off, mind your luggage!'],
   ] },
   'helper.depart': { speaker: 'helper', prio: 3, cool: 10, places: 'dest', v: [
     ['{place}! {place}! গাড়ি ছাড়ল!', '{place}! {place}! The bus is leaving!'],
     ['{place} ডাইরেক্ট! উঠেন, গাড়ি এখন ছাড়বে!', 'Direct to {place}! Get on, we leave now!'],
+  ], generic: [
+    ['গাড়ি ছাড়ল! উঠেন উঠেন, তাড়াতাড়ি!', 'The bus is leaving! Get on, quick!'],
   ] },
   'helper.slow': { speaker: 'helper', prio: 2, cool: 30, v: [
     ['ওস্তাদ, আস্তে চালান! সামনে ক্যামেরা আছে।', 'Boss, slow down! There is a camera ahead.'],
@@ -74,6 +86,8 @@ export const LINES = {
     ['ভাই, আমি {place} নামব!', 'Brother, I am getting off at {place}!'],
     ['ওস্তাদ, {place} একটু রাখবেন!', 'Driver, please stop at {place}!'],
     ['মামা, {place} নামিয়ে দিয়েন!', 'Mama, drop me at {place}!'],
+  ], generic: [
+    ['ভাই, সামনের স্টপে আমি নামব!', 'Brother, I am getting off at the next stop!'],
   ] },
   'pax.thanks': { speaker: 'pax', prio: 1, cool: 4, v: [
     ['ধন্যবাদ ভাই!', 'Thank you brother!'],
@@ -107,6 +121,9 @@ export function allClips() {
       for (const vo of VOICES[line.speaker]) for (const place of places) {
         out.push({ key: clipKey(id, k, vo.id, place), text: bn.replaceAll('{place}', place), voice: vo });
       }
+    });
+    (line.generic || []).forEach(([bn], k) => {
+      for (const vo of VOICES[line.speaker]) out.push({ key: clipKey(id, `g${k}`, vo.id, ''), text: bn, voice: vo });
     });
   }
   return out;

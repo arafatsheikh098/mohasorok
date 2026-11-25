@@ -164,7 +164,7 @@ function restartTrip() {
   for (const g of facilities.gates) { g.holdPlayer = false; g.openT = 0; }
   traffic.init(player.s);
   setTime(settings.time);                       // clock back to the chosen start time
-  Object.assign(player, { sinceBreak: 0, breaks: 0, breakWarned: false, resting: 0, restPrompt: false, termHint: false, inTerminal: route.terminalAt(player.s, player.d) });
+  Object.assign(player, { sinceBreak: 0, breaks: 0, breakWarned: false, resting: 0, restPrompt: false, termHint: false, arriveT: 0, inTerminal: route.terminalAt(player.s, player.d) });
   passengers?.reset(settings.dir);
 }
 
@@ -467,10 +467,13 @@ function events(dt) {
   const gate = (dest.exitS0 + dest.exitS1) / 2;
   if (!player.termHint && Math.abs(s - gate) < 450) {
     player.termHint = true;
-    hud.toast(`🚌 <span class="bn">${dest.bn}</span><br><small>Cross at the median opening by the gate, drive into the yard and stop to finish the trip</small>`, 'good', 5500);
+    hud.toast(`🚌 <span class="bn">${dest.bn}</span><br><small>Cross at the median opening by the gate, drive into the yard, stop and press G to let the passengers off</small>`, 'good', 5500);
   }
   const atEnd = toCtg ? s >= route.length - 4 : s <= 4;
-  if ((player.inTerminal === dest && Math.abs(player.phys.v) < 0.5) || atEnd) {
+  // in the destination yard the trip ends once everyone has got down (G) and the door is shut
+  const parked = player.inTerminal === dest && Math.abs(player.phys.v) < 0.5;
+  player.arriveT = parked && (!passengers || passengers.allOff()) ? (player.arriveT || 0) + dt : 0;
+  if (player.arriveT > 0.8 || atEnd) {
     state = 'arrived';
     passengers?.finishTrip();          // everyone still aboard gets down at the terminal
     hud.arrival(player, settings.op.en, toCtg ? 'Chattogram' : 'Dhaka');

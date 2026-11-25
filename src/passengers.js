@@ -1,8 +1,9 @@
-// Passengers: roadside bus counters along N1, boarding and alighting through the front-left door (G),
-// fares by distance, stop requests and missed stops. Boarding starts at the origin terminal and
-// everyone left gets off at the destination terminal.
+// Passengers: long-route coach service. People board at the origin terminal and a few city counters
+// (BUS_STOPS pickup), and get down only at the drop points after Cumilla and at the destination terminal,
+// through the front-left door (G). Fares by distance, stop requests, missed stops, counters that fill up again.
 import * as THREE from 'three';
-import { ROAD, BUS_STOPS, FARE_PER_KM, AC_FARE_FACTOR, MIN_FARE } from './config.js';
+import { ROAD, BUS_STOPS, FARE_PER_KM, AC_FARE_FACTOR, MIN_FARE, REAL_ROUTE_KM, COUNTER_REFILL } from './config.js';
+import { setBusDoor } from './busModel.js';
 import { makeCanvas, canvasTexture, concreteTexture, BN_FONT, EN_FONT } from './textures.js';
 import { ribbon } from './world/road.js';
 import { voice } from './voice.js';
@@ -82,18 +83,23 @@ export class Passengers {
       bench: new THREE.MeshStandardMaterial({ color: 0x8a5a36, roughness: 0.8 }),
       hatch: new THREE.MeshStandardMaterial({ map: hatchTexture(), transparent: true, alphaTest: 0.3, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -3 }),
     };
-    const offs = [40, -40, 100, -100, 160, -160, 230, -230, 300, -300];
-    for (const name of BUS_STOPS) {
-      const place = R.places.find((p) => p.en === name);
-      if (!place) continue;
-      for (const side of [-1, 1]) {
-        const dir = side < 0 ? 1 : -1;
-        let s = null;
-        for (const o of offs) { const c = place.s + o * dir; if (this._clearAt(c)) { s = c; break; } }
-        if (s === null) continue;
-        const c = { kind: 'counter', place, bn: place.bn.split(' (')[0], en: place.en.split(' (')[0], side, dir, s, waiting: [], announced: false, spots: [] };
-        this._buildCounterMesh(c, mats, scene, chunks);
-        this.counters.push(c);
+    const offs = [0, 40, -40, 100, -100, 160, -160, 230, -230, 300, -300];
+    // each direction has its own counters on its own carriageway: pickups near the start city, drops after Cumilla
+    for (const [dirKey, side] of [['ctg', -1], ['dhk', 1]]) {
+      const dir = side < 0 ? 1 : -1;
+      for (const role of ['pickup', 'drop']) {
+        for (const def of BUS_STOPS[dirKey]?.[role] || []) {
+          const place = def.place ? R.places.find((p) => p.en === def.place) : null;
+          if (def.place && !place) continue;
+          const s0 = place ? place.s : (def.km / REAL_ROUTE_KM) * R.length;
+          let s = null;
+          for (const o of offs) { const c = s0 + o * dir; if (this._clearAt(c) && !this.counters.some((x) => Math.abs(x.s - c) < 70)) { s = c; break; } }
+          if (s === null) { console.warn(`[passengers] no room for the ${def.place || def.en} counter`); continue; }
+          const bn = (place ? place.bn : def.bn).split(' (')[0], en = (place ? place.en : def.en).split(' (')[0];
+          const c = { kind: 'counter', role, place, bn, en, side, dir, s, waiting: [], announced: false, spots: [], refillT: 0 };
+          this._buildCounterMesh(c, mats, scene, chunks);
+          this.counters.push(c);
+        }
       }
     }
     this.counters.sort((a, b) => a.s - b.s);
@@ -146,7 +152,8 @@ export class Passengers {
     // sign board under the roof edge, facing the road
     const tex = panel(1024, 256, '#1b5e20', (x, w, hh) => {
       x.fillStyle = '#fff'; x.font = `bold 92px ${BN_FONT}`; x.fillText(`${c.bn} বাস কাউন্টার`, w / 2, hh * 0.38);
-      x.fillStyle = '#ffd54f'; x.font = `bold 58px ${EN_FONT}`; x.fillText(`${c.en.toUpperCase()} BUS COUNTER`, w / 2, hh * 0.78);
+      x.fillStyle = '#ffd54f'; x.font = `bold 52px ${EN_FONT}`;
+      x.fillText(`${c.en.toUpperCase()} ${c.role === 'drop' ? 'DROP-OFF POINT' : 'BUS COUNTER'}`, w / 2, hh * 0.78);
     });
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.15), new THREE.MeshBasicMaterial({ map: tex }));
     const roadFace = X(shedD) + (X(shedD) > 0 ? -1.62 : 1.62);
@@ -220,21 +227,47 @@ export class Passengers {
     const rate = FARE_PER_KM * (this.player.bus?.spec.ac ? AC_FARE_FACTOR : 1);
     return Math.max(MIN_FARE, Math.round((km * rate) / 10) * 10);
   }
-  // stops after `s` for traffic on `side`, in driving order, ending with the terminal
+  // drop points after `s` for traffic on `side`, in driving order, ending with the terminal
   _later(side, s) {
     const dir = side < 0 ? 1 : -1;
-    const list = this.counters.filter((c) => c.side === side && (c.s - s) * dir > 1).sort((a, b) => (a.s - b.s) * dir);
+    const list = this.counters.filter((c) => c.side === side && c.role === 'drop' && (c.s - s) * dir > 1).sort((a, b) => (a.s - b.s) * dir);
     return [...list, this.ends[side < 0 ? 1 : 0]];
   }
   _pickDest(side, s) {
     const list = this._later(side, s);
-    if (list.length === 1 || this.r() < 0.45) return list[list.length - 1];
+    if (list.length === 1 || this.r() < 0.55) return list[list.length - 1];      // most ride to the end
     return list[Math.floor(this.r() * (list.length - 1))];
   }
   _newPax(side, s) {
     const dest = this._pickDest(side, s);
     return { dest, fare: this._fare(s, dest.s), fromS: s, fig: null };
   }
+  _refillDelay() { return COUNTER_REFILL[0] + this.r() * (COUNTER_REFILL[1] - COUNTER_REFILL[0]); }
+  // a passenger at a pickup counter: standing at a free spot, or (walkIn) arriving from behind the shed
+  _addWaiting(c, walkIn) {
+    const pax = this._newPax(c.side, c.s);
+    const taken = new Set(c.waiting.map((x) => x.spot));
+    const sp = c.spots.find((x) => !taken.has(x)) || c.spots[Math.floor(this.r() * c.spots.length)];
+    pax.spot = sp;
+    if (walkIn) {
+      const q = this.route.pointAt(c.s + (this.r() - 0.5) * 10, c.side * (ROAD.half + 9));
+      pax.fig = this._fig(q.x, sp.y, q.z, 0);
+      if (pax.fig) { pax.fig.tx = sp.x; pax.fig.tz = sp.z; pax.fig.ty = sp.y; }
+    } else pax.fig = this._fig(sp.x, sp.y, sp.z, sp.yaw + (this.r() - 0.5) * 0.8);
+    c.waiting.push(pax);
+  }
+  // new people keep turning up at the pickup counters, so a counter served earlier is not empty for ever
+  _refill(dt) {
+    for (const c of this.counters) {
+      if (c.role !== 'pickup' || (this.stop && this.stop.here === c)) continue;
+      c.refillT -= dt;
+      if (c.refillT > 0) continue;
+      c.refillT = this._refillDelay();
+      if (c.waiting.length < 9) this._addWaiting(c, true);
+    }
+  }
+  // the trip can finish: nobody aboard and the door shut
+  allOff() { return !this.aboard.length && !this.door && !this.stop && (this.doorT || 0) < 0.02; }
 
   reset(dirKey = 'ctg') {
     for (const f of [...this.figs]) this._drop(f);
@@ -243,20 +276,16 @@ export class Passengers {
     this.tripSide = this.toCtg ? -1 : 1;
     this.aboard = [];
     this.stop = null; this.door = false; this.cool = 0; this.leaveWarn = 0; this.promptKey = '';
-    this.finished = false;
+    this.finished = false; this.doorT = 0;
+    setBusDoor(this.player.bus, 0);
     Object.assign(this.stats, { aboard: 0, capacity: this.capacity(), fares: 0, carried: 0, boarded: 0, missed: 0 });
     this.player.pax = this.stats;
-    // people waiting at every counter (both directions)
+    // people waiting at the pickup counters (drop points only see people getting down)
     for (const c of this.counters) {
-      c.waiting = []; c.announced = false;
-      const n = 2 + Math.floor(this.r() * 7);
-      for (let k = 0; k < n; k++) {
-        const pax = this._newPax(c.side, c.s);
-        const sp = c.spots[k % c.spots.length];
-        pax.fig = this._fig(sp.x, sp.y, sp.z, sp.yaw + (this.r() - 0.5) * 0.8);
-        pax.spot = sp;
-        c.waiting.push(pax);
-      }
+      c.waiting = []; c.announced = false; c.refillT = this._refillDelay();
+      if (c.role !== 'pickup') continue;
+      const n = 4 + Math.floor(this.r() * 6);
+      for (let k = 0; k < n; k++) this._addWaiting(c, false);
     }
     // the origin terminal crowd (they appear beside the door when it opens)
     const orig = this.ends[this.originEnd];
@@ -319,7 +348,7 @@ export class Passengers {
     // seats after the people getting down
     const room = this.capacity() - (this.aboard.length - off.length);
     if (on.length > room) on = on.slice(0, Math.max(0, room));
-    this.stop = { here, off: off.slice(), on: on.slice(), t: 0.4, walkers: 0, fares: 0, nOn: on.length, nOff: off.length, doneT: -1, terminal: here.kind === 'end' };
+    this.stop = { here, off: off.slice(), on: on.slice(), t: 1.0, walkers: 0, fares: 0, nOn: on.length, nOff: off.length, doneT: -1, terminal: here.kind === 'end' };
     if (here === this.ends[1 - this.originEnd]) voice.say('helper.arrive', { place: here.bn.split(' (')[0] });
     else if (on.length || here.kind === 'end') voice.say('helper.call', { place: destName });
     if (!off.length && !on.length) this.hud.toast(`🚪 <span class="bn">${here.bn.split(' (')[0]}</span> — nobody for this stop${room <= 0 ? ' (bus full)' : ''}`, '', 2600);
@@ -365,7 +394,12 @@ export class Passengers {
         this.hud.toast(`<span class="bn">দরজা খোলা!</span> — You drove off with the door open${busy ? ' while people were getting on' : ''}`, 'bad', 3200);
       }
     }
+    // the door leaves swing open / shut over ~0.7 s
+    const want = this.door ? 1 : 0;
+    this.doorT = (this.doorT || 0) + Math.max(-dt * 1.4, Math.min(dt * 1.4, want - (this.doorT || 0)));
+    setBusDoor(p.bus, this.doorT);
     if (this.stop) this._serve(dt);
+    this._refill(dt);
     this._walk(dt);
     this._requests();
     this._prompt(still);

@@ -90,7 +90,20 @@ export const UTURN_GAP = 36;          // length of a median opening
 
 // ---- passengers: roadside bus counters and fares ----
 // towns (WAYPOINTS en names) with a bus counter on both carriageways
-export const BUS_STOPS = ['Kanchpur', 'Mograpara (Sonargaon)', 'Daudkandi', 'Chandina', 'Cumilla', 'Feni (Mohipal)', 'Mirsharai', 'Sitakunda'];
+// Long-route coach stops, the way Dhaka–Chattogram coaches run: passengers board only at the terminal and a
+// few city counters as the bus leaves town, and get down only at the big towns after Cumilla and at the end.
+// { place } = a WAYPOINTS name; { en, bn, km } = a counter that is not a waypoint (km = real km from Dhaka).
+export const BUS_STOPS = {
+  ctg: {   // Dhaka → Chattogram (left carriageway)
+    pickup: [{ en: 'Signboard', bn: 'সাইনবোর্ড', km: 6.2 }, { place: 'Kanchpur' }],
+    drop: [{ place: 'Cumilla' }, { place: 'Feni (Mohipal)' }],
+  },
+  dhk: {   // Chattogram → Dhaka (right carriageway)
+    pickup: [{ en: 'City Gate', bn: 'সিটি গেট', km: 240.8 }, { en: 'Fouzdarhat', bn: 'ফৌজদারহাট', km: 237.5 }],
+    drop: [{ place: 'Feni (Mohipal)' }, { place: 'Cumilla' }],
+  },
+};
+export const COUNTER_REFILL = [14, 32];   // s between new passengers turning up at a pickup counter
 export const FARE_PER_KM = 2.2;       // ৳ per real km, non-AC intercity (AC buses charge AC_FARE_FACTOR more)
 export const AC_FARE_FACTOR = 1.6;
 export const MIN_FARE = 60;           // ৳, shortest hop
