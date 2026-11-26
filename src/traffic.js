@@ -162,6 +162,8 @@ export class Traffic {
     v.keepT = 0;          // time the left lane has been clear while sitting in the fast lane
     v.flashT = -1; v.flashCool = 0; v.stuckT = 0;
     v.tollPaid = false; v.tollWait = 0; v.yieldT = 0; v.booth = null;
+    if (v.rest) { v.rest.slot.v = null; v.rest = null; }   // a recycled bus gives its rest-stop bay back
+    v.restSeen = null;
     v.prevS = v.s;   // so a respawn never counts as passing a camera
   }
 
@@ -240,6 +242,9 @@ export class Traffic {
       if (v.booth === null && tollDist > 25 && tollDist < PLAZA.reach + 60) v.booth = this.pickBooth(v);
       if (v.booth !== null && tollDist < -(PLAZA.islandLen / 2 + v.len / 2)) v.booth = null;
       const nearToll = Math.abs(v.s - route.tollS) < TOLL_NO_CHANGE;
+      // the odd bus pulls into a rest-stop lot, parks in a bay for a while, then pulls out again
+      const rest = this._restPlan(v, player);
+      const resting = !!rest && rest.phase !== 'approach';
 
       // let the player in when they signal into our lane
       v.yieldT = Math.max(0, v.yieldT - dt);
@@ -253,6 +258,15 @@ export class Traffic {
       // pushy drivers wind it up a little while passing
       let v0 = v.v0 + (overtaking ? v.agg * 1.5 : 0);
       if (v.yieldT > 0) v0 = Math.min(v0, Math.max(4, (player.vs ?? player.v) * 0.85));
+      if (rest?.phase === 'approach') {
+        const slowD = this.laneD(v.dir, false), toLot = rest.ahead;
+        v0 = Math.min(v0, 7 + Math.max(0, toLot) * 0.06);          // slow down for the turn in
+        if (this.isFast(v.targetD) && !v.plan) this.plan(v, slowD, 1.2);
+        if (toLot <= 0) {
+          if (Math.abs(v.d - slowD) < 0.6) this._restEnter(v);
+          else { rest.slot.v = null; v.rest = null; }                // never got into the slow lane: skip it
+        }
+      }
 
       // police checkpoint: the fast lane is coned off — merge left before it, crawl past the police
       let closed = null;
@@ -302,9 +316,13 @@ export class Traffic {
       // IDM car following
       const a = v.K.a, b = 3;
       const sStar = 5 + v.v * 1.3 + (v.v * (v.v - lv)) / (2 * Math.sqrt(a * b));
-      let acc = a * (1 - (v.v / v0) ** 4) - (gap < 1e8 ? a * (Math.max(0, sStar) / Math.max(0.5, gap)) ** 2 : 0);
-      acc = THREE.MathUtils.clamp(acc, -9, a);
-      v.v = v.broken ? 0 : Math.max(0, v.v + acc * dt);
+      let acc;
+      if (v.rest && v.rest.phase !== 'approach') acc = this._restDrive(v, dt, player);
+      else {
+        acc = a * (1 - (v.v / v0) ** 4) - (gap < 1e8 ? a * (Math.max(0, sStar) / Math.max(0.5, gap)) ** 2 : 0);
+        acc = THREE.MathUtils.clamp(acc, -9, a);
+        v.v = v.broken ? 0 : Math.max(0, v.v + acc * dt);
+      }
       v.acc = acc;
 
       // ---- lane decisions ----
@@ -312,7 +330,8 @@ export class Traffic {
       v.flashCool -= dt;
       const changing = Math.abs(v.targetD - v.d) > 0.35;
       const slowAhead = gap < 45 + v.v * 1.4 && lv < v.v0 - 1.5;
-      if (v.plan) {
+      if (resting) v.plan = null;
+      else if (v.plan) {
         // indicator is on: move over once we have signalled long enough and the gap is there
         const p = v.plan;
         p.t += dt;
@@ -321,7 +340,7 @@ export class Traffic {
           v.fromD = v.targetD; v.targetD = p.to; v.plan = null;
           v.cool = 3 + this.r() * 3;
         } else if (p.t > p.sig + 7) { v.plan = null; v.sig = 0; v.cool = 2; }   // never got a gap: give up
-      } else if (!changing && v.cool <= 0 && !nearToll && !v.broken && !v.shoulder && !closed) {
+      } else if (!changing && v.cool <= 0 && !nearToll && !v.broken && !v.shoulder && !closed && !rest) {
         const fastD = this.laneD(v.dir, true), slowD = this.laneD(v.dir, false);
         if (!inFast) {
           // stuck behind something slower: signal right and pull out to overtake
@@ -358,12 +377,14 @@ export class Traffic {
         v.targetD = v.fromD; v.cool = 3;
       }
       // indicator: on while waiting for the gap and during the move, off once settled in the lane
-      if (!v.plan) {
+      if (rest?.phase === 'approach' && rest.ahead < 90 && !v.plan) v.sig = Math.sign((rest.slot.d - v.d) * v.dir);
+      else if (!v.plan && !v.rest) {
         const dd = (v.targetD - v.d) * v.dir;
         v.sig = Math.abs(dd) > 0.3 ? Math.sign(dd) : 0;
       }
 
       // ---- sideways motion: eases in and out like a real lane change ----
+      if (!v.rest || v.rest.phase === 'approach') {     // (in the rest-stop lot _restDrive steers instead)
       let tD = v.booth !== null ? -v.dir * PLAZA.laneC(v.booth) : v.targetD;
       // never steer off the apron while it narrows again
       const room = route.halfAt(v.s + v.dir * 10) - v.wid / 2 - 0.9;
@@ -377,6 +398,7 @@ export class Traffic {
       v.d += v.lv * dt;
       const edge = route.halfAt(v.s) - v.wid / 2 - 0.3;      // the apron narrows after the booths: stay on it
       if (Math.abs(v.d) > edge) { v.d = Math.sign(v.d) * edge; v.lv = 0; }
+      }
       v.prevS = v.s;
       v.s += v.v * v.dir * dt;
 
@@ -427,6 +449,100 @@ export class Traffic {
       }
     }
     return crashes;
+  }
+
+  // ------------------------------------------------------------ rest stops & fuel stations
+  // A few buses pull into a rest-stop lot and park in a bay for a while; a few buses and trucks pull in at a
+  // fuel station and stand at a pump. Then they pull out into the slow lane again.
+  // Rest-stop bays: the middle four of the painted 15 m bays (room to pull in and out).
+  // Fuel station: the two lanes between the pump islands and canopy pillars, one vehicle at each.
+  _slots(r) {
+    if (!r.slots) {
+      r.slots = r.kind === 'fuel'
+        ? [12.5, 17.5].map((o) => ({ s: r.sc, d: r.side * (ROAD.half + o), v: null }))
+        : [-22.5, -7.5, 7.5, 22.5].map((o) => ({ s: r.sc + o, d: r.side * (ROAD.half + 18.25), v: null }));
+    }
+    return r.slots;
+  }
+  _stopPlaces() {
+    if (!this.places) {
+      for (const r of this.route.rests) r.kind = 'rest';
+      for (const st of this.route.stations) st.kind = 'fuel';
+      this.places = [...this.route.rests, ...this.route.stations];
+    }
+    return this.places;
+  }
+  // decide (once per place) whether this vehicle stops there; returns its stop state or null
+  _restPlan(v, player) {
+    if (v.rest) {
+      if (v.rest.phase === 'approach') v.rest.ahead = ((v.dir > 0 ? v.rest.r.s0 : v.rest.r.s1) - v.s) * v.dir;
+      return v.rest;
+    }
+    if (v.broken || !(v.isBus || v.K.kind === 'truck')) return null;
+    const side = Math.sign(this.laneD(v.dir, false));
+    for (const r of this._stopPlaces()) {
+      if (r.side !== side || v.restSeen === r) continue;
+      const ahead = ((v.dir > 0 ? r.s0 : r.s1) - v.s) * v.dir;
+      if (ahead < 140 || ahead > 450) continue;
+      v.restSeen = r;
+      const chance = r.kind === 'rest' ? (v.isBus ? 0.45 : 0) : (v.isBus ? 0.25 : 0.3);
+      if (this.r() > chance) continue;                // most drive on by
+      // a free bay / pump the player is not standing in
+      const free = this._slots(r).filter((sl) => !sl.v && !(Math.abs(player.s - sl.s) < 16 && Math.sign(player.d) === r.side && Math.abs(Math.abs(player.d) - Math.abs(sl.d)) < 4));
+      if (!free.length) continue;
+      const slot = free[Math.floor(this.r() * free.length)];
+      slot.v = v;
+      v.rest = { r, slot, phase: 'approach', ahead };
+      return v.rest;
+    }
+    return null;
+  }
+  _restEnter(v) {
+    const R = v.rest, fuel = R.r.kind === 'fuel';
+    // at a fuel station finish the sideways move before the canopy pillars
+    Object.assign(R, { phase: 'enter', s0: v.s, d0: v.d, d1: R.slot.d, s1: R.slot.s, uA: 0, uB: fuel ? 0.66 : 1 });
+    v.plan = null;
+    v.targetD = v.fromD = R.slot.d;     // so traffic in the slow lane stops treating it as being in their lane
+  }
+  // drive along a smooth S from (s0, d0) to (s1, d1); returns the acceleration (for the brake lights)
+  _restDrive(v, dt, player) {
+    const R = v.rest, smooth = (x) => x * x * (3 - 2 * x);
+    if (R.phase === 'park') {
+      v.v = 0; v.lv = 0; v.sig = 0;
+      R.t -= dt;
+      if (R.t <= 0) {
+        const slowD = this.laneD(v.dir, false);
+        // pull out only with room in the slow lane at the exit
+        const exitS = (v.dir > 0 ? R.r.s1 : R.r.s0);
+        const probe = { ...v, s: exitS - v.dir * 10, d: slowD };
+        if (this.roomIn(probe, slowD, player, 1.6)) {
+          // at a fuel station drive straight on past the pillars before steering back to the road
+          Object.assign(R, { phase: 'leave', s0: v.s, d0: v.d, s1: exitS + v.dir * 8, d1: slowD, uA: R.r.kind === 'fuel' ? 0.3 : 0, uB: 1 });
+        } else R.t = 1.5;
+      }
+      return 0;
+    }
+    const len = Math.abs(R.s1 - R.s0), left = (R.s1 - v.s) * v.dir;
+    // speed: ease up to ~7 m/s, brake gently to a stop at the bay; pull out at ~4 m/s and speed up towards the road
+    const vT = R.phase === 'enter' ? Math.min(7.5, Math.sqrt(2 * 1.1 * Math.max(0, left)) + 0.3) : 4 + 6 * Math.min(1, 1 - left / len);
+    const acc = THREE.MathUtils.clamp((vT - v.v) * 1.5, -3, 1.4);
+    v.v = Math.max(0, v.v + acc * dt);
+    const dOld = v.d;
+    const u = THREE.MathUtils.clamp(((1 - left / len) - R.uA) / (R.uB - R.uA), 0, 1);
+    v.d = R.d0 + (R.d1 - R.d0) * smooth(u);
+    v.lv = (v.d - dOld) / Math.max(dt, 1e-3);
+    v.sig = Math.abs(R.d1 - v.d) > 0.4 ? Math.sign((R.d1 - v.d) * v.dir) : 0;
+    if (left <= 0.25) {
+      if (R.phase === 'enter') {
+        v.v = 0; v.lv = 0; R.phase = 'park';
+        R.t = R.r.kind === 'fuel' ? 15 + this.r() * 20 : 35 + this.r() * 45;     // fill up 15–35 s · meal break 35–80 s
+      } else {
+        // back on the highway
+        R.slot.v = null; v.rest = null;
+        v.d = v.targetD = v.fromD = R.d1; v.lv = 0; v.sig = 0; v.cool = 3;
+      }
+    }
+    return acc;
   }
 
   // high beam is fine: nothing coming the other way within ~250 m and nobody close ahead

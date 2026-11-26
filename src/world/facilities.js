@@ -141,6 +141,24 @@ export function buildFacilities(route, scene, chunks) {
         obstacles.push({ s0: gs - 0.2, s1: gs + 0.2, d0: gate.d0, d1: gate.d1, gate });
       }
     }
+    // fenced toll-office yards beside the plaza: the verge outside the last booth is closed off, so a bus
+    // cannot leave the road and drive round the barriers. (Solid for the bus; a low wall all round.)
+    const yardS = IL / 2 + 6, yardIn = PLAZA.half + 0.2, yardOut = ROAD.toe + 50;
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xbfc3c6, roughness: 0.85 });
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xe0b43a, roughness: 0.6 });
+    for (const sd of [-1, 1]) {
+      obstacles.push({ s0: sT - yardS, s1: sT + yardS, d0: sd < 0 ? -yardOut : yardIn, d1: sd < 0 ? -yardIn : yardOut, fence: true });
+      const wallH = 1.3 + h, y = 1.3 - wallH / 2;          // reaches down to the ground below the embankment
+      const along = (d) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.3, wallH, yardS * 2), wallMat); m.position.set(X(sd * d), y, 0); return m; };
+      const across = (z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(yardOut - yardIn, wallH, 0.3), wallMat); m.position.set(X(sd * (yardIn + yardOut) / 2), y, z); return m; };
+      const inner = along(yardIn + 0.15);
+      inner.castShadow = true;
+      grp.add(inner, along(yardOut - 0.15), across(-yardS + 0.15), across(yardS - 0.15));
+      // yellow / black hazard band along the road-side wall
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, yardS * 2), stripeMat);
+      band.position.set(X(sd * (yardIn + 0.15)), 1.05, 0);
+      grp.add(band);
+    }
     // painted lines on the apron: yellow median edge, white outer edge, and the lane lines that fan out to the booths
     const marks = new THREE.Group();
     const strip = (d, w, a, b, mat) => {

@@ -30,11 +30,18 @@ export class HUD {
   // extra minimap markers (bus counters etc.): [{ p: Vector3, icon, col }]
   addMarkers(list) { this.markers.push(...list); }
 
+  // On-screen messages stay out of the driver's way: at most 2 at once (the oldest goes first),
+  // the same message is never stacked twice, and none stays longer than 3 s.
   toast(html, cls = '', ms = 3200) {
+    const live = [...this.toasts.children].filter((t) => !t.classList.contains('out'));
+    if (live.some((t) => t.dataset.html === html)) return;
+    while (live.length >= 2) { const old = live.shift(); old.classList.add('out'); setTimeout(() => old.remove(), 500); }
     const el = document.createElement('div');
     el.className = 'toast ' + cls;
     el.innerHTML = html;
+    el.dataset.html = html;
     this.toasts.appendChild(el);
+    ms = Math.min(ms, 3000);
     setTimeout(() => el.classList.add('out'), ms);
     setTimeout(() => el.remove(), ms + 600);
   }
@@ -73,6 +80,9 @@ export class HUD {
     $('ind-l').classList.toggle('on', st.indL && st.blink);
     $('ind-r').classList.toggle('on', st.indR && st.blink);
     $('ind-lights').classList.toggle('on', st.lights);
+    $('ind-lights').classList.toggle('high', st.lights && st.high);
+    $('ind-lights').textContent = st.lights && st.high ? 'HIGH' : 'LIGHTS';
+    $('ind-fog').classList.toggle('on', st.fog);
     $('ind-cruise').classList.toggle('on', st.cruise);
     $('ind-cruise').textContent = st.cruise ? `CRUISE ${Math.round(st.cruiseKmh)}` : 'CRUISE';
     void avg;

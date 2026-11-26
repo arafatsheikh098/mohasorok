@@ -91,7 +91,7 @@ const player = {
   bus: null, phys: null, s: 0, d: 0, hint: -1, len: 12, wid: 2.5, v: 0,
   lights: false, indL: false, indR: false, blinkT: 0, blink: false,
   elapsed: 0, fines: 0, crashes: 0, rating: 5, crashCool: 0, complainCool: 0,
-  lastPlace: null, lastBridge: null, lastS: 0, spot: null,
+  lastPlace: null, lastBridge: null, lastS: 0, spot: null, fogSpot: null, high: false, fog: false,
   side: -1, vs: 0, heading: 1, fuel: TANK_LITRES * START_FUEL, fuelCost: 0, tollCost: 0, tollWait: 0, refuelling: false,
   indArmed: false, indCancelT: 0, promptCool: 0, fuelWarn: 0,
 };
@@ -125,6 +125,16 @@ function applyNight(force = false) {
   }
   player.wasNight = night; player.wasDim = dim;
 }
+// headlight beams: dipped, or the upper dipper (brighter, longer, aimed further up the road); fog lamps low and wide
+function beams() {
+  const { spot, fogSpot } = player, hi = player.lights && player.high;
+  spot.intensity = player.lights ? (hi ? 520 : 260) : 0;
+  spot.distance = hi ? 320 : 160;
+  spot.angle = hi ? 0.42 : 0.5;
+  spot.target.position.z = player.bus.spec.front + (hi ? 90 : 35);
+  spot.target.position.y = hi ? 1.2 : 0;
+  if (fogSpot) fogSpot.intensity = player.fog ? 140 : 0;
+}
 const clockText = (mins) => `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(Math.floor(mins % 60)).padStart(2, '0')}`;
 
 function createPlayerBus() {
@@ -137,6 +147,12 @@ function createPlayerBus() {
   spot.target.position.set(0, 0, bus.spec.front + 35);
   bus.body.add(spot, spot.target);
   player.spot = spot;
+  // fog lamps: a low, wide, warm beam that lights the road just ahead and the verges (cuts under fog)
+  const fogSpot = new THREE.SpotLight(0xffd27a, 0, 45, 1.0, 0.7, 1.4);
+  fogSpot.position.set(0, bus.spec.floor + 0.2, bus.spec.front + 0.2);
+  fogSpot.target.position.set(0, 0, bus.spec.front + 14);
+  bus.body.add(fogSpot, fogSpot.target);
+  player.fogSpot = fogSpot;
   player.bus = bus;
   player.phys = new BusPhysics(bus.spec);
   player.len = bus.spec.L;
@@ -183,29 +199,34 @@ function restLogic(dt) {
     player.breakWarned = true;
     hud.toast('😴 3 hours on the road — passengers want a break. Stop at the next 🍛 rest stop', 'bad', 5000);
   }
-  if (player.resting > 0) {
-    player.resting -= dt;
-    if (player.resting <= 0) {
-      $('restfade').classList.remove('on');
-      hud.toast(`Break over (${REST_MINUTES} min) — passengers are back on board ★`, 'good', 3500);
-    }
-    return;
-  }
+  if (player.resting > 0) return;      // a break is running (src/passengers.js drives it, see onRestBreak)
   const r = route.restAt(player.s, player.d);
   const stopped = r && Math.abs(player.phys.v) < 0.5;
   if (stopped) {
     player.restPrompt = true;
     $('prompt').style.display = 'block';
     $('prompt').innerHTML = `🍛 <b>${r.en}</b> — press <kbd>F</kbd> for a ${REST_MINUTES}-minute break`;
-    if (input.hit('KeyF')) {
-      player.resting = 2.2;
-      player.clockMin += REST_MINUTES;
-      player.sinceBreak = 0; player.breakWarned = false; player.breaks++;
-      player.rating = Math.min(5, player.rating + 0.5);
-      $('restfade').classList.add('on');
+    if (input.hit('KeyF') && passengers.startBreak(r)) {
+      player.resting = 1;                // holds the bus (handbrake, no throttle) until everyone is back
+      player.restPrompt = false;
       $('prompt').style.display = 'none';
     }
   } else if (player.restPrompt) { player.restPrompt = false; $('prompt').style.display = 'none'; }
+}
+
+// rest-break steps from src/passengers.js: everyone gets down → screen fades for the 20 minutes → back on board
+function onRestBreak(ev) {
+  if (ev === 'fade') {
+    $('restfade').classList.add('on');
+    player.clockMin += REST_MINUTES;
+    player.sinceBreak = 0; player.breakWarned = false; player.breaks++;
+    player.rating = Math.min(5, player.rating + 0.5);
+  } else if (ev === 'back') {
+    $('restfade').classList.remove('on');
+  } else if (ev === 'done') {
+    player.resting = 0;
+    hud.toast(`Break over (${REST_MINUTES} min) — everyone is back on board ★`, 'good', 3000);
+  }
 }
 
 // ---------- road constraints / placement ----------
@@ -231,8 +252,9 @@ const vstate = { fast: 0, indL: false, indR: false };
 function voiceLogic(dt) {
   const kmh = Math.abs(player.phys.v) * 3.6;
   // speeding for a few seconds: the helper or a passenger complains
-  vstate.fast = kmh > SPEED_LIMIT + 10 ? vstate.fast + dt : Math.max(0, vstate.fast - dt * 2);
-  if (vstate.fast > 4) { vstate.fast = 0; voice.say(Math.random() < 0.5 ? 'helper.slow' : 'pax.slow'); }
+  // (only real overspeed: 100 km/h or more, held for 3 s; the lines have their own long cooldowns)
+  vstate.fast = kmh >= 100 ? vstate.fast + dt : Math.max(0, vstate.fast - dt * 2);
+  if (vstate.fast > 3) { vstate.fast = 0; voice.say(Math.random() < 0.5 ? 'helper.slow' : 'pax.slow'); }
   // the helper watches the sides when you signal: right = pulling out to overtake, left = moving back in
   const ad = Math.abs(player.d);
   const near = (inner, back, ahead) => traffic.list.some((v) => Math.sign(v.d) === player.side &&
@@ -308,7 +330,7 @@ function constrain(dt) {
       impact = Math.abs(phys.v * fn);
       phys.v = Math.abs(fn) > 0.8 ? 0 : phys.v * (1 - Math.abs(fn));
     }
-    wallHit(impact, o.gate ? 'Hit the toll barrier! Stop before the gate and wait.' : 'Crashed into a concrete island!');
+    wallHit(impact, o.gate ? 'Hit the toll barrier! Stop before the gate and wait.' : o.fence ? 'Hit the toll plaza wall — use a booth lane and pay the toll' : 'Crashed into a concrete island!');
   }
   // ends of the route
   if (s < 3) { phys.pos.x += tx * (3 - s); phys.pos.z += tz * (3 - s); s = 3; }
@@ -443,7 +465,7 @@ function onAICam(cam, kmh) {
     player.rating = Math.max(1, player.rating - 0.3);
     hud.toast(`📸 AI camera (${where}): ${Math.round(kmh)} km/h in a ${SPEED_LIMIT} zone<br><b>Fine ৳ ${fine.toLocaleString('en-IN')}</b>`, 'bad', 4200);
   } else {
-    hud.toast(`📸 AI camera · ${Math.round(kmh)} km/h ✓`, 'good', 1600);
+    // passing a camera under the limit: no message (keeps the screen clear)
   }
 }
 
@@ -526,7 +548,7 @@ function handleCrashes(crashes) {
     if (kmh < 8) {
       audio.crash(1);
       player.crashCool = 0.8;
-      hud.toast(`Light scrape with a ${KIND_NAME[v.K.kind]}`, '', 1800);
+      // light scrape: the sound is enough, no message
     } else {
       const dmg = Math.round(Math.min(25000, 300 * kmh) / 100) * 100;
       player.crashes++;
@@ -607,7 +629,10 @@ function handleKeys() {
     if (input.has('BracketRight')) nudgeSeat('fov', 0.6);
   }
   ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((k, i) => { if (input.hit(k)) rig.setMode(CAM_MODES[[1, 0, 2, 3][i]]); });
-  if (input.hit('KeyL')) player.lights = !player.lights;
+  if (input.hit('KeyL')) { player.lights = !player.lights; if (!player.lights) player.high = false; }
+  // U: upper dipper (high beam); it needs the headlights, so it switches them on too
+  if (input.hit('KeyU')) { player.high = !player.high; if (player.high) player.lights = true; }
+  if (input.hit('KeyJ')) player.fog = !player.fog;     // J: fog lights
   if (input.hit('KeyV')) {
     const inCab = rig.mode === 'cabin';
     if (inCab) mirrors.hudCabin = !mirrors.hudCabin; else mirrors.hudOn = !mirrors.hudOn;
@@ -764,7 +789,7 @@ function renderGarage() {
     const t = BUS_TYPES[k], own = career.owns(k), price = BUS_PRICES[k] ?? 0;
     const b = document.createElement('button');
     b.className = `${k === settings.type ? 'sel' : ''} ${own ? '' : 'locked'} ${!own && career.balance < price ? 'poor' : ''}`;
-    b.innerHTML = `${t.name}<small>${t.desc}</small><span class="price ${own ? 'own' : ''}">${own ? '✓ Owned' : `🔒 ${taka(price)}`}</span>`;
+    b.innerHTML = `${t.name}<small>${t.desc}</small><span class="price ${own ? 'own' : ''}">${own ? '✓ Available' : `🔒 ${taka(price)}`}</span>`;
     b.title = own ? '' : `Game price ${taka(price)} (a real one costs about ${REAL_PRICE[k] || '—'})`;
     b.onclick = () => {
       if (!own) {
@@ -789,7 +814,7 @@ function renderStats() {
   const s = career.stats, row = (k, v) => `<div class="row"><span>${k}</span><b>${v}</b></div>`;
   $('stats-body').innerHTML = [
     row('Company bank', taka(career.balance)),
-    row('Buses owned', [...career.owned].map((k) => BUS_TYPES[k]?.name).filter(Boolean).join(', ')),
+    row('Buses available', Object.keys(BUS_TYPES).filter((k) => career.owns(k)).map((k) => BUS_TYPES[k].name).join(', ')),
     row('Trips completed', s.trips),
     row('Kilometres driven', `${Math.round(s.km).toLocaleString('en-IN')} km`),
     row('Passengers carried', s.passengers.toLocaleString('en-IN')),
@@ -960,8 +985,8 @@ function frame(now) {
     const blink = (player.blinkT % 0.8) < 0.4;
     if (blink !== player.blink && (player.indL || player.indR)) audio.tick(blink);
     player.blink = blink;
-    setBusLights(player.bus, { head: player.lights, brake: ph.brake > 0.1 || input.handbrake, indL: player.indL && blink, indR: player.indR && blink, reverse: ph.gear < 0, night });
-    player.spot.intensity = player.lights ? 260 : 0;
+    setBusLights(player.bus, { head: player.lights, high: player.high, fog: player.fog, brake: ph.brake > 0.1 || input.handbrake, indL: player.indL && blink, indR: player.indR && blink, reverse: ph.gear < 0, night });
+    beams();
     audio.update({ rpm: ph.rpm, throttle: ph.throttle, speed: Math.abs(ph.v), cabin: rig.mode === 'cabin', braking: ph.brake > 0.1 });
     aicams.update(dt, aiCamVehicles(true), onAICam);
     events(dt);
@@ -980,19 +1005,19 @@ function frame(now) {
         s: player.s, x: ph.pos.x, z: ph.pos.z, yaw: ph.yaw, kmh, rpm: ph.rpm, gear: ph.gearLabel(),
         elapsed: player.elapsed, fines: player.fines, crashes: player.crashes, rating: player.rating,
         place: route.placeAt(player.s), clock, camLabel: rig.label(), indL: player.indL, indR: player.indR, blink,
-        lights: player.lights, cruise: ph.cruise != null, cruiseKmh: (ph.cruise || 0) * 3.6, traffic: traffic.list,
+        lights: player.lights, high: player.high, fog: player.fog, cruise: ph.cruise != null, cruiseKmh: (ph.cruise || 0) * 3.6, traffic: traffic.list,
         side: player.side, heading: player.heading, fuel: player.fuel, tank: TANK_LITRES, costs: player.fuelCost + player.tollCost, mirrorsHud: mirrors.hudOn,
       };
       hud.update(st);
-      if (rig.mode === 'cabin') drawGauges(player.bus, { kmh, rpm: ph.rpm, gear: st.gear, cruise: st.cruise, lights: player.lights, indL: player.indL && blink, indR: player.indR && blink, limit: SPEED_LIMIT, odo: route.realKm(player.s), fuel: player.fuel / TANK_LITRES, temp: 0.45 + ph.throttle * 0.1, clock });
+      if (rig.mode === 'cabin') drawGauges(player.bus, { kmh, rpm: ph.rpm, gear: st.gear, cruise: st.cruise, lights: player.lights, high: player.high, fog: player.fog, indL: player.indL && blink, indR: player.indR && blink, limit: SPEED_LIMIT, odo: route.realKm(player.s), fuel: player.fuel / TANK_LITRES, temp: 0.45 + ph.throttle * 0.1, clock });
     }
   } else if (state === 'menu') {
     // showroom orbit with the bus on the right half of the screen
     menuT += dt;
     traffic.update(dt, player, night, sky.hour > 17.4 || sky.hour < 6.4);
     aicams.update(dt, aiCamVehicles(false));
-    setBusLights(player.bus, { head: player.lights, night });
-    player.spot.intensity = player.lights ? 260 : 0;
+    setBusLights(player.bus, { head: player.lights, high: player.high, fog: player.fog, night });
+    beams();
     const c = player.bus.root.position.clone().add(new THREE.Vector3(Math.sin(ph.yaw) * player.bus.spec.center, 0, Math.cos(ph.yaw) * player.bus.spec.center));
     const a = ph.yaw + 2.4 + Math.sin(menuT * 0.12) * 0.9;
     camera.position.set(c.x + Math.sin(a) * 17, c.y + 3.2, c.z + Math.cos(a) * 17);
@@ -1058,6 +1083,7 @@ async function boot() {
   hud = new HUD(route, road.water);
   weather = new Weather({ scene, sky, route, audio, hud, road, quality: settings.quality, isTouch: IS_TOUCH });
   passengers = new Passengers({ route, scene, chunks, hud, player });
+  passengers.onBreak = onRestBreak;
   police = new Police({ route, scene, chunks, obstacles: facilities.obstacles, counters: passengers.counters, hud, player });
   rig = new CameraRig(camera, route);
   initSeatPanel();
@@ -1079,7 +1105,7 @@ async function boot() {
   requestAnimationFrame(frame);
   console.info(`[mohasorok] route ${(route.length / 1000).toFixed(1)} km game, ${route.places.length} places, ${route.bridges.length} bridges`);
   window.__game = { route, player, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
-    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); traffic.init(s); }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; },
+    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); traffic.init(s); }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; }, get passengers() { return passengers; },
     // debug: which meshes are under screen pixel (px, py)
     pick(px, py) {
       const rc = new THREE.Raycaster(), cam = rig.camera;

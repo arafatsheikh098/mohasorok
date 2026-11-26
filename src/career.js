@@ -47,7 +47,8 @@ class Career {
     try { localStorage.setItem(KEY, JSON.stringify({ v: 1, balance: this.balance, owned: [...this.owned], stats: this.stats })); } catch { /* private mode */ }
   }
 
-  owns(type) { return this.owned.has(type) || BUS_PRICES[type] === 0; }
+  // every bus is unlocked: all of them can be driven without buying (prices stay only as info)
+  owns(type) { return type in BUS_PRICES || this.owned.has(type); }
   price(type) { return BUS_PRICES[type] ?? 0; }
   canBuy(type) { return !this.owns(type) && this.balance >= this.price(type); }
   buy(type) {

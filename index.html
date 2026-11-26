@@ -48,6 +48,9 @@
   #t-fuel { right: calc(max(18px, env(safe-area-inset-right)) + 420px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
   #t-music { right: calc(max(18px, env(safe-area-inset-right)) + 480px); top: 62px; width: 52px; height: 40px; font-size: 16px; }
   #t-cruise { right: calc(max(18px, env(safe-area-inset-right)) + 540px); top: 62px; width: 80px; height: 40px; font-size: 12px; }
+  /* headlight tray buttons sit in a second row under 💡 */
+  #t-high { right: calc(max(18px, env(safe-area-inset-right)) + 360px); top: 108px; width: 52px; height: 32px; font-size: 11px; color: #8fc4ff; }
+  #t-fog { right: calc(max(18px, env(safe-area-inset-right)) + 300px); top: 108px; width: 52px; height: 32px; font-size: 11px; color: #ffc94d; }
   #rotate { display: none; position: fixed; inset: 0; z-index: 90; background: #0b0f13; color: var(--txt); align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; padding: 30px; }
   #rotate b { font-size: 22px; }
   @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
@@ -140,7 +143,9 @@
   #indicators { display: flex; gap: 8px; justify-content: center; margin-top: -6px; }
   .ind { font-size: 12px; font-weight: 800; color: #3b4651; padding: 3px 8px; border-radius: 5px; background: rgba(10,14,18,.78); }
   .ind.on { color: #2ecc71; }
-  #ind-lights.on { color: #4aa3ff; }
+  #ind-lights.on { color: #2ecc71; }
+  #ind-lights.high { color: #4aa3ff; }
+  #ind-fog.on { color: #ffb300; }
   .arrows { display: flex; justify-content: space-between; font-size: 22px; font-weight: 900; color: #23313b; margin-bottom: 2px; }
   .arrows span.on { color: #2bff6a; text-shadow: 0 0 12px #2bff6a; }
   #fuelbar { height: 6px; background: #1d2630; border-radius: 3px; margin-top: 6px; overflow: hidden; }
@@ -164,9 +169,9 @@
   #restfade small { display: block; font-size: 15px; color: #aab4bd; font-weight: 600; margin-top: 8px; }
   #restfade.on { opacity: .92; }
   @keyframes camflash { 0% { opacity: .85 } 18% { opacity: .1 } 34% { opacity: .7 } 100% { opacity: 0 } }
-  #toasts { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
-  .toast { background: var(--bg); border: 1px solid var(--line); border-left: 4px solid var(--acc); padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; transition: opacity .5s, transform .5s; text-align: center; }
-  .toast .bn { font-size: 17px; }
+  #toasts { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+  .toast { max-width: min(460px, 80vw); background: var(--bg); border: 1px solid var(--line); border-left: 4px solid var(--acc); padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: opacity .5s, transform .5s; text-align: center; }
+  .toast .bn { font-size: 15px; }
   .toast.bad { border-left-color: #e74c3c; }
   .toast.good { border-left-color: #2ecc71; }
   .toast.out { opacity: 0; transform: translateY(-8px); }
@@ -312,6 +317,8 @@
     #t-fuel { right: calc(max(8px, env(safe-area-inset-right)) + 322px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
     #t-music { right: calc(max(8px, env(safe-area-inset-right)) + 368px); top: 6px !important; width: 40px; height: 34px; font-size: 14px; }
     #t-cruise { right: calc(max(8px, env(safe-area-inset-right)) + 414px); top: 6px !important; width: 64px; height: 34px; font-size: 11px; }
+    #t-high { right: calc(max(8px, env(safe-area-inset-right)) + 276px); top: 46px !important; width: 40px; height: 28px; font-size: 10px; }
+    #t-fog { right: calc(max(8px, env(safe-area-inset-right)) + 230px); top: 46px !important; width: 40px; height: 28px; font-size: 10px; }
     #yt-box { right: max(8px, env(safe-area-inset-right)); top: 46px; bottom: auto; width: 200px; height: 200px; }
     body.yt-on #gpsbox { display: none; }
     #musicbox { left: 50%; bottom: 8px; transform: translateX(-50%) scale(.82); transform-origin: bottom center; }
@@ -343,6 +350,8 @@
   <div class="tb tray" id="t-mirror">🪞</div>
   <div class="tb tray" id="t-seat">🪑</div>
   <div class="tb tray" id="t-lights">💡</div>
+  <div class="tb tray" id="t-high">HIGH</div>
+  <div class="tb tray" id="t-fog">FOG</div>
   <div class="tb tray" id="t-fuel">⛽</div>
   <div class="tb tray" id="t-music">🎵</div>
   <div class="tb tray" id="t-cruise">CRUISE</div>
@@ -351,7 +360,7 @@
   <h2>About Mohasorok</h2>
   <p><b>মহাসড়ক Mohasorok</b> is a free, fan-made bus driving game set on the Dhaka–Chattogram N1 highway. Everything you see — buses, liveries, roads, towns — is drawn by the game's own code; no images or 3D models from other games or mods are included.</p>
   <p><b>Not affiliated</b> with any bus operator, Hino Motors, or any company. Operator names belong to their owners and are used only to show the buses that run on this road. If you represent an operator and want your name changed or removed, please open an issue on the project page.</p>
-  <p><b>Controls (PC):</b> W/S throttle-brake (hold S to reverse) · A/D steer · H horn · Q/E indicators · L lights · X cruise · C or 1–4 camera · V screen mirrors · F refuel · R reset · P pause · M mute. Gamepad supported. <b>Phone:</b> turn the wheel, hold GAS/BRAKE, drag the view to look around.</p>
+  <p><b>Controls (PC):</b> W/S throttle-brake (hold S to reverse) · A/D steer · H horn · Q/E indicators · L lights · U high beam · J fog lights · X cruise · C or 1–4 camera · V screen mirrors · F refuel · R reset · P pause · M mute. Gamepad supported. <b>Phone:</b> turn the wheel, hold GAS/BRAKE, drag the view to look around.</p>
   <p><b>Credits:</b> 3D engine <a href="https://threejs.org" style="color:var(--acc)">three.js</a> (MIT). Bangla font Noto Sans Bengali (SIL Open Font License). Bus liveries and shapes painted from public photos (Wikimedia Commons, CC BY-SA/CC0) and the community's reference images. Speeds/distances: N1 compressed 1:12, ~245 km shown.</p>
   <button class="btn" id="about-close">Close</button>
 </div></div>
@@ -407,7 +416,7 @@
     <div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost" id="about-open" style="margin:0;flex:1">About &amp; credits</button><button class="btn ghost" id="feedback-menu" style="margin:0;flex:1">💬 Feedback / report a bug</button></div>
     <div class="keys">
       <kbd>W</kbd>/<kbd>S</kbd> throttle / brake (hold <kbd>S</kbd> to reverse) · <kbd>A</kbd>/<kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
-      <kbd>H</kbd> horn · <kbd>Q</kbd>/<kbd>E</kbd> indicators · <kbd>L</kbd> lights · <kbd>X</kbd> cruise · <kbd>C</kbd> / <kbd>1</kbd>–<kbd>4</kbd> camera<br>
+      <kbd>H</kbd> horn · <kbd>Q</kbd>/<kbd>E</kbd> indicators · <kbd>L</kbd> lights · <kbd>U</kbd> high beam · <kbd>J</kbd> fog lights · <kbd>X</kbd> cruise · <kbd>C</kbd> / <kbd>1</kbd>–<kbd>4</kbd> camera<br>
       <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>G</kbd> door (passengers) · <kbd>T</kbd> time of day · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>B</kbd>/<kbd>N</kbd> music play / next · <kbd>F1</kbd> help · mouse drag = look · <kbd>Alt</kbd>+arrows = adjust seat<br>
       Stop at the toll gate to pay · turn round at U-turn gaps in the median to drive back to Dhaka
     </div>
@@ -442,12 +451,12 @@
   <div id="toasts"></div>
   <div id="help" class="card">
     <kbd>W</kbd> throttle · <kbd>S</kbd> brake/reverse<br><kbd>A</kbd> <kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
-    <kbd>H</kbd> horn (traffic ahead moves over)<br><kbd>Q</kbd> <kbd>E</kbd> indicators · <kbd>L</kbd> lights<br>
+    <kbd>H</kbd> horn (traffic ahead moves over)<br><kbd>Q</kbd> <kbd>E</kbd> indicators · <kbd>L</kbd> lights<br><kbd>U</kbd> high beam · <kbd>J</kbd> fog lights<br>
     <kbd>X</kbd> cruise control · <kbd>C</kbd> camera<br><kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel at a pump<br><kbd>G</kbd> door: stop at a 🚏 counter to pick up / drop passengers<br>Stop at toll gates · U-turn at median gaps<br><kbd>T</kbd> time of day · <kbd>R</kbd> reset<br><kbd>P</kbd> pause · <kbd>M</kbd> mute
   </div>
   <div id="dashbox">
     <canvas id="dash" width="300" height="160"></canvas>
-    <div id="indicators"><span class="ind" id="ind-l">◀</span><span class="ind" id="ind-lights">LIGHTS</span><span class="ind" id="ind-cruise">CRUISE</span><span class="ind" id="ind-door">DOOR</span><span class="ind" id="ind-r">▶</span></div>
+    <div id="indicators"><span class="ind" id="ind-l">◀</span><span class="ind" id="ind-lights">LIGHTS</span><span class="ind" id="ind-fog">FOG</span><span class="ind" id="ind-cruise">CRUISE</span><span class="ind" id="ind-door">DOOR</span><span class="ind" id="ind-r">▶</span></div>
   </div>
   <div id="speedbox" class="card"><div class="arrows"><span id="hud-il">◀</span><span id="hud-ir">▶</span></div><div id="speed-big">0</div><div class="u">km/h</div><div id="gear">N</div><div id="fuelbar"><i id="fuel-fill"></i></div></div>
   <div id="prompt"></div>

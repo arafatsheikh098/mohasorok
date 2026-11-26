@@ -291,7 +291,7 @@ export class Passengers {
     this.tripSide = this.toCtg ? -1 : 1;
     this.aboard = [];
     this.stop = null; this.door = false; this.cool = 0; this.leaveWarn = 0; this.promptKey = '';
-    this.finished = false; this.doorT = 0;
+    this.finished = false; this.doorT = 0; this.brk = null;
     setBusDoor(this.player.bus, 0);
     Object.assign(this.stats, { aboard: 0, capacity: this.capacity(), fares: 0, tips: 0, mood: MOOD.start, carried: 0, boarded: 0, missed: 0 });
     this.mood = MOOD.start;
@@ -396,13 +396,14 @@ export class Passengers {
     if (!p.bus) return;
     this.cool -= dt; this.leaveWarn -= dt;
     const still = Math.abs(p.phys.v) < 0.5;
-    if (input.hit('KeyG')) {
+    if (input.hit('KeyG') && !this.brk) {
       if (this.door) this._closeDoor(true);
       else if (!still) this.hud.toast('🚪 Stop the bus before opening the door', 'bad', 2200);
       else this._openDoor();
     }
+    if (this.brk) this._break(dt);
     // driving off with the door open
-    if (this.door && Math.abs(p.phys.v) > 1.6) {
+    if (this.door && !this.brk && Math.abs(p.phys.v) > 1.6) {
       const busy = this.stop && (this.stop.on.length || this.stop.off.length || this.figs.some((f) => f.boarding));
       this._closeDoor(true);
       if (this.leaveWarn <= 0) {
@@ -481,6 +482,58 @@ export class Passengers {
     if (st.doneT <= 0) this._closeDoor(false);
   }
 
+  // ------------------------------------------------------------ rest-stop break
+  // Everyone aboard gets down and walks to the restaurant, the screen fades for the 20-minute break, then
+  // they walk back and get on again. Main holds the bus still (player.resting) until 'done'.
+  startBreak(rest) {
+    if (this.brk || this.stop) return false;
+    this.door = true;
+    $('ind-door')?.classList.add('on');
+    const n = this.aboard.length, shown = Math.min(n, 18);   // figures drawn: enough to read as "the bus empties"
+    this.brk = { rest, phase: n ? 'off' : 'away', t: n ? 0.9 : 2.6, left: shown, shown, walking: [] };
+    if (!n) this.onBreak?.('fade');
+    else this.hud.toast(`🍛 <span class="bn">যাত্রা বিরতি</span> — ${n} passenger${n > 1 ? 's' : ''} getting down for a 20-minute break`, '', 2800);
+    return true;
+  }
+  _restSpot(rest) {
+    const s = rest.sc + (this.r() - 0.5) * 18, d = rest.side * (ROAD.half + 29.5 + this.r() * 2);
+    const q = this.route.pointAt(s, d);
+    return { x: q.x, z: q.z, y: this.route.roadHeight(rest.sc) };
+  }
+  _break(dt) {
+    const b = this.brk, dp = this._doorPos();
+    const busy = () => b.walking.some((f) => this.figs.includes(f));
+    b.t -= dt;
+    if (b.phase === 'off') {
+      // one steps down every 0.4 s and walks over to the restaurant
+      if (b.t <= 0 && b.left > 0) {
+        b.left--; b.t = 0.4;
+        const f = this._fig(dp.x, dp.y, dp.z, Math.atan2(dp.lx, dp.lz));
+        if (f) { const q = this._restSpot(b.rest); Object.assign(f, { tx: q.x, tz: q.z, ty: q.y }); f.onArrive = () => this._drop(f); b.walking.push(f); }
+      }
+      if (b.left <= 0 && !busy()) { b.phase = 'away'; b.t = 2.6; this.door = false; $('ind-door')?.classList.remove('on'); this.onBreak?.('fade'); }
+    } else if (b.phase === 'away') {
+      if (b.t <= 0) {
+        if (!b.shown) { this.brk = null; this.onBreak?.('back'); this.onBreak?.('done'); return; }
+        b.phase = 'back'; b.t = 0.8; b.left = b.shown; b.walking = [];
+        this.door = true; $('ind-door')?.classList.add('on');
+        this.onBreak?.('back');
+        voice.say('helper.board_done');
+      }
+    } else if (b.phase === 'back') {
+      // they come back out of the restaurant and get on
+      if (b.t <= 0 && b.left > 0) {
+        b.left--; b.t = 0.4;
+        const q = this._restSpot(b.rest);
+        const f = this._fig(q.x, q.y, q.z, 0);
+        if (f) { f.toDoor = true; Object.assign(f, { tx: dp.x, tz: dp.z, ty: dp.y }); f.onArrive = () => { f.toDoor = false; this._drop(f); }; b.walking.push(f); }
+      }
+      if (b.left <= 0 && !busy()) {
+        if (b.t < -1.0) { this.brk = null; this.door = false; $('ind-door')?.classList.remove('on'); this.onBreak?.('done'); }
+      } else if (b.left <= 0) b.t = 0;
+    }
+  }
+
   _board(pax, f) {
     const st = this.stop;
     if (f) { f.boarding = null; this._drop(f); }
@@ -505,7 +558,7 @@ export class Passengers {
         continue;
       }
       // if the bus moved away, people walking to the door follow the door
-      if (f.boarding) { const dp = this._doorPos(); f.tx = dp.x; f.tz = dp.z; }
+      if (f.boarding || f.toDoor) { const dp = this._doorPos(); f.tx = dp.x; f.tz = dp.z; }
       const k = Math.min(1, step / L);
       f.x += dx * k; f.z += dz * k; f.y += (f.ty - f.y) * Math.min(1, dt * 3);
       f.yaw = Math.atan2(dx, dz);
@@ -593,8 +646,7 @@ export class Passengers {
       d -= hard ? MOOD.hardJolt : MOOD.jolt;
       m.joltCool = 1.5;
       p.rating = Math.max(1, p.rating - (hard ? 0.15 : 0.08));
-      if (m.sayCool <= 0) { voice.say(lon < -5.5 ? 'pax.slow' : 'pax.uncomfortable'); m.sayCool = 7; }
-      this.hud.toast(`<span class="bn">${['আস্তে চালান!', 'ড্রাইভার ভাই, সাবধানে!', 'পেটের ভাত উল্টে যাবে!'][Math.floor(this.r() * 3)]}</span> — ${lon < -5.5 ? 'hard braking' : 'sharp turn'}, passengers unhappy`, 'bad', 2400);
+      // sharp turns / hard braking: silent — they only lower mood and rating (shown in the trip panel)
     }
     if ((p.crashes || 0) > m.crashes) { d -= MOOD.crash * ((p.crashes || 0) - m.crashes); m.crashes = p.crashes || 0; }
     if ((p.breaks || 0) > m.breaks) { d += MOOD.rest; m.breaks = p.breaks || 0; if (n) setTimeout(() => voice.say('pax.happy'), 3500); }
@@ -605,21 +657,21 @@ export class Passengers {
     m.stillT = kmh < 2 && !busy ? m.stillT + dt : 0;
     if (m.stillT > MOOD.waitAfter) {
       d -= MOOD.wait * dt;
-      if (n && m.sayCool <= 0) { voice.say('pax.long_wait'); m.sayCool = 40; }
+      if (n && m.sayCool <= 0) { voice.say('pax.long_wait'); m.sayCool = 120; }
     }
     // heat in a non-AC bus in the afternoon, when there is no breeze
     const hour = (((p.clockMin || 0) / 60) % 24 + 24) % 24;
     if (!p.bus.spec.ac && hour > 11 && hour < 16 && kmh < 15 && n) {
       d -= MOOD.heat * dt;
-      if (m.sayCool <= 0 && this.r() < dt * 0.05) { voice.say('pax.hot'); m.sayCool = 60; }
+      if (m.sayCool <= 0 && this.r() < dt * 0.01) { voice.say('pax.hot'); m.sayCool = 180; }
     }
     // calm, steady driving wins them back
     if (kmh > 30 && kmh <= SPEED_LIMIT + 5 && lat < 2 && lon > -3) d += MOOD.smooth * dt;
     if (!n) d = (MOOD.start - this.mood) * 0.05 * dt;     // nobody aboard: the next passengers start fresh
     this.mood = Math.max(0, Math.min(100, this.mood + d));
     this.stats.mood = Math.round(this.mood);
-    if (n && this.mood > 88 && m.happyCool <= 0 && kmh > 30) { m.happyCool = 150 + this.r() * 90; voice.say('pax.happy'); }
-    if (n && this.mood < 35 && m.sayCool <= 0) { m.sayCool = 25; voice.say('pax.uncomfortable'); p.rating = Math.max(1, p.rating - 0.05); }
+    if (n && this.mood > 88 && m.happyCool <= 0 && kmh > 30) { m.happyCool = 360 + this.r() * 240; voice.say('pax.happy'); }
+    if (n && this.mood < 35 && m.sayCool <= 0) { m.sayCool = 25; p.rating = Math.max(1, p.rating - 0.05); }   // silent
   }
 
   _moodUI() {

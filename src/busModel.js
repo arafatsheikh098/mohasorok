@@ -357,6 +357,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
     indR: lightMat(0xb36b00, 0xffa000),
     marker: lightMat(0xb36b00, 0xffb030),
     reverse: lightMat(0xdddddd, 0xffffff),
+    fog: lightMat(0xffd23f, 0xffc400),
   };
   const lbox = (w, h, d, mat, x, y, z, parent = exterior) => {
     const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(w, h) * 0.3), mat);
@@ -390,7 +391,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
       lbox(0.07, 0.09, 0.03, sx > 0 ? mats.indL : mats.indR, sx * 0.17, -0.005, 0.055, hl);
       lbox(0.4, 0.018, 0.03, mats.drl, sx * -0.02, 0.058, 0.057, hl);
       // round yellow fog lamp in the bumper
-      lbox(0.17, 0.08, 0.04, new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0xffc400, emissiveIntensity: 0.4, roughness: 0.2 }), sx * 0.5, s.floor + 0.2, s.front + 0.07);
+      lbox(0.17, 0.08, 0.04, mats.fog, sx * 0.5, s.floor + 0.2, s.front + 0.07);
       const rl = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.04, 18), mats.tail);
       rl.rotation.x = Math.PI / 2;
       rl.position.set(sx * (LX - 0.12), s.floor + 0.13, s.front + 0.075);
@@ -399,6 +400,7 @@ export function buildBus(type, opIn, { interior = false, texScale = 1, seed = 1 
       lbox(0.24, 0.13, 0.06, mats.head, sx * (LX - 0.27), s.floor + 0.86, s.front + 0.02);
       lbox(0.2, 0.12, 0.06, mats.head, sx * (LX - 0.03), s.floor + 0.86, s.front + 0.02);
       lbox(0.14, 0.1, 0.06, sx > 0 ? mats.indL : mats.indR, sx * (LX - 0.05), s.floor + 0.72, s.front + 0.02);
+      lbox(0.18, 0.09, 0.04, mats.fog, sx * (LX - 0.22), s.floor + 0.12, s.front + 0.15);   // yellow fog lamp in the bumper
     }
     if (s.cockpit === 'ak') {
       // tall tail-lamp cluster round each rear corner, as on the BD AK1J bodies: a chrome bezel with a
@@ -1193,8 +1195,9 @@ export function setBusDoor(bus, t) {
   if (bus.doorInner) { bus.doorInner.scale.x = 1 - 0.85 * e; bus.doorInner.visible = e < 0.98; }
 }
 
-export function setBusLights(bus, { head = false, high = false, brake = false, indL = false, indR = false, reverse = false, night = false }) {
+export function setBusLights(bus, { head = false, high = false, fog = false, brake = false, indL = false, indR = false, reverse = false, night = false }) {
   const m = bus.mats;
+  if (m.fog) m.fog.emissiveIntensity = fog ? 7 : 0.4;
   m.head.emissiveIntensity = high ? 11 : head ? 6 : 0;
   m.tail.emissiveIntensity = head ? 2.5 : 0;
   m.brake.emissiveIntensity = brake ? 6 : 0;
@@ -1206,11 +1209,11 @@ export function setBusLights(bus, { head = false, high = false, brake = false, i
 }
 
 // Instrument cluster: speedo, tacho, small gauges, LCD and warning lamps.
-export function drawGauges(bus, { kmh, rpm, gear, cruise, lights, indL, indR, limit, odo = 0, air = 8.2, fuel = 0.8, temp = 0.5, clock = '' }) {
+export function drawGauges(bus, { kmh, rpm, gear, cruise, lights, high = false, fog = false, indL, indR, limit, odo = 0, air = 8.2, fuel = 0.8, temp = 0.5, clock = '' }) {
   if (!bus.gauge) return;
   const { ctx: c, tex, canvas } = bus.gauge;
   const hino = bus.spec.cockpit === 'ak';
-  if (hino) { drawHinoPanel(c, canvas.width, canvas.height, { kmh, rpm, gear, cruise, lights, indL, indR, limit, fuel, temp, air }); tex.needsUpdate = true; return; }
+  if (hino) { drawHinoPanel(c, canvas.width, canvas.height, { kmh, rpm, gear, cruise, lights, high, fog, indL, indR, limit, fuel, temp, air }); tex.needsUpdate = true; return; }
   const W = canvas.width, H = canvas.height;
   const bg = c.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, '#15171a'); bg.addColorStop(1, '#07080a');
@@ -1277,15 +1280,16 @@ export function drawGauges(bus, { kmh, rpm, gear, cruise, lights, indL, indR, li
   };
   arrow(440, -1, indL);
   arrow(584, 1, indR);
-  c.fillStyle = lights ? '#3d8bff' : '#14223a';
+  c.fillStyle = high ? '#3d8bff' : lights ? '#2bff6a' : '#14223a';
   c.font = `bold 26px ${EN_FONT}`; c.fillText('≣D', 512, 60);
+  c.fillStyle = fog ? '#ffb300' : '#2a2416'; c.font = `bold 18px ${EN_FONT}`; c.fillText('FOG', 512, 92);
   c.fillStyle = '#3a1a1a'; c.fillText('(P)', 360, 50);
   c.fillStyle = air < 6 ? '#ff5252' : '#2a1a1a'; c.fillText('(!)', 664, 50);
   tex.needsUpdate = true;
 }
 
 // Classic Hino AK panel: grey metal face, small gauges on the left, tacho in the middle, big speedo on the right.
-function drawHinoPanel(c, W, H, { kmh, rpm, gear, cruise, lights, indL, indR, fuel, temp, air }) {
+function drawHinoPanel(c, W, H, { kmh, rpm, gear, cruise, lights, high, fog, indL, indR, fuel, temp, air }) {
   const g = c.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, '#2e3034'); g.addColorStop(1, '#1d1f22');
   c.fillStyle = g; c.fillRect(0, 0, W, H);
@@ -1323,7 +1327,8 @@ function drawHinoPanel(c, W, H, { kmh, rpm, gear, cruise, lights, indL, indR, fu
   small(262, 150, 62, temp, 'TEMP');
   small(100, 280, 62, Math.min(1, air / 10), 'AIR 1');
   small(262, 280, 62, Math.min(1, (air - 0.3) / 10), 'AIR 2');
-  const lamps = [['#2bff6a', indL], ['#3d8bff', lights], ['#ff3b30', false], ['#ffb300', false], ['#2bff6a', cruise], ['#2bff6a', indR]];
+  // lamps: ◀ · headlights (green dipped / blue high beam) · warning · fog (amber) · cruise · ▶
+  const lamps = [['#2bff6a', indL], [high ? '#3d8bff' : '#2bff6a', lights], ['#ff3b30', false], ['#ffb300', fog], ['#2bff6a', cruise], ['#2bff6a', indR]];
   lamps.forEach(([col, on], i) => { c.fillStyle = on ? col : '#1b1c1e'; c.fillRect(30 + i * 52, 22, 40, 30); });
   // indicator arrows on the outer lamps
   c.fillStyle = '#0b0b0c'; c.font = `bold 24px ${EN_FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';

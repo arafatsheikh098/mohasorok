@@ -44,13 +44,14 @@ export function buildAICams(route, scene, chunks) {
   const spots = [];
   const ok = (s) => s > 150 && s < route.length - 150 && !route.bridgeAt(s) && !route.bridgeAt(s + 40) && !route.bridgeAt(s - 40) &&
     Math.abs(s - route.tollS) > 200 && !route.uturnAt(s) && ![...route.stations, ...route.rests].some((st) => Math.abs(s - st.sc) < 140);
-  // every town gets one on each carriageway at its entry; plus one every ~2.2 km in between
+  // only the big cities get one on each carriageway at their entry; plus one every ~6 km in between,
+  // alternating sides (so each direction meets a camera about every 12 km, not every few km)
   for (const p of route.places) {
-    if (!p.town) continue;
+    if (p.kind !== 'city') continue;
     spots.push({ s: p.s - p.town / 2 + 25, side: -1 });   // towards Chattogram
     spots.push({ s: p.s + p.town / 2 - 25, side: 1 });    // towards Dhaka
   }
-  for (let s = 1200, k = 0; s < route.length - 300; s += 2200, k++) {
+  for (let s = 3000, k = 0; s < route.length - 300; s += 6000, k++) {
     const side = k % 2 ? 1 : -1;
     // keep cameras on the same carriageway at least 400 m apart (no double flashes / fines)
     if (!spots.some((o) => o.side === side && Math.abs(o.s - s) < 400)) spots.push({ s, side });
