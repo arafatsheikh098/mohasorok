@@ -473,6 +473,11 @@ export class Traffic {
       // pushy drivers wind it up a little while passing
       let v0 = v.v0 + (overtaking ? v.agg * 1.5 : 0);
       if (v.yieldT > 0) v0 = Math.min(v0, Math.max(4, (player.vs ?? player.v) * 0.85));
+      // junctions (চৌরাস্তা) are crossed carefully: everyone slows to ~35 km/h across the pad
+      for (const j of route.junctions) {
+        const to = (j.s - v.s) * v.dir;
+        if (to > -j.R - 10 && to < j.R + 90) { v0 = Math.min(v0, 9.5 + Math.max(0, to - j.R) * 0.12); break; }
+      }
       // a bus whose route leaves ours at the next junction: get in lane, signal, slow down and turn off
       const ex = this._exitPlan(v);
       if (ex) {

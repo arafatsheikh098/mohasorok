@@ -695,15 +695,14 @@ function events(dt) {
   }
   player.lastPlace = place;
   const br = route.bridgeAt(s);
-  if (br && br.elevated && br !== player.lastBridge) {
-    // an elevated expressway with a toll takes it electronically on the way up (once per trip)
-    const paid = (player.paidFlyovers ||= new Set());
-    if (br.fee && !paid.has(br.en)) {
-      paid.add(br.en);
-      player.tollCost += br.fee;
-      hud.toast(`<span class="bn">${br.bn}</span> · ${br.en}<br><small>Toll ৳${br.fee} paid electronically</small>`, 'good', 3500);
-    } else hud.toast(`<span class="bn">${br.bn}</span> · ${br.en}`, '', 3200);
-  }
+  // a toll taken at the deck (elevated expressway, or a bridge with no room for a plaza): once per trip
+  const paid = (player.paidFlyovers ||= new Set());
+  if (br && br.fee && !br.ferry && br !== player.lastBridge && !paid.has(br.en + br.sc)) {
+    paid.add(br.en + br.sc);
+    player.tollCost += br.fee;
+    voice.say('helper.toll');
+    hud.toast(`<span class="bn">${br.tollBn || br.bn}</span><br><small>${br.tollEn || br.en}: ৳${br.fee} paid electronically</small>`, 'good', 3500);
+  } else if (br && br.elevated && br !== player.lastBridge) hud.toast(`<span class="bn">${br.bn}</span> · ${br.en}`, '', 3200);
   else if (br && !br.ferry && !br.elevated && br !== player.lastBridge) hud.toast(`<span class="bn">${br.bn} নদী</span> · ${br.en} River bridge`, '', 3200);
   player.lastBridge = br;
   // passenger comfort: handled by the mood in src/passengers.js (complaints, rating, tips)

@@ -365,6 +365,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
       const s = s0 + r() * (s1 - s0), d = (r() < 0.5 ? -1 : 1) * (650 + r() * 1800);
       route.pointAt(s, d, p);
       if (rivers.length && inWater(p.x, p.z, 60)) continue;
+      if (route.nearRoad(p.x, p.z, 75)) continue;       // (the road may come back this way further on)
       q.setFromAxisAngle(UP, r() * 3);
       m4.compose(p.setY(0), q, sc.set(40 + r() * 70, 14 + r() * 10, 25 + r() * 30));
       I.blob.push(m4, col.setHSL(0.26, 0.3, 0.35 + r() * 0.15));
@@ -727,6 +728,8 @@ function* hillsAndSeaChunk(route, ctx, mats) {
         let h = (hn(s / 700, lat / 500) * 0.6 + 0.55) * 140 * ramp * fade;
         h += Math.max(0, hn(s / 200 + 3, lat / 180)) * 25 * ramp * fade;
         h = Math.max(0, h);
+        // flatten the hills wherever another part of the trip (or a side road) runs through them
+        if (h > 0 && route.nearRoad(x, z, 40)) h = 0;
         const k = (i * cols + j) * 3;
         pos[k] = x; pos[k + 1] = h - 0.5; pos[k + 2] = z;
         c.setHSL(0.27 + hn(s / 90, lat / 80) * 0.03, 0.35, 0.2 + Math.min(0.12, h / 900) + hn(s / 60, lat / 50) * 0.03);

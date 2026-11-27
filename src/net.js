@@ -169,11 +169,16 @@ export class Chain {
     // (a toll that comes with a bridge stands just past the bridge, on the flat, not on the deck)
     const offBridge = (x) => !this.bridges.some((b) => x > b.s0 - ROAD.rampLen - 140 && x < b.s1 + ROAD.rampLen + 140);
     this.tolls = this.places.filter((p) => p.toll).map((p) => {
+      const T = typeof p.toll === 'object' ? p.toll : {};
       let s = p.s;
       for (let k = 0; k < 80 && !offBridge(s); k++) s += 40;
       if (!offBridge(s) || s > L - 250) { s = p.s; for (let k = 0; k < 80 && !offBridge(s); k++) s -= 40; }
-      return { s: THREE.MathUtils.clamp(s, 250, L - 250), ...(typeof p.toll === 'object' ? p.toll : {}) };
-    });
+      if (offBridge(s) && s >= 250 && s <= L - 250) return { s, ...T };
+      // no room for a plaza on this short road: the toll is taken at the bridge as you cross it
+      const b = this.bridges.reduce((a, x) => (!a || Math.abs(x.sc - p.s) < Math.abs(a.sc - p.s) ? x : a), null);
+      if (b) Object.assign(b, { fee: T.fee || 0, tollBn: T.bn, tollEn: T.en });
+      return null;
+    }).filter(Boolean);
     const tollNear = (s, m) => this.tolls.some((t) => Math.abs(s - t.s) < m);
     // fuel stations: a paved forecourt beside the road at road height
     // fuel stations: given, or one about every 45 km (alternating sides) on longer roads (none on a ferry)
@@ -182,7 +187,7 @@ export class Chain {
     this.stations = fuel.filter((f) => f.km < this.km - 3).map((f, i) => {
       if (!f.bn) { const k = (this.id.length * 7 + i * 3) % fname.length; Object.assign(f, { bn: `${fname[k]} ফিলিং স্টেশন`, en: 'Filling Station' }); }
       let sc = this.sAtKm(f.km);
-      while (this.bridgeAt(sc) || this.bridgeAt(sc - 80) || this.bridgeAt(sc + 80) || tollNear(sc, 200)) sc += 120;
+      while (this.bridgeAt(sc) || this.bridgeAt(sc - 80) || this.bridgeAt(sc + 80) || tollNear(sc, 340)) sc += 120;
       return { ...f, sc, s0: sc - 45, s1: sc + 45, depth: 30 };
     });
     // rest stops: a big paved lot with a restaurant, kept clear of bridges, tolls and fuel stations
@@ -206,7 +211,7 @@ export class Chain {
       for (let s = 1500; s < L - 800; s += UTURN_SPACING) {
         let u = s;
         while (this.bridgeAt(u) || this.bridgeAt(u + 200) || this.bridgeAt(u - 200) || tollNear(u, 300)) u += 150;
-        this.uturns.push({ s: u });
+        if (u < L - 400) this.uturns.push({ s: u });       // (never right by the junction at the end)
       }
       // in front of every filling station, so buses on the far carriageway can cross in (and back out)
       for (const st of this.stations) {

@@ -61,8 +61,19 @@ export class Route {
     this.segs = [];
     this.path.forEach((step, k) => {
       const c = this.net.road(step.road), N = c.N;
-      const trim = (on) => (on ? Math.min(FILLET, c.length * 0.3) : 0);
-      const iA = Math.round(trim(k > 0) / DS), iB = N - 1 - Math.round(trim(k < this.path.length - 1) / DS);
+      // the sharper the turn at a junction, the longer the curve through it (so a bus can take it)
+      const turn = (a, b) => {
+        if (!a || !b) return 0;
+        const ca = this.net.road(a.road), cb = this.net.road(b.road);
+        const end = (ch, rev, atStart) => { const i = atStart ? (rev ? ch.N - 1 : 0) : (rev ? 0 : ch.N - 1), j = atStart ? (rev ? ch.N - 16 : 15) : (rev ? 15 : ch.N - 16); return [ch.px[j] - ch.px[i], ch.pz[j] - ch.pz[i]]; };
+        const [ax, az] = end(ca, a.rev, false), [bx, bz] = end(cb, b.rev, true);
+        const dot = (-ax * bx - az * bz) / (Math.hypot(ax, az) * Math.hypot(bx, bz) || 1);
+        return Math.acos(Math.max(-1, Math.min(1, dot)));       // 0 = straight on, π = straight back
+      };
+      const fil = (th) => Math.min(70, FILLET * Math.max(1, th / (Math.PI / 3)));
+      const trimA = k > 0 ? fil(turn(this.path[k - 1], step)) : 0, trimB = k < this.path.length - 1 ? fil(turn(step, this.path[k + 1])) : 0;
+      const trim = (t) => Math.min(t, c.length * 0.3);
+      const iA = Math.round(trim(trimA) / DS), iB = N - 1 - Math.round(trim(trimB) / DS);
       const pt = (u) => (step.rev ? [c.px[N - 1 - u], c.pz[N - 1 - u]] : [c.px[u], c.pz[u]]);
       if (k > 0) {
         // a quadratic curve from the end of the last road to this road, bending through the node they share
@@ -238,8 +249,8 @@ export class Route {
       const c = [ch.px[ni], ch.pz[ni]];
       // and the pad reaches the curve's furthest point from the node as well
       let reach = 0;
-      for (let ds = -FILLET - 6; ds <= FILLET + 6; ds += 2) { const [x, z] = this._xz(p.s + ds, 0); reach = Math.max(reach, Math.hypot(x - c[0], z - c[1]) - Math.abs(ds)); }
-      this.junctions.push({ s: p.s, node, k, name: n, x: c[0], z: c[1], R: PAD_R + Math.max(0, Math.min(14, reach)), branches });
+      for (let ds = -76; ds <= 76; ds += 2) { const [x, z] = this._xz(p.s + ds, 0); reach = Math.max(reach, Math.hypot(x - c[0], z - c[1]) - Math.abs(ds)); }
+      this.junctions.push({ s: p.s, node, k, name: n, x: c[0], z: c[1], R: PAD_R + Math.max(0, Math.min(30, reach)), branches });
       const R = this.junctions[this.junctions.length - 1].R;
       this.uturns.push({ s: p.s, s0: p.s - R - 6, s1: p.s + R + 6, junction: true });
     }
