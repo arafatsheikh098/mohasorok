@@ -52,6 +52,8 @@ export class Race {
   }
   get available() { return !!RACE_SERVER; }
   get inRoom() { return !!this.code && this.wantOpen; }
+  // in the room's lobby: the server has answered (until then the menu still shows Create / Join)
+  get joined() { return this.inRoom && !!this.room; }
   get isHost() { return this.host === this.you; }
   get connected() { return this.ws?.readyState === 1; }
   // the race is on and this game is in it
@@ -85,8 +87,12 @@ export class Race {
     let ws;
     try { ws = new WebSocket(url); } catch (e) { this.emit('error', 'Could not reach the race server'); this.wantOpen = false; return; }
     this.ws = ws;
+    // a connection that hangs (no network, a blocked address): give up on this try after 8 s
+    const slow = setTimeout(() => { if (ws.readyState === 0) ws.close(); }, 8000);
     ws.onopen = () => {
+      clearTimeout(slow);
       this.retry = 0;
+      if (!this.room) this.emit('status', 'Connected — joining the race…');
       this.send({ t: 'hello', ...this.me });
       this.bestRtt = Infinity;
       for (let k = 0; k < 5; k++) setTimeout(() => this.send({ t: 'ping', c: Date.now() }), k * 250);
@@ -95,14 +101,27 @@ export class Race {
     };
     ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } this._msg(m); };
     ws.onclose = (e) => {
+      clearTimeout(slow);
       clearInterval(this.pingTimer);
       if (this.ws !== ws) return;
       this.ws = null;
       if ([4001, 4002, 4003].includes(e.code)) { this.wantOpen = false; this.code = null; this.emit('change'); return; }
       if (!this.wantOpen) return;
+      this.retry++;
+      // never got in: say so after a few tries instead of waiting quietly
+      if (!this.room) {
+        if (this.retry >= 3) {
+          this.wantOpen = false; this.code = null;
+          this.emit('error', `Can't reach the race server (${e.code || 'no answer'}). Check the internet connection and try again.`);
+          this.emit('change');
+          return;
+        }
+        this.emit('status', `Still trying to reach the race server… (try ${this.retry + 1} of 3)`);
+        setTimeout(() => { if (this.wantOpen && !this.ws) this._open(); }, 1200);
+        return;
+      }
       // dropped: try again (the room keeps our place)
       this.create = false;
-      this.retry++;
       this.emit('status', this.retry > 2 ? 'Connection lost — reconnecting…' : 'Reconnecting…');
       if (this.retry > 12) { this.wantOpen = false; this.code = null; this.emit('error', 'Lost the connection to the race server'); this.emit('change'); return; }
       setTimeout(() => { if (this.wantOpen && !this.ws) this._open(); }, Math.min(8000, 500 * 2 ** this.retry));

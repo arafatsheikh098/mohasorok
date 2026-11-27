@@ -26,7 +26,11 @@ export function initRaceUI({ race, net, me, tripOf, onCreate }) {
   });
   codeIn.addEventListener('input', () => { codeIn.value = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
 
-  const msg = (t, bad) => { const el = race.inRoom ? $('race-msg2') : $('race-msg'); el.textContent = t || ''; el.className = 'race-msg' + (bad ? ' bad' : ''); };
+  const msg = (t, bad) => {
+    const el = race.joined ? $('race-msg2') : $('race-msg'), other = race.joined ? $('race-msg') : $('race-msg2');
+    el.textContent = t || ''; el.className = 'race-msg' + (bad ? ' bad' : '');
+    other.textContent = '';
+  };
   const needName = () => {
     if (nameIn.value.trim()) return true;
     msg('Type your name first, so your friends know which bus is you', true);
@@ -78,7 +82,7 @@ export function initRaceUI({ race, net, me, tripOf, onCreate }) {
   race.on('change', () => { if (race.connected) msg(''); render(); });
 
   function render() {
-    const inRoom = race.inRoom;
+    const inRoom = race.joined;
     $('race-box').classList.toggle('off', !race.available);
     $('race-join').style.display = inRoom ? 'none' : '';
     $('race-lobby').style.display = inRoom ? '' : 'none';
