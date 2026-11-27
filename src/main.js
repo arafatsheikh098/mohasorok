@@ -1391,14 +1391,20 @@ function autoPerf(dt) {
   if (settings.qualityManual) return;
   perf.warm += dt;
   if (perf.warm < 10) return;
-  perf.t += dt; perf.n++;
+  // (a single long frame — a turn at a junction rebuilding the road, a block of town loading — is not a slow
+  // device: it is left out, so only steady slowness counts)
+  // (the frame's real length: the game's dt is capped at 50 ms)
+  const now = performance.now(), raw = perf.last ? (now - perf.last) / 1000 : dt;
+  perf.last = now;
+  if (raw > 0.15) return;
+  perf.t += raw; perf.n++;
   if (perf.t < 4) return;
   const fps = perf.n / perf.t;
   perf.t = 0; perf.n = 0;
   // A steady ~30 fps is the browser's own cap (iPhone Low Power Mode and the like); lower graphics wouldn't help.
-  // Only a device that stays well below that for 8 s gets lighter settings.
+  // Only a device that stays well below that for 12 s gets lighter settings.
   perf.slow = fps < 26 ? perf.slow + 1 : 0;
-  if (perf.slow < 2 || perf.steps >= 3) return;
+  if (perf.slow < 3 || perf.steps >= 3) return;
   perf.slow = 0; perf.steps++;
   const floor = IS_TOUCH ? 1.0 : 0.75;
   if (renderer.getPixelRatio() > floor) {

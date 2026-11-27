@@ -10,6 +10,7 @@
 //   ctx.onDispose(fn)                called when the block is taken down
 import * as THREE from 'three';
 import { CHUNK } from '../config.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // Materials, textures and geometries that many blocks share: never disposed with a block.
 export const SHARED = new WeakSet();
@@ -160,5 +161,44 @@ export class Stream {
   disposeAll() {
     for (const b of [...this.blocks.values()]) this._dispose(b);
     for (const b of [...this.stale.values()]) this._disposeStale(b);
+  }
+}
+
+// Merge the static meshes under `root` into one mesh per material (and shadow setting): a parked bus or a terminal
+// building is dozens of small meshes, each its own draw call (and again for the shadows and the mirrors), so a
+// few of them cost more than whole kilometres of road. Only for things that never move or change on their own.
+export function mergeStatic(root) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const buckets = new Map(), done = [];
+  const m4 = new THREE.Matrix4();
+  root.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || Array.isArray(o.material) || !o.visible || !o.geometry?.attributes.position) return;
+    const mat = o.material, vc = !!mat.vertexColors;
+    const names = ['position', 'normal', 'uv', ...(vc ? ['color'] : [])];
+    let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const n of Object.keys(g.attributes)) if (!names.includes(n)) g.deleteAttribute(n);
+    if (vc && !g.attributes.color) return;
+    if (!g.attributes.normal) g.computeVertexNormals();
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    g.morphAttributes = {};
+    g.clearGroups();
+    g.applyMatrix4(m4.multiplyMatrices(inv, o.matrixWorld));
+    const key = `${mat.uuid}|${o.castShadow ? 1 : 0}|${o.receiveShadow ? 1 : 0}|${o.renderOrder}`;
+    if (!buckets.has(key)) buckets.set(key, { mat, o, list: [] });
+    buckets.get(key).list.push(g);
+    done.push(o);
+  });
+  for (const o of done) {
+    o.parent?.remove(o);
+    if (!SHARED.has(o.geometry)) o.geometry.dispose();
+  }
+  for (const { mat, o, list } of buckets.values()) {
+    const geo = list.length === 1 ? list[0] : mergeGeometries(list, false);
+    if (list.length > 1) for (const g of list) g.dispose();
+    if (!geo) continue;
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = o.castShadow; m.receiveShadow = o.receiveShadow; m.renderOrder = o.renderOrder;
+    root.add(m);
   }
 }

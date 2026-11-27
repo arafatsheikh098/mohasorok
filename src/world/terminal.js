@@ -9,7 +9,7 @@ import { makeCanvas, canvasTexture, concreteTexture, grassTexture, BN_FONT, EN_F
 import { ribbon, streetGlowMat } from './road.js';
 import { buildBus, setBusRouteBoard } from '../busModel.js';
 import { OPERATORS } from '../operators.js';
-import { sharedMats } from './stream.js';
+import { sharedMats, mergeStatic } from './stream.js';
 
 const R = (dy) => (s, h) => h + dy;
 const G = (y) => () => y;
@@ -212,6 +212,7 @@ export function* terminalChunk(route, ctx) {
       const s = S(18 + k * 16), d = sd * (H + 24);
       put(b.root, s, d, 0, dir > 0 ? 0 : Math.PI);
       b.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      mergeStatic(b.root);          // (a parked bus never moves: a handful of draw calls instead of ~100)
       ob(s - dir * (b.spec.rearOH + 0.2), s + dir * (b.spec.front + 0.2), d - 1.35, d + 1.35);
       yield;
     }

@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { ROAD, profileOf } from '../config.js';
 import { Route } from '../route.js';
 import { ribbon, roadMats, buildBridge, splitAround, medianRibbons } from './road.js';
-import { disposeTree, sharedMats } from './stream.js';
+import { disposeTree, sharedMats, mergeStatic } from './stream.js';
 import { ASPHALT_TILE, asphaltTexture2 } from '../textures.js';
 import { buildInterchange } from './interchange.js';
 import { terminalChunk } from './terminal.js';
@@ -115,7 +115,8 @@ export class NetRoads {
       const c = net.road(n.terminal.road);
       if (!c) continue;
       const i = c.from === n.id ? Math.min(c.N - 1, 50) : Math.max(0, c.N - 51);
-      this.pieces.push({ key: `term:${n.id}`, term: c.id, x: c.px[i], z: c.pz[i], r: 160 });
+      // (built only within ~1.3 km: a yard further off is a speck behind the town)
+      this.pieces.push({ key: `term:${n.id}`, term: c.id, x: c.px[i], z: c.pz[i], r: 160, near: 1100, far: 1500 });
     }
     // every ferry crossing (both ghats, the ferries, the river), except one the trip itself crosses
     for (const c of net.roads.values()) {
@@ -176,6 +177,8 @@ export class NetRoads {
       // a zilla's bus terminal: the same yard a trip starting or ending there drives into
       const st = this._st(p.term), ctx = { in: () => true, lite: true, scene: g, chunks: { register() {} }, obstacles: [], gates: [], onDispose() {} };
       yield* terminalChunk(st, ctx);
+      yield;
+      mergeStatic(g);              // (nothing in it moves: one draw call per material)
       return;
     }
     const M = roadMats();
@@ -223,7 +226,7 @@ export class NetRoads {
   }
 
   _wanted(x, z) {
-    return this.pieces.filter((p) => !this.built.has(p.key) && Math.hypot(p.x - x, p.z - z) - p.r < NEAR)
+    return this.pieces.filter((p) => !this.built.has(p.key) && Math.hypot(p.x - x, p.z - z) - p.r < (p.near || NEAR))
       .sort((p, q) => Math.hypot(p.x - x, p.z - z) - Math.hypot(q.x - x, q.z - z));
   }
 
@@ -239,7 +242,7 @@ export class NetRoads {
     const byKey = new Map(this.pieces.map((p) => [p.key, p]));
     for (const [k, g] of [...this.built]) {
       const p = byKey.get(k);
-      if (!p || Math.hypot(p.x - x, p.z - z) - p.r > FAR) this._drop(k, g);
+      if (!p || Math.hypot(p.x - x, p.z - z) - p.r > (p.far || FAR)) this._drop(k, g);
     }
   }
 
