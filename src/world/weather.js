@@ -5,13 +5,14 @@
 //   (thickest at winter dawn and on the low Meghna–Daudkandi stretch), rain falls as GPU streaks around the camera,
 //   the road gets wet (darker, glossier, less grip), drops gather on the windshield and the wipers clear them.
 //   State for other systems: player.weather = { kind, rain, fog, wet, cloud, season, mode }.
+import { SAVE } from '../saves.js';
 import * as THREE from 'three';
 import { setWipers } from '../busModel.js';
 import { voice } from '../voice.js';
 
 export const WEATHER_KINDS = ['clear', 'overcast', 'rain', 'heavy', 'fog'];
 const MODES = ['auto', ...WEATHER_KINDS];
-const STORE = 'mohasorok.weather';
+const STORE = SAVE('weather');
 // what each kind eases towards
 const TARGET = {
   clear: { cloud: 0, rain: 0, fog: 0 },

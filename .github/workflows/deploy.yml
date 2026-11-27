@@ -1,5 +1,8 @@
 name: Deploy to GitHub Pages
 
+# The site has two versions:
+#   /mohasorok/     version 1, Dhaka ⇄ Chattogram (frozen on the `v1` branch)
+#   /mohasorok/v2/  version 2, all of Bangladesh + racing (this branch, `main`)
 on:
   push:
     branches: [main]
@@ -19,16 +22,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: v1
+          path: v1-src
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run build
+          cache-dependency-path: |
+            package-lock.json
+            v1-src/package-lock.json
+      - name: Build version 2 (main)
+        run: npm ci && npm run build
+      - name: Build version 1 (v1 branch)
+        working-directory: v1-src
+        run: npm ci && npm run build
+      - name: Put the two together
+        run: |
+          mkdir -p site
+          cp -r v1-src/dist/. site/
+          mkdir -p site/v2
+          cp -r dist/. site/v2/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
   deploy:
     needs: build
     runs-on: ubuntu-latest

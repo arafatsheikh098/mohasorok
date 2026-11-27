@@ -1,3 +1,4 @@
+import { SAVE } from './saves.js';
 import * as THREE from 'three';
 import '@fontsource/noto-sans-bengali/400.css';
 import '@fontsource/noto-sans-bengali/700.css';
@@ -78,7 +79,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.15, 9000);
 
 // settings persist between visits; phones start lighter
-const SAVED = (() => { try { return JSON.parse(localStorage.getItem('mohasorok.settings') || '{}'); } catch { return {}; } })();
+const SAVED = (() => { try { return JSON.parse(localStorage.getItem(SAVE('settings')) || '{}'); } catch { return {}; } })();
 // v2: phones used to be saved as 'low' automatically; forget that unless the player picked it
 if (SAVED.v !== 2 && !SAVED.qualityManual) delete SAVED.quality;
 const settings = {
@@ -94,7 +95,7 @@ settings.seats = settings.seats || {};
 settings.type = career.ownedType(settings.type);     // career: only buses the company owns can be driven
 function saveSettings() {
   const { type, time, traffic, quality, qualityManual, trip, mode, seats, at, speedCode } = settings;
-  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, trip, mode, seats, at, speedCode, opId: settings.op.id })); } catch { /* private mode */ }
+  try { localStorage.setItem(SAVE('settings'), JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, trip, mode, seats, at, speedCode, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;   // eslint-disable-line prefer-const
 let net, stream, corridorRoot, tripMenu, netRoads;   // the road network, the world streamer, and the per-trip objects (src/world/stream.js)
@@ -110,7 +111,7 @@ let state = 'loading';
 // racing with friends (src/race.js): the room, and whether this drive is the race (not a solo practice trip)
 const race = new Race(scene);
 let raceUI = null, raceRun = false;
-const raceMe = () => ({ name: localStorage.getItem('mohasorok.name') || 'Driver', op: settings.op.id, opName: settings.op.en, type: settings.type });
+const raceMe = () => ({ name: localStorage.getItem(SAVE('name')) || 'Driver', op: settings.op.id, opName: settings.op.en, type: settings.type });
 const player = {
   bus: null, phys: null, s: 0, d: 0, hint: -1, len: 12, wid: 2.5, v: 0,
   lights: false, indL: false, indR: false, blinkT: 0, blink: false,
@@ -383,6 +384,15 @@ function reroute(path, fromS, msg) {
   traffic.rebase(fromS, keepS);
   player.hint = -1;
   player.termHint = false;
+  // which carriageway the bus is on, on the new road: after driving back the way it came and turning off, it is
+  // on the new road's own left carriageway (the side only changes in median openings otherwise, so the median
+  // wall would push it across to the other one)
+  {
+    const ph = player.phys, sp = player.bus.spec;
+    const pr = route.project(ph.pos.x + Math.sin(ph.yaw) * sp.center, ph.pos.z + Math.cos(ph.yaw) * sp.center);
+    player.s = pr.s; player.d = pr.d; player.hint = pr.index;
+    player.side = pr.d > 0 ? 1 : -1;
+  }
   if (msg) hud.toast(msg, 'good', 3500);
 }
 // the onward roads after a turn onto `step` at `node`
@@ -571,7 +581,10 @@ function constrain(dt) {
   const halfAlong = Math.abs(Math.cos(rel)) * spec.L / 2 + Math.abs(Math.sin(rel)) * spec.W / 2;
   // carriageway: free to cross only inside a U-turn opening (a 2-lane road has no median: cross anywhere)
   const P = route.prof(s);
-  const open = gap || P.two;
+  // (and the median is only on the road itself: off it — on a junction pad, a side road, the fields — there is
+  // nothing to cross, e.g. after coming back the way you came and turning off to the far side at a junction)
+  const offRoad = !bridge && Math.abs(d) > P.half + 2;
+  const open = gap || P.two || offRoad;
   if (open) player.side = d > 0 ? 1 : -1;
   const sd = player.side;
   const inner = P.median + 0.1 + halfAcross;
@@ -1443,7 +1456,7 @@ function initRace() {
   const code = new URLSearchParams(location.search).get('race');
   if (code) {
     raceUI.prefill(code);
-    if (localStorage.getItem('mohasorok.name')) raceUI.join();
+    if (localStorage.getItem(SAVE('name'))) raceUI.join();
     else document.getElementById('race-name')?.focus();
     $('race-box')?.scrollIntoView({ block: 'center' });
   }

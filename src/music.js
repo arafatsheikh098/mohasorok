@@ -1,8 +1,9 @@
 // In-game music player for the player's own songs. Files are stored in this browser (IndexedDB)
 // and never uploaded. Plays through the game's audio context so the volume works on phones too.
+import { SAVE } from './saves.js';
 import { getAll, put, del } from './store.js';
 
-const PREFS = 'mohasorok.music';
+const PREFS = SAVE('music');
 
 // ---- YouTube links (official IFrame player; it has to stay visible, at least 200x200) ----
 export function parseYouTube(text) {

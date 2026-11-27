@@ -1,5 +1,6 @@
 // The screens for racing with friends: the menu box (create / join, then the lobby), the countdown, the live
 // standings while driving, and the results on the arrival card. The game logic is in main.js, the network in race.js.
+import { SAVE } from './saves.js';
 import { newCode } from './race.js';
 
 const $ = (id) => document.getElementById(id);
@@ -13,14 +14,14 @@ const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return
 
 export function initRaceUI({ race, net, me, tripOf, onCreate }) {
   const nameIn = $('race-name'), codeIn = $('race-code');
-  nameIn.value = localStorage.getItem('mohasorok.name') || '';
+  nameIn.value = localStorage.getItem(SAVE('name')) || '';
   // typing must not drive the bus (M, Z, … are game keys)
   for (const el of [nameIn, codeIn]) {
     el.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { el.blur(); if (el === codeIn) join(); } });
     el.addEventListener('keyup', (e) => e.stopPropagation());
   }
   nameIn.addEventListener('change', () => {
-    localStorage.setItem('mohasorok.name', nameIn.value.trim());
+    localStorage.setItem(SAVE('name'), nameIn.value.trim());
     if (race.inRoom) race.hello(me());
   });
   codeIn.addEventListener('input', () => { codeIn.value = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
@@ -37,7 +38,7 @@ export function initRaceUI({ race, net, me, tripOf, onCreate }) {
     if (!race.available) { msg('The race server is not set up yet', true); return; }
     if (code.length < 4) { msg('Type the race code your friend sent you', true); return; }
     if (!needName()) return;
-    localStorage.setItem('mohasorok.name', nameIn.value.trim());
+    localStorage.setItem(SAVE('name'), nameIn.value.trim());
     msg('Joining…');
     race.connect(code, false, me());
   };
@@ -45,7 +46,7 @@ export function initRaceUI({ race, net, me, tripOf, onCreate }) {
   $('race-create').onclick = () => {
     if (!race.available) { msg('The race server is not set up yet', true); return; }
     if (!needName()) return;
-    localStorage.setItem('mohasorok.name', nameIn.value.trim());
+    localStorage.setItem(SAVE('name'), nameIn.value.trim());
     msg('Creating a race…');
     race.connect(newCode(), true, me());
     onCreate?.();

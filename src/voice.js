@@ -2,12 +2,13 @@
 // Clips are whole sentences pre-made with tools/gen_voice.mjs (Microsoft neural voices) in public/voice/.
 // Lines are queued one at a time with per-line cooldowns, and each one shows a subtitle.
 // Fallbacks: no clip → speechSynthesis with a Bengali voice if the browser has one → subtitle only.
+import { SAVE } from './saves.js';
 import { LINES, VOICES, placeKey, clipKey } from './voiceLines.js';
 import { WAYPOINTS } from './config.js';
 import { NODES } from './data/bd_network.js';
 
 const BASE = `${import.meta.env.BASE_URL}voice/`;
-const STORE = 'mohasorok.voice';
+const STORE = SAVE('voice');
 const KEEP_DECODED = 24;     // decoded clips kept in memory (a decoded clip is ~0.6 MB)
 // English names for the subtitle gloss
 const EN = { 'সায়েদাবাদ': 'Sayedabad', 'চট্টগ্রাম': 'Chattogram', 'ঢাকা': 'Dhaka', 'এ কে খান': 'A.K. Khan', 'মহিপাল': 'Mohipal' };

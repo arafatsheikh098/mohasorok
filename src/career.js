@@ -1,9 +1,10 @@
 // Career mode: a small bus company. The bank balance, the buses you own and your all-time stats are saved
 // in this browser (localStorage). Each finished trip pays fares + tips and costs diesel, tolls, fines/damage
 // and the crew's wages; the profit goes into the bank, and the bank buys bigger buses in the garage.
+import { SAVE } from './saves.js';
 import pkg from '../package.json';
 
-const KEY = 'mohasorok.career';
+const KEY = SAVE('career');
 export const VERSION = pkg.version || '1.0.0';
 
 // Game prices, scaled so a better bus takes a handful of good trips (real ones cost ৳70 lakh – ৳2.5 crore).
@@ -35,7 +36,7 @@ class Career {
       this.balance = START_BALANCE;
       this.owned = new Set(['local']);
       try {
-        const old = JSON.parse(localStorage.getItem('mohasorok.settings') || 'null');
+        const old = JSON.parse(localStorage.getItem(SAVE('settings')) || 'null');
         if (old?.type && BUS_PRICES[old.type] !== undefined) this.owned.add(old.type);
       } catch { /* no old settings */ }
       this.stats = blankStats();
