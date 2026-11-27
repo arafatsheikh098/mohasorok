@@ -7,6 +7,8 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **highways of Ban
 ## Features
 - **The whole country:** all 64 zilla towns (plus Teknaf, Benapole and Kuakata) on the national and regional highways N1–N8 and more, compressed 1:12, with real kilometres shown.
   - **Pick a trip** on the map of Bangladesh in the menu (any zilla to any zilla), or switch to **🧭 Explore**: no destination and no passengers, every road at every junction is open — the world follows wherever you drive.
+  - **Every road is always there.** All roads within a few km of the bus are built (with their bridges and rivers), whichever trip you picked — not just the roads your route uses.
+  - **Sakura · AK1J Non-AC speed code:** pick Sakura and the Non-AC bus and a 🔑 code box appears in the menu. Any code can be typed, but only the right one tunes the engine and lifts the limiter from 140 to 160 km/h.
   - **The bus stays where you leave it.** After a trip it waits at the destination terminal (the arrival screen offers the return trip); leave mid-trip (menu, or close the browser) and the next trip starts out on the road right where it stopped. Pick another "From" zilla to move it.
   - **Turn at any junction.** Green boards before each junction show where every road goes. Drive onto another road and the trip reroutes (or tells you it's the wrong road).
   - **Real lanes:** divided 4-lane highways where the real road is 4-lane (N1, N3, N4, the Padma expressway and others), undivided 2-lane roads elsewhere, where overtaking means pulling into the oncoming lane.

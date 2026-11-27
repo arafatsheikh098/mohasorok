@@ -4,7 +4,7 @@
 // All roads share one projection (MAP_SCALE, one origin for the whole country), so roads that meet at a node
 // meet in the game world too. A trip is then built from a path of roads by src/route.js.
 import * as THREE from 'three';
-import { MAP_SCALE, UTURN_SPACING, UTURN_GAP, ROAD } from './config.js';
+import { MAP_SCALE, UTURN_SPACING, UTURN_GAP, ROAD, profileOf } from './config.js';
 
 const FLYOVER_H = 11;          // deck height of a flyover / elevated expressway (m)
 import { NODES, ROADS } from './data/bd_network.js';
@@ -367,6 +367,67 @@ export class Network {
   }
 
   // shortest trip between two zillas (from any of their terminals): [{ road, rev }]
+  // is (x, z) on any road of the network (or within `margin` of its embankment)? For the scenery: nothing is
+  // built on a road, whether the trip uses it or not.
+  nearAny(x, z, margin = 0, skip = null) {
+    const C = 120;
+    if (!this._anyGrid) {
+      this._anyGrid = new Map();
+      for (const c of this.roads.values()) {
+        if (c.def.link || c.def.ferry) continue;
+        c.build();
+        const lim = profileOf(c.lanes).half + ROAD.embank;
+        for (let i = 0; i < c.N - 1; i += 4) {
+          const j = Math.min(c.N - 1, i + 4);
+          // (the last ~30 m at each end: the pad where roads meet is a little wider)
+          const seg = [c.px[i], c.pz[i], c.px[j], c.pz[j], lim + (i * DS < 30 || (c.N - 1 - j) * DS < 30 ? 6 : 0), c.id];
+          const x0 = Math.floor((Math.min(seg[0], seg[2]) - 40) / C), x1 = Math.floor((Math.max(seg[0], seg[2]) + 40) / C);
+          const z0 = Math.floor((Math.min(seg[1], seg[3]) - 40) / C), z1 = Math.floor((Math.max(seg[1], seg[3]) + 40) / C);
+          for (let a = x0; a <= x1; a++) for (let b = z0; b <= z1; b++) {
+            const k = a * 100003 + b;
+            if (!this._anyGrid.has(k)) this._anyGrid.set(k, []);
+            this._anyGrid.get(k).push(seg);
+          }
+        }
+      }
+    }
+    const r = Math.ceil(Math.max(0, margin - 10) / C);         // (segments are filed with 40 m to spare)
+    const cx = Math.floor(x / C), cz = Math.floor(z / C);
+    for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) {
+      for (const [ax, az, bx, bz, lim, id] of this._anyGrid.get((cx + a) * 100003 + cz + b) || []) {
+        if (skip?.has(id)) continue;
+        const dx = bx - ax, dz = bz - az;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+        if (Math.hypot(ax + dx * t - x, az + dz * t - z) < lim + margin) return true;
+      }
+    }
+    return false;
+  }
+
+  // the river under every (non-elevated) bridge of every road, made once: drawn with whichever road's bridge is
+  // built, and kept clear of trees and houses whichever trip is driven
+  riverList() {
+    if (this._rivers) return this._rivers;
+    this._rivers = [];
+    for (const c of this.roads.values()) {
+      if (c.def.link || c.def.ferry) continue;
+      c.build();
+      for (const b of c.bridges) {
+        if (b.elevated) continue;
+        const i = Math.round(b.sc / DS), i0 = Math.max(0, i - 5), i1 = Math.min(c.N - 1, i + 5);
+        const cx = c.px[i], cz = c.pz[i], l = Math.hypot(c.px[i1] - c.px[i0], c.pz[i1] - c.pz[i0]) || 1;
+        const tx = (c.px[i1] - c.px[i0]) / l, tz = (c.pz[i1] - c.pz[i0]) / l, nx = -tz, nz = tx;
+        const pts = [];
+        for (let t = -3500; t <= 3500; t += 50) {
+          const mw = Math.sin(t / 520) * 90 + Math.sin(t / 190) * 20, fall = Math.min(1, Math.abs(t) / 250);
+          pts.push(new THREE.Vector3(cx + nx * t + tx * mw * fall, 0, cz + nz * t + tz * mw * fall));
+        }
+        this._rivers.push({ pts, width: b.width, centre: new THREE.Vector3(cx, 0, cz), road: c.id, sc: b.sc });
+      }
+    }
+    return this._rivers;
+  }
+
   // real km of a path
   pathKm(path) { return path.reduce((a, st) => a + this.roads.get(st.road).km, 0); }
 

@@ -83,6 +83,8 @@ export function initRoad(route) {
   const rivers = [...route.bridges, ...route.ferries].filter((b) => !b.elevated).map((b) => riverFor(route, b));
   // the rivers under the bridges of the side roads at the junctions, too
   for (const { b } of route.branchLines || []) for (const br of b.bridges) if (!br.elevated) rivers.push(riverFor(b.stub, br));
+  // and every other river of the network (their bridges are built by world/netroads.js): kept clear of scenery
+  for (const rv of route.net?.riverList?.() || []) if (!rivers.some((o) => Math.hypot(o.centre.x - rv.centre.x, o.centre.z - rv.centre.z) < 60)) rivers.push(rv);
   return { mats: roadMats(), water: { mat: waterMat, normal, rivers } };
 }
 

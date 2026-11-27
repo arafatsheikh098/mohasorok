@@ -119,6 +119,11 @@
   .seg button { flex: 1; min-width: 90px; background: rgba(255,255,255,.04); color: var(--txt); border: 1px solid var(--line); padding: 9px 8px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; }
   .seg button small { display: block; color: var(--mut); font-weight: 500; font-size: 11px; margin-top: 2px; }
   .seg button.sel { border-color: var(--acc); background: rgba(255,138,28,.12); }
+  .speedcode { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 2px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 7px; font-size: 13px; }
+  .speedcode label small { color: var(--mut); font-weight: 500; margin-left: 4px; }
+  .speedcode input { width: 110px; background: rgba(0,0,0,.25); color: var(--txt); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font-size: 13px; letter-spacing: 2px; }
+  #speed-code-msg { font-size: 12px; color: var(--mut); }
+  #speed-code-msg.ok { color: #5fd38d; font-weight: 600; }
   #start { margin-top: 26px; width: 100%; padding: 15px; font-size: 17px; font-weight: 800; letter-spacing: .4px; background: var(--acc); color: #1a0e02; border: 0; border-radius: 9px; cursor: pointer; }
   #start:hover { filter: brightness(1.08); }
   .keys { margin-top: 18px; color: var(--mut); font-size: 12px; line-height: 1.75; }
@@ -407,6 +412,11 @@
 
     <h3>Bus <small class="h3note">garage · buy bigger buses with your trip profits</small></h3>
     <div class="seg" id="types"></div>
+    <div id="speed-code" class="speedcode" style="display:none">
+      <label for="speed-code-in">🔑 Speed code <small>Sakura · AK1J Non-AC</small></label>
+      <input id="speed-code-in" type="text" maxlength="16" placeholder="enter a code" autocomplete="off" spellcheck="false">
+      <span id="speed-code-msg"></span>
+    </div>
 
     <h3>Time of day</h3>
     <div class="seg" id="times"></div>

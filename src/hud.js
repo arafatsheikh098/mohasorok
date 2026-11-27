@@ -31,7 +31,7 @@ export class HUD {
       const p = route.pointAt(s, 0);
       this.pts.push([p.x, p.z]);
     }
-    this.rivers = water.rivers.map((r) => ({ pts: r.pts.map((p) => [p.x, p.z]), w: r.width }));
+    this.rivers = water.rivers.map((r) => ({ pts: r.pts.map((p) => [p.x, p.z]), w: r.width, cx: r.centre.x, cz: r.centre.z }));
     this.markers = [
       ...route.stations.map((st) => ({ p: route.pointAt(st.sc, st.side * 16), icon: '⛽', col: '#ffb300' })),
       ...route.rests.map((r) => ({ p: route.pointAt(r.sc, r.side * 20), icon: '🍛', col: '#ff7043' })),
@@ -144,6 +144,7 @@ export class HUD {
     g.strokeStyle = '#1f4a66';
     g.lineCap = 'round';
     for (const r of this.rivers) {
+      if (Math.hypot(r.cx - st.x, r.cz - st.z) > reach + 3600) continue;
       g.lineWidth = Math.max(3, r.w * scale);
       g.beginPath();
       r.pts.forEach(([x, z], i) => { const [a, b] = T(x, z); i ? g.lineTo(a, b) : g.moveTo(a, b); });

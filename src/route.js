@@ -52,7 +52,10 @@ export class Route {
       }
     }
     for (const j of this.junctions || []) if (Math.hypot(x - j.x, z - j.z) < j.R + ROAD.embank + margin) return true;
-    return !!this.nearBranch?.(x, z, margin);
+    // (every other road of the network too, and the pads where they meet)
+    // (the trip's own roads are checked exactly above)
+    this._own ||= new Set(this.segs.filter((g, i) => !(i === 0 && this.path[0].cut)).map((g) => g.road));
+    return !!this.nearBranch?.(x, z, margin) || !!this.net?.nearAny?.(x, z, margin, this._own);
   }
 
   // ---------------------------------------------------------------- building

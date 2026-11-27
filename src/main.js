@@ -7,6 +7,7 @@ import { ROAD, CHUNK, VIEW_CHUNKS, QUALITY, SPEED_LIMIT, TOLL_FEE, DIESEL_PRICE,
 import { initFacilities } from './world/facilities.js';
 import { Network } from './net.js';
 import { Stream, disposeTree } from './world/stream.js';
+import { NetRoads } from './world/netroads.js';
 import { initJunctions, junctionChunk } from './world/junction.js';
 import { ferryChunk } from './world/ferry.js';
 import { buildAICams } from './world/aicams.js';
@@ -89,11 +90,11 @@ if (settings.trip.from === '@here' && !settings.at?.road) settings.trip.from = s
 settings.seats = settings.seats || {};
 settings.type = career.ownedType(settings.type);     // career: only buses the company owns can be driven
 function saveSettings() {
-  const { type, time, traffic, quality, qualityManual, trip, mode, seats, at } = settings;
-  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, trip, mode, seats, at, opId: settings.op.id })); } catch { /* private mode */ }
+  const { type, time, traffic, quality, qualityManual, trip, mode, seats, at, speedCode } = settings;
+  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, trip, mode, seats, at, speedCode, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;   // eslint-disable-line prefer-const
-let net, stream, corridorRoot, tripMenu;   // the road network, the world streamer, and the per-trip objects (src/world/stream.js)
+let net, stream, corridorRoot, tripMenu, netRoads;   // the road network, the world streamer, and the per-trip objects (src/world/stream.js)
 let passengers;   // bus counters, boarding / alighting (src/passengers.js)
 let weather;      // rain, fog, wet road, wipers (src/world/weather.js)
 let police;       // highway police checkpoints + jam warnings (src/world/police.js)
@@ -171,11 +172,42 @@ function createPlayerBus() {
   player.fogSpot = fogSpot;
   player.bus = bus;
   player.phys = new BusPhysics(bus.spec);
+  // the Sakura Non-AC with the speed code: a tuned engine and the limiter at 160 km/h (the normal limit is 140)
+  if (speedUnlocked()) { player.phys.governor = 160 / 3.6; player.phys.torqueScale *= 1.5; }
   player.len = bus.spec.L;
   player.wid = bus.spec.W;
   if (mirrors) mirrors.attach(bus);
   playerBoard();
   resetPlayer(...startPoint());
+}
+
+// ---------- speed code: only for the Sakura AK1J Non-AC. Any code can be typed; only the right one works ----------
+const SPEED_CODE = '0987';
+function speedCodeApplies() { return settings.op?.id === 'sakura' && settings.type === 'local'; }
+function speedUnlocked() { return speedCodeApplies() && settings.speedCode === SPEED_CODE; }
+function renderSpeedCode() {
+  const row = $('speed-code'), inp = $('speed-code-in'), msg = $('speed-code-msg');
+  if (!row) return;
+  row.style.display = speedCodeApplies() ? '' : 'none';
+  if (document.activeElement !== inp) inp.value = settings.speedCode || '';
+  const code = (settings.speedCode || '').trim();
+  msg.className = speedUnlocked() ? 'ok' : '';
+  msg.textContent = speedUnlocked() ? '✓ unlocked — top speed 160 km/h' : code ? 'no effect — top speed stays normal' : 'normal top speed';
+}
+function initSpeedCode() {
+  const inp = $('speed-code-in');
+  if (!inp) return;
+  // typing a code must not drive the game (M, Z, … are game keys)
+  inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); });
+  inp.addEventListener('keyup', (e) => e.stopPropagation());
+  inp.addEventListener('input', () => {
+    const was = speedUnlocked();
+    settings.speedCode = inp.value.trim();
+    saveSettings();
+    if (speedUnlocked() !== was) createPlayerBus();
+    renderSpeedCode();
+  });
+  renderSpeedCode();
 }
 
 function resetPlayer(s, d) {
@@ -236,6 +268,9 @@ function buildWorld(path) {
   chunks.clear();
   route = new Route(net, path);
   initJunctions(route, net);
+  // every other road near the bus, whether the trip uses it or not
+  netRoads ||= new NetRoads(net, scene);
+  netRoads.setRoute(route);
   road = initRoad(route);
   scenery = initScenery(route, scene, { treeDensity: (QUALITY[settings.quality] || QUALITY.high).treeDensity }, road.water);
   facilities = initFacilities(route);
@@ -307,7 +342,7 @@ addEventListener('visibilitychange', () => { if (document.hidden && (state === '
 function changeTrip() {
   buildWorld(tripPath());
   restartTrip();
-  stream.buildNow(player.s, 1);
+  stream.buildNow(player.s, 1); netRoads.buildNow(player.phys.pos.x, player.phys.pos.z);
 }
 
 // ---------- turning at junctions (open map) ----------
@@ -319,6 +354,7 @@ function reroute(path, fromS, msg) {
   route = new Route(net, path);
   route.rerouted = true;
   initJunctions(route, net);
+  netRoads.setRoute(route);
   road = initRoad(route);
   scenery.setRoute(route);
   facilities.setRoute(route);
@@ -387,7 +423,7 @@ function extendFree() {
   if (more.length) reroute([...route.path, ...more], route.length - 40, null);
 }
 function restartTrip() {
-  if (route.rerouted) { buildWorld(tripPath()); stream.buildNow(startPoint()[0], 1); }
+  if (route.rerouted) { buildWorld(tripPath()); stream.buildNow(startPoint()[0], 1); netRoads.buildNow(player.phys.pos.x, player.phys.pos.z); }
   resetPlayer(...startPoint());
   Object.assign(player, { elapsed: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false, paidFlyovers: new Set(),
     fuel: TANK_LITRES * START_FUEL, fuelCost: 0, tollCost: 0, refuelling: false, fuelWarn: 0 });
@@ -620,7 +656,7 @@ function startCrossing(f, dir) {
     const ts = dir > 0 ? f.s1 + 50 : f.s0 - 50;
     const lane = route.prof(ts).laneCenters[0] * (dir > 0 ? 1 : -1);
     resetPlayer(ts, lane);
-    stream.buildNow(ts, dir);
+    stream.buildNow(ts, dir); netRoads.buildNow(player.phys.pos.x, player.phys.pos.z);
     traffic.init(ts);
     setTimeout(() => {
       $('restfade').classList.remove('on');
@@ -1062,6 +1098,7 @@ function togglePause() {
 function buildMenu() {
   renderOps();
   renderGarage();
+  initSpeedCode();
   const times = $('times');
   TIME_ORDER.forEach((k, i) => {
     const b = document.createElement('button');
@@ -1129,6 +1166,7 @@ function renderGarage() {
       }
       settings.type = k; createPlayerBus(); applySeat(); saveSettings();
       renderGarage();
+      renderSpeedCode();
     };
     types.appendChild(b);
   }
@@ -1194,6 +1232,7 @@ function renderOps() {
       createPlayerBus();
       renderOps();
       saveSettings();
+      renderSpeedCode();
     };
     ops.appendChild(el);
   }
@@ -1248,7 +1287,7 @@ function startDrive() {
   perf.t = 0; perf.n = 0; perf.warm = 0; perf.slow = 0;
   const nm = (p, k) => p[k].split(' (')[0];
   const via = [...new Set(route.segs.map((g) => g.chain.ref))].join(', ');
-  hud.toast(`<span class="bn">${settings.op.bn}</span> · ${BUS_TYPES[settings.type].name}<br><small>${nm(route.startPlace, 'en')} → ${nm(route.endPlace, 'en')} via ${via}. Drive on the LEFT.${IS_TOUCH ? ' Turn the wheel, hold GAS / BRAKE.' : ' Mirrors: V · Refuel: F'}</small>`, 'good', 5000);
+  hud.toast(`<span class="bn">${settings.op.bn}</span> · ${BUS_TYPES[settings.type].name}${speedUnlocked() ? ' · ⚡ 160 km/h' : ''}<br><small>${nm(route.startPlace, 'en')} → ${nm(route.endPlace, 'en')} via ${via}. Drive on the LEFT.${IS_TOUCH ? ' Turn the wheel, hold GAS / BRAKE.' : ' Mirrors: V · Refuel: F'}</small>`, 'good', 5000);
   voice.say('helper.depart', { place: nm(route.endPlace, 'bn').split(' ')[0], placeEn: nm(route.endPlace, 'en') });
 }
 
@@ -1369,6 +1408,7 @@ function frame(now) {
 
   const focus = player.bus.root.position;
   stream.update(player.s, player.side < 0 ? 1 : -1);
+  netRoads.update(player.phys.pos.x, player.phys.pos.z, dt);
   chunks.update(player.s);
   weather?.update(dt, { camera, player, cabin: rig.mode === 'cabin' && state !== 'menu', hour: sky.hour, speed: Math.abs(player.phys.v), running: state !== 'paused' });
   sky.update(dt, focus, camera);
@@ -1430,7 +1470,7 @@ async function boot() {
   linkTraffic();
   traffic.init(player.s);
   await msg('Paving the road, planting paddy, palms and villages…');
-  stream.buildNow(player.s, 1);
+  stream.buildNow(player.s, 1); netRoads.buildNow(player.phys.pos.x, player.phys.pos.z);
   mirrors.layoutHUD(innerWidth, innerHeight);
   setTime(settings.time);
   buildMenu();
@@ -1442,7 +1482,7 @@ async function boot() {
   requestAnimationFrame(frame);
   console.info(`[mohasorok] route ${(route.length / 1000).toFixed(1)} km game, ${route.places.length} places, ${route.bridges.length} bridges`);
   window.__game = { get route() { return route; }, player, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
-    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); stream.buildNow(s, d < 0 ? 1 : -1); traffic.init(s); }, get stream() { return stream; }, get net() { return net; }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; }, get passengers() { return passengers; },
+    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); stream.buildNow(s, d < 0 ? 1 : -1); netRoads.buildNow(player.phys.pos.x, player.phys.pos.z); traffic.init(s); }, get stream() { return stream; }, get netRoads() { return netRoads; }, get net() { return net; }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; }, get passengers() { return passengers; },
     // debug: which meshes are under screen pixel (px, py)
     pick(px, py) {
       const rc = new THREE.Raycaster(), cam = rig.camera;
