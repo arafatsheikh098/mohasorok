@@ -132,10 +132,10 @@ export class BigMap {
     g.lineCap = 'round'; g.lineJoin = 'round';
     // every road of the network
     for (const r of this.hud.roads) {
-      const two = r.c.lanes < 4;
+      const two = r.c.lanes < 4, ex = r.c.def.expressway, el = r.c.def.elevated?.to === 1;
       g.setLineDash(r.c.def.ferry ? [px(8), px(8)] : []);
-      g.strokeStyle = r.c.def.ferry ? '#3f7fa8' : two ? '#3d4954' : '#5d6b78';
-      g.lineWidth = px(two ? 2.5 : 4);
+      g.strokeStyle = r.c.def.ferry ? '#3f7fa8' : el ? '#b06ad0' : ex ? '#4fae5a' : two ? '#3d4954' : '#5d6b78';
+      g.lineWidth = px(ex || el ? 5 : two ? 2.5 : 4);
       g.beginPath();
       r.pts.forEach(([x, z], i) => (i ? g.lineTo(X(x), Y(z)) : g.moveTo(X(x), Y(z))));
       g.stroke();

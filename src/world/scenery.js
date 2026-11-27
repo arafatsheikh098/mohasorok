@@ -362,7 +362,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
     }
     // median shrubs (divided roads only)
     for (let s = s0 + 3; s < s1; s += 7) {
-      if (route.prof(s).two) continue;
+      if (route.prof(s).two || route.prof(s).barrier) continue;
       if ((route.bridgeAt(s) && r() < 0.8) || route.uturnAt(s) || route.tollDist(s) < 30) continue;
       route.pointAt(s, (r() - 0.5) * 0.6, p);
       q.identity();
@@ -619,17 +619,18 @@ function gantry(group, mat, w, h, s, route, side = -1, mats) {
   g.rotation.y = route.yawAt(s) + (side < 0 ? Math.PI : 0);
   const steel = mats.steel;
   // after the PI turn local +x points along +d (right), so our carriageway is at negative x
-  const legs = [-(ROAD.median + 0.4), -(ROAD.half + 0.8)];
+  const P = route.prof(s);
+  const legs = [-(P.median + 0.4), -(P.half + 0.8)];
   for (const d of legs) {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 8.2, 10), steel);
     leg.position.set(d, 4.1, 0);
     g.add(leg);
   }
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(ROAD.half - ROAD.median + 0.8, 0.5, 0.5), steel);
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(P.half - P.median + 0.8, 0.5, 0.5), steel);
   beam.position.set((legs[0] + legs[1]) / 2, 7.8, 0.3);
   g.add(beam);
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-  panel.position.set(-(ROAD.median + ROAD.lane), 7.6 - h / 2 + 0.4, 0.62);
+  panel.position.set(-(P.median + P.lane * P.lanes / 2), 7.6 - h / 2 + 0.4, 0.62);
   panel.rotation.y = 0;
   const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, h + 0.1, 0.08), steel);
   back.position.set(panel.position.x, panel.position.y, 0.55);

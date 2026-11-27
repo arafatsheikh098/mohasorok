@@ -127,9 +127,11 @@ export class HUD {
     g.fillRect(0, 0, W, H);
     // other roads nearby
     const reach = (W / scale) * 1.2;
-    g.strokeStyle = '#2c3640'; g.lineWidth = 6; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.lineCap = 'round'; g.lineJoin = 'round';
     for (const r of this.roads) {
       if (this.onTrip.has(r.c.id)) continue;
+      g.strokeStyle = r.c.def.expressway ? '#2f5a36' : r.c.def.elevated?.to === 1 ? '#56406a' : '#2c3640';
+      g.lineWidth = r.c.def.expressway ? 8 : 6;
       const [x0, z0, x1, z1] = r.box;
       if (st.x < x0 - reach || st.x > x1 + reach || st.z < z0 - reach || st.z > z1 + reach) continue;
       g.beginPath();

@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { ROAD } from '../config.js';
 import { Route } from '../route.js';
-import { ribbon, roadMats, buildBridge, splitAround } from './road.js';
+import { ribbon, roadMats, buildBridge, splitAround, medianRibbons } from './road.js';
 import { sharedMats } from './stream.js';
 import { directionSignTexture, ASPHALT_TILE, asphaltTexture2 } from '../textures.js';
 
@@ -14,7 +14,7 @@ const jMats = sharedMats(() => {
   const m = roadMats();
   const off = (mat, f) => { const c = mat.clone(); c.polygonOffset = true; c.polygonOffsetFactor = f; c.polygonOffsetUnits = f; return c; };
   return {
-    pad: off(new THREE.MeshStandardMaterial({ map: asphaltTexture2(false), roughness: 0.93 }), -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), grass: m.grass, median: m.median, curb: m.curb,
+    pad: off(new THREE.MeshStandardMaterial({ map: asphaltTexture2(false), roughness: 0.93 }), -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), stub6: off(m.asphalt6, -1), grass: m.grass, median: m.median, curb: m.curb,
     back: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }),
     leg: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }),
   };
@@ -124,15 +124,12 @@ export function* junctionChunk(route, ctx) {
       const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); };
       if (P.two) add(ribbon(st, a, e, 4, [{ d: -H, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), M.stub2);
       else {
-        add(ribbon(st, a, e, 4, [{ d: -H, y: R(0), u: 1 }, { d: -Mh, y: R(0), u: 0 }], ASPHALT_TILE), M.stub);
-        add(ribbon(st, a, e, 4, [{ d: Mh, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), M.stub);
+        const am = P.lanes === 3 ? M.stub6 : M.stub;
+        add(ribbon(st, a, e, 4, [{ d: -H, y: R(0), u: 1 }, { d: -Mh, y: R(0), u: 0 }], ASPHALT_TILE), am);
+        add(ribbon(st, a, e, 4, [{ d: Mh, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), am);
         add(ribbon(st, a, e, 4, [{ d: -Mh, y: R(0.002), u: 0 }, { d: Mh, y: R(0.002), u: 0.4 }], ASPHALT_TILE), M.stub);
         const m0 = j.R + 8;
-        if (e > m0 + 4) {
-          add(ribbon(st, m0, e, 4, [{ d: -Mh + 0.12, y: R(0.27), u: 0 }, { d: Mh - 0.12, y: R(0.27), u: (2 * Mh) / 3 }], 3), M.median);
-          add(ribbon(st, m0, e, 4, [{ d: -Mh, y: R(0), u: 0 }, { d: -Mh, y: R(0.25), u: 0.3 }, { d: -Mh + 0.12, y: R(0.27), u: 0.6 }], 4), M.curb);
-          add(ribbon(st, m0, e, 4, [{ d: Mh - 0.12, y: R(0.27), u: 0 }, { d: Mh, y: R(0.25), u: 0.3 }, { d: Mh, y: R(0), u: 0.6 }], 4), M.curb);
-        }
+        if (e > m0 + 4) medianRibbons(st, m0, e, P, add, roadMats());
       }
       // embankments, except under a bridge deck; the bridge itself (deck sides, piers, lamps, the river below)
       for (const [p0, p1] of splitAround(b.bridges, ab, e)) {

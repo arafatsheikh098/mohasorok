@@ -343,7 +343,7 @@ function extendFree() {
 function restartTrip() {
   if (route.rerouted) { buildWorld(tripPath()); stream.buildNow(startPoint()[0], 1); }
   resetPlayer(...startPoint());
-  Object.assign(player, { elapsed: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false,
+  Object.assign(player, { elapsed: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false, paidFlyovers: new Set(),
     fuel: TANK_LITRES * START_FUEL, fuelCost: 0, tollCost: 0, refuelling: false, fuelWarn: 0 });
   for (const g of facilities.gates) { g.holdPlayer = false; g.openT = 0; }
   playerBoard();
@@ -695,7 +695,16 @@ function events(dt) {
   }
   player.lastPlace = place;
   const br = route.bridgeAt(s);
-  if (br && !br.ferry && br !== player.lastBridge) hud.toast(`<span class="bn">${br.bn} নদী</span> · ${br.en} River bridge`, '', 3200);
+  if (br && br.elevated && br !== player.lastBridge) {
+    // an elevated expressway with a toll takes it electronically on the way up (once per trip)
+    const paid = (player.paidFlyovers ||= new Set());
+    if (br.fee && !paid.has(br.en)) {
+      paid.add(br.en);
+      player.tollCost += br.fee;
+      hud.toast(`<span class="bn">${br.bn}</span> · ${br.en}<br><small>Toll ৳${br.fee} paid electronically</small>`, 'good', 3500);
+    } else hud.toast(`<span class="bn">${br.bn}</span> · ${br.en}`, '', 3200);
+  }
+  else if (br && !br.ferry && !br.elevated && br !== player.lastBridge) hud.toast(`<span class="bn">${br.bn} নদী</span> · ${br.en} River bridge`, '', 3200);
   player.lastBridge = br;
   // passenger comfort: handled by the mood in src/passengers.js (complaints, rating, tips)
   player.lastS = s;
@@ -853,7 +862,8 @@ function mapCtx() {
       : `<span class="bn">${nm(route.startPlace, 'bn')} → ${nm(route.endPlace, 'bn')}</span><small>${nm(route.startPlace, 'en')} → ${nm(route.endPlace, 'en')} · ${Math.round(route.totalKm)} km via ${refs}</small>`,
     info: `${free ? '' : `Remaining <b>${left.toFixed(0)} km</b>`}${next ? ` · next stop <b class="bn">${next.bn}</b> (${Math.abs(route.realKm(next.s) - route.realKm(player.s)).toFixed(0)} km)` : ''}`
       + `<br><span style="color:#3ddc84">●</span> start · <span style="color:#ff8a1c">●</span> destination / your road · <span style="color:#2ecc71">●</span> stops · <span style="color:#7d8a96">━</span> driven`
-      + `${route.ferries.length ? ' · <span style="color:#4fc3f7">┅</span> ferry' : ''}`,
+      + `${route.ferries.length ? ' · <span style="color:#4fc3f7">┅</span> ferry' : ''}`
+      + `<br><span style="color:#4fae5a">━</span> expressway · <span style="color:#b06ad0">━</span> elevated expressway · <span style="color:#5d6b78">━</span> 4-lane · <span style="color:#3d4954">━</span> 2-lane`,
   };
 }
 function openMap() {

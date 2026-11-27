@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ROAD, UTURN_GAP, PLAZA, PROFILE } from './config.js';
+import { ROAD, UTURN_GAP, PLAZA, profileOf } from './config.js';
 import { DS } from './net.js';
 
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
@@ -84,7 +84,7 @@ export class Route {
     this.profTab = this.segs.map((g, k) => {
       const p = this.segs[k - 1];
       const at = k === 0 ? -1e9 : (p.o + p.u1 - p.u0 + g.o) / 2;
-      return [at, PROFILE[g.chain.lanes >= 4 ? 4 : 2]];
+      return [at, profileOf(g.chain.lanes)];
     });
   }
 
@@ -135,14 +135,14 @@ export class Route {
         const sc = this._s(g, st.sc);
         if (sc === null) continue;
         const [s0, s1] = pair(g, st.s0, st.s1);
-        const H = PROFILE[c.lanes >= 4 ? 4 : 2].half;
+        const H = profileOf(c.lanes).half;
         this.stations.push({ ...st, sc, s0, s1, side: sd(g, st.side), dIn: H, dOut: H + st.depth });
       }
       for (const r of c.rests) {
         const sc = this._s(g, r.sc);
         if (sc === null) continue;
         const [s0, s1] = pair(g, r.s0, r.s1);
-        const H = PROFILE[c.lanes >= 4 ? 4 : 2].half;
+        const H = profileOf(c.lanes).half;
         this.rests.push({ ...r, sc, s0, s1, side: sd(g, r.side), dIn: H, dOut: H + r.depth });
       }
       for (const t of c.terminals) {
@@ -364,10 +364,11 @@ export class Route {
   roadHeight(s) {
     let h = ROAD.baseHeight;
     for (const b of this.bridges) {
-      if (s < b.s0 - ROAD.rampLen || s > b.s1 + ROAD.rampLen) continue;
-      const up = smooth((s - (b.s0 - ROAD.rampLen)) / ROAD.rampLen);
-      const down = smooth(((b.s1 + ROAD.rampLen) - s) / ROAD.rampLen);
-      h = Math.max(h, ROAD.baseHeight + (ROAD.bridgeHeight - ROAD.baseHeight) * Math.min(up, down));
+      const ramp = b.ramp || ROAD.rampLen, top = b.height || ROAD.bridgeHeight;     // (a flyover is higher, with longer ramps)
+      if (s < b.s0 - ramp || s > b.s1 + ramp) continue;
+      const up = smooth((s - (b.s0 - ramp)) / ramp);
+      const down = smooth(((b.s1 + ramp) - s) / ramp);
+      h = Math.max(h, ROAD.baseHeight + (top - ROAD.baseHeight) * Math.min(up, down));
     }
     return h;
   }

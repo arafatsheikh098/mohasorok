@@ -4,8 +4,10 @@
 // NODES: zilla towns and junctions (lat/lon, Bangla + English names). `zilla` marks a district headquarters;
 //   `term` gives it a bus terminal (a short access road to a walled terminal yard is added automatically,
 //   see src/net.js). `town` = length of the built-up stretch in metres of game road; `kind: 'city'` = big city.
-// ROADS: a road between two nodes through via points (towns, river bridges, toll plazas). lanes: 4 (divided)
-//   or 2 (one lane each way). km (optional): real length; otherwise worked out from the map.
+// ROADS: a road between two nodes through via points (towns, river bridges, toll plazas). lanes: 6 (expressway,
+//   three each way, a concrete median barrier and service roads), 4 (divided) or 2 (one lane each way).
+//   expressway: true marks an access-controlled expressway; elevated: { from, to } (fractions of the road) a
+//   flyover / elevated expressway on pillars. km (optional): real length; otherwise worked out from the map.
 //   Features (fuel stations, rest stops, police) are in real km from the `from` node; side -1 = the left
 //   carriageway going from → to (Bangladesh drives on the left). Roads without them get some automatically.
 //
@@ -28,7 +30,7 @@ const v = (lat, lon, en, bn, o = {}) => ({ lat, lon, en, bn, town: 250, ...o });
 export const NODES = {
   // ---------- Dhaka: three terminals on the city's edges, joined by city roads
   sayedabad: Z(23.7215, 90.4255, 'Dhaka (Sayedabad)', 'ঢাকা (সায়েদাবাদ)', 'dhaka', ['সায়েদাবাদ বাস টার্মিনাল', 'Sayedabad Bus Terminal'], { zilla: 'Dhaka', town: 1300, kind: 'city' }),
-  mohakhali: Z(23.7785, 90.4005, 'Dhaka (Mohakhali)', 'ঢাকা (মহাখালী)', 'dhaka', ['মহাখালী বাস টার্মিনাল', 'Mohakhali Bus Terminal'], { zilla: 'Dhaka', town: 1300, kind: 'city' }),
+  mohakhali: Z(23.7785, 90.4005, 'Dhaka (Mohakhali)', 'ঢাকা (মহাখালী)', 'dhaka', ['মহাখালী বাস টার্মিনাল', 'Mohakhali Bus Terminal'], { zilla: 'Dhaka', town: 1300, kind: 'city', termDir: 325 }),
   gabtoli: Z(23.7850, 90.3450, 'Dhaka (Gabtoli)', 'ঢাকা (গাবতলী)', 'dhaka', ['গাবতলী বাস টার্মিনাল', 'Gabtoli Bus Terminal'], { zilla: 'Dhaka', town: 1300, kind: 'city' }),
   // ---------- Dhaka division
   gazipur: Z(23.9990, 90.4200, 'Gazipur', 'গাজীপুর', 'dhaka', ['গাজীপুর চৌরাস্তা বাস টার্মিনাল', 'Gazipur Chowrasta Bus Terminal'], { town: 900, kind: 'city' }),
@@ -108,6 +110,9 @@ export const NODES = {
   bhola: Z(22.6860, 90.6480, 'Bhola', 'ভোলা', 'bar'),
   // ---------- junctions (মোড়) and ferry ghats
   kanchpur: J(23.7060, 90.5200, 'Kanchpur', 'কাঁচপুর', { town: 350 }),
+  kuril: J(23.8220, 90.4200, 'Kuril', 'কুড়িল', { town: 600, kind: 'city' }),
+  kanchan: J(23.8000, 90.5550, 'Kanchan', 'কাঞ্চন', { town: 250 }),
+  bhulta: J(23.7850, 90.5830, 'Bhulta', 'ভুলতা', { town: 300 }),
   daudkandi: J(23.5300, 90.7050, 'Daudkandi', 'দাউদকান্দি', { town: 300 }),
   baraiyarhat: J(22.8350, 91.5350, 'Baraiyarhat', 'বারইয়ারহাট', { town: 250 }),
   bhairab: J(24.0520, 90.9770, 'Bhairab', 'ভৈরব', { town: 450 }),
@@ -188,7 +193,8 @@ export const ROADS = [
   R('chandp', 'R', 2, 'daudkandi', 'chandpur', [v(23.430, 90.690, 'Gouripur', 'গৌরীপুর', { town: 250 }), v(23.350, 90.710, 'Matlab', 'মতলব', { town: 250 })], { en: 'Daudkandi–Chandpur Road', bn: 'দাউদকান্দি–চাঁদপুর সড়ক' }),
   R('lakhch', 'R', 2, 'chandpur', 'lakshmipur', [v(23.040, 90.770, 'Raipur', 'রায়পুর', { town: 250 })], { en: 'Chandpur–Lakshmipur Road', bn: 'চাঁদপুর–লক্ষ্মীপুর সড়ক' }),
   // ---------- N2 Dhaka – Sylhet, Brahmanbaria, Kishoreganj, Sunamganj
-  R('n2a', 'N2', 4, 'kanchpur', 'narsingdi', [v(23.780, 90.580, 'Bhulta', 'ভুলতা', { town: 300 })], { en: 'Dhaka–Sylhet Highway', bn: 'ঢাকা–সিলেট মহাসড়ক' }),
+  R('n2a', 'N2', 4, 'kanchpur', 'bhulta', [], { en: 'Dhaka–Sylhet Highway', bn: 'ঢাকা–সিলেট মহাসড়ক' }),
+  R('n2a2', 'N2', 4, 'bhulta', 'narsingdi', [v(23.850, 90.640, 'Panchdona', 'পাঁচদোনা', { town: 200 })], { en: 'Dhaka–Sylhet Highway', bn: 'ঢাকা–সিলেট মহাসড়ক' }),
   R('n2b', 'N2', 2, 'narsingdi', 'bhairab', [v(23.990, 90.850, 'Raipura', 'রায়পুরা', { town: 200 })], { en: 'Dhaka–Sylhet Highway', bn: 'ঢাকা–সিলেট মহাসড়ক' }),
   R('n2c', 'N2', 2, 'bhairab', 'biswaroad', [
     v(24.045, 91.000, 'Bhairab Bridge', 'ভৈরব সেতু', { town: 0, ...river('Meghna', 'মেঘনা', 120), ...toll(145, 'সৈয়দ নজরুল ইসলাম সেতু টোল', 'Bhairab Bridge Toll') }),
@@ -209,12 +215,27 @@ export const ROADS = [
   R('kishor', 'R', 2, 'bhairab', 'kishoreganj', [v(24.250, 90.880, 'Kuliarchar', 'কুলিয়ারচর', { town: 200 })], { en: 'Bhairab–Kishoreganj Road', bn: 'ভৈরব–কিশোরগঞ্জ সড়ক' }),
   R('kishmy', 'R', 2, 'kishoreganj', 'mymensingh', [v(24.560, 90.650, 'Nandail', 'নান্দাইল', { town: 200 })], { en: 'Kishoreganj–Mymensingh Road', bn: 'কিশোরগঞ্জ–ময়মনসিংহ সড়ক' }),
   // ---------- Dhaka city links, Narayanganj, Munshiganj
-  R('dcity1', 'DHK', 4, 'sayedabad', 'mohakhali', [], { en: 'Dhaka City Road', bn: 'ঢাকা শহর সড়ক', km: 9 }),
+  R('dcity1', 'DHK', 4, 'sayedabad', 'mohakhali', [
+    v(23.7235, 90.4115, 'Gulistan', 'গুলিস্তান', { town: 400 }), v(23.7385, 90.3955, 'Shahbag', 'শাহবাগ', { town: 400 }),
+    v(23.7575, 90.3895, 'Farmgate', 'ফার্মগেট', { town: 400 }),
+  ], { en: 'Dhaka City Road (Mayor Hanif Flyover)', bn: 'ঢাকা শহর সড়ক (মেয়র হানিফ ফ্লাইওভার)', km: 11,
+    elevated: { from: 0, to: 0.32, en: 'Mayor Hanif Flyover', bn: 'মেয়র হানিফ ফ্লাইওভার' } }),
+  R('dee', 'DEE', 4, 'sayedabad', 'kuril', [
+    v(23.7330, 90.4300, 'Kamalapur', 'কমলাপুর', { town: 0 }), v(23.7490, 90.4080, 'Moghbazar', 'মগবাজার', { town: 0 }),
+    v(23.7620, 90.4250, 'Rampura', 'রামপুরা', { town: 0 }), v(23.7800, 90.4320, 'Badda', 'বাড্ডা', { town: 0 }),
+  ], { en: 'Dhaka Elevated Expressway', bn: 'ঢাকা এলিভেটেড এক্সপ্রেসওয়ে', km: 16, elevated: { from: 0, to: 1, en: 'Dhaka Elevated Expressway', bn: 'ঢাকা এলিভেটেড এক্সপ্রেসওয়ে', fee: 160 } }),
+  R('p300', 'P300', 6, 'kuril', 'kanchan', [
+    v(23.8330, 90.4800, 'Purbachal', 'পূর্বাচল', { town: 0 }),
+    v(23.8120, 90.5300, 'Balu Bridge', 'বালু সেতু', { town: 0, ...river('Balu', 'বালু', 60) }),
+  ], { en: '300 Feet Road (Purbachal Expressway)', bn: '৩০০ ফিট সড়ক (পূর্বাচল এক্সপ্রেসওয়ে)', km: 13, expressway: true }),
+  R('byp1', 'N105', 4, 'gazipur', 'kanchan', [v(23.9300, 90.4800, 'Pubail', 'পুবাইল', { town: 200 }), v(23.8600, 90.5350, 'Debogram', 'দেবগ্রাম', { town: 0 })], { en: 'Dhaka Bypass', bn: 'ঢাকা বাইপাস' }),
+  R('byp2', 'N105', 4, 'kanchan', 'bhulta', [], { en: 'Dhaka Bypass', bn: 'ঢাকা বাইপাস', km: 4 }),
   R('dcity2', 'DHK', 4, 'mohakhali', 'gabtoli', [], { en: 'Dhaka City Road', bn: 'ঢাকা শহর সড়ক', km: 8 }),
   R('nganj', 'R', 4, 'kanchpur', 'narayanganj', [], { en: 'Kanchpur–Narayanganj Road', bn: 'কাঁচপুর–নারায়ণগঞ্জ সড়ক' }),
   R('munsh', 'R', 2, 'narayanganj', 'munshiganj', [v(23.585, 90.515, 'Muktarpur Bridge', 'মুক্তারপুর সেতু', { town: 0, ...river('Dhaleshwari', 'ধলেশ্বরী', 80) })], { en: 'Narayanganj–Munshiganj Road', bn: 'নারায়ণগঞ্জ–মুন্সীগঞ্জ সড়ক' }),
   // ---------- N3 Dhaka – Mymensingh, Netrokona, Jamalpur, Sherpur
-  R('n3a', 'N3', 4, 'mohakhali', 'gazipur', [v(23.850, 90.405, 'Airport', 'বিমানবন্দর', { town: 450 }), v(23.895, 90.405, 'Tongi', 'টঙ্গী', { town: 450, ...river('Turag', 'তুরাগ', 60) })], { en: 'Dhaka–Mymensingh Highway', bn: 'ঢাকা–ময়মনসিংহ মহাসড়ক' }),
+  R('n3a', 'N3', 4, 'mohakhali', 'kuril', [v(23.7950, 90.4050, 'Banani', 'বনানী', { town: 400 })], { en: 'Airport Road', bn: 'এয়ারপোর্ট রোড' }),
+  R('n3a2', 'N3', 4, 'kuril', 'gazipur', [v(23.850, 90.410, 'Airport', 'বিমানবন্দর', { town: 450 }), v(23.895, 90.405, 'Tongi', 'টঙ্গী', { town: 450, ...river('Turag', 'তুরাগ', 60) })], { en: 'Dhaka–Mymensingh Highway', bn: 'ঢাকা–ময়মনসিংহ মহাসড়ক' }),
   R('n3b', 'N3', 4, 'gazipur', 'mymensingh', [
     v(24.200, 90.470, 'Sreepur', 'শ্রীপুর', { town: 250 }), v(24.380, 90.380, 'Bhaluka', 'ভালুকা', { town: 300 }), v(24.580, 90.395, 'Trishal', 'ত্রিশাল', { town: 250 }),
   ], { en: 'Dhaka–Mymensingh Highway', bn: 'ঢাকা–ময়মনসিংহ মহাসড়ক', rest: [{ km: 45, side: -1, bn: 'ভালুকা ফুড কোর্ট', en: 'Bhaluka Food Court', col: '#ad1457' }] }),
@@ -285,14 +306,14 @@ export const ROADS = [
   R('gopbh', 'N805', 2, 'gopalganj', 'bhanga', [v(23.170, 89.930, 'Tekerhat', 'টেকেরহাট', { town: 200 })], { en: 'Bhanga–Gopalganj Highway', bn: 'ভাঙ্গা–গোপালগঞ্জ মহাসড়ক' }),
   R('fbhan', 'N8', 4, 'faridpur', 'bhanga', [], { en: 'Faridpur–Bhanga Highway', bn: 'ফরিদপুর–ভাঙ্গা মহাসড়ক' }),
   // ---------- N8 Dhaka – Padma Bridge – Barishal – Kuakata, Bhola
-  R('n8a', 'N8', 4, 'sayedabad', 'janjira', [
+  R('n8a', 'N8', 6, 'sayedabad', 'janjira', [
     v(23.690, 90.400, 'Postogola', 'পোস্তগোলা', { town: 350, ...river('Buriganga', 'বুড়িগঙ্গা', 80) }),
     v(23.600, 90.330, 'Dhaleshwari Toll', 'ধলেশ্বরী টোল প্লাজা', { town: 0, ...toll(550, 'ঢাকা–মাওয়া এক্সপ্রেসওয়ে টোল', 'Dhaka–Mawa Expressway Toll') }),
     v(23.530, 90.285, 'Sreenagar', 'শ্রীনগর', { town: 250 }),
     v(23.445, 90.265, 'Mawa', 'মাওয়া', { town: 250 }),
     v(23.405, 90.275, 'Padma Bridge', 'পদ্মা সেতু', { town: 0, ...river('Padma', 'পদ্মা', 450), ...toll(2400, 'পদ্মা সেতু টোল প্লাজা', 'Padma Bridge Toll Plaza') }),
-  ], { en: 'Dhaka–Mawa–Bhanga Expressway', bn: 'ঢাকা–মাওয়া–ভাঙ্গা এক্সপ্রেসওয়ে' }),
-  R('n8b', 'N8', 4, 'janjira', 'bhanga', [v(23.360, 90.170, 'Shibchar', 'শিবচর', { town: 250 })], { en: 'Dhaka–Mawa–Bhanga Expressway', bn: 'ঢাকা–মাওয়া–ভাঙ্গা এক্সপ্রেসওয়ে' }),
+  ], { en: 'Dhaka–Mawa–Bhanga Expressway', bn: 'ঢাকা–মাওয়া–ভাঙ্গা এক্সপ্রেসওয়ে', expressway: true }),
+  R('n8b', 'N8', 6, 'janjira', 'bhanga', [v(23.360, 90.170, 'Shibchar', 'শিবচর', { town: 250 })], { en: 'Dhaka–Mawa–Bhanga Expressway', bn: 'ঢাকা–মাওয়া–ভাঙ্গা এক্সপ্রেসওয়ে', expressway: true }),
   R('shari', 'R', 2, 'janjira', 'shariatpur', [v(23.290, 90.320, 'Naodoba', 'নাওডোবা', { town: 150 })], { en: 'Janjira–Shariatpur Road', bn: 'জাজিরা–শরীয়তপুর সড়ক' }),
   R('n8c', 'N8', 2, 'bhanga', 'madaripur', [v(23.300, 90.080, 'Mostofapur', 'মোস্তফাপুর', { town: 200 })], { en: 'Dhaka–Barishal Highway', bn: 'ঢাকা–বরিশাল মহাসড়ক' }),
   R('n8d', 'N8', 2, 'madaripur', 'barishal', [v(22.970, 90.230, 'Gournadi', 'গৌরনদী', { town: 250 })], {

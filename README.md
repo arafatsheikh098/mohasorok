@@ -9,7 +9,8 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **highways of Ban
   - **Pick a trip** on the map of Bangladesh in the menu (any zilla to any zilla), or tick **🧭 Free drive** and take any road you like.
   - **Turn at any junction.** Green boards before each junction show where every road goes. Drive onto another road and the trip reroutes (or tells you it's the wrong road).
   - **Real lanes:** divided 4-lane highways where the real road is 4-lane (N1, N3, N4, the Padma expressway and others), undivided 2-lane roads elsewhere, where overtaking means pulling into the oncoming lane.
-  - **Big bridges:** Padma, Bangabandhu (Jamuna), Meghna, Bhairab, Lalon Shah, Teesta, Rupsha, Payra and more, with their toll plazas.
+  - **Expressways and flyovers:** the 6-lane Dhaka–Mawa–Bhanga Expressway and the 300 Feet Road (Purbachal Expressway) with a concrete median barrier and service roads, the Dhaka Elevated Expressway on pillars (electronic toll), the Mayor Hanif Flyover and the Dhaka Bypass. Trips choose the faster roads.
+  - **Big bridges:** Padma (with its steel truss), Bangabandhu (Jamuna), Meghna, Bhairab, Lalon Shah, Teesta, Rupsha, Payra and more, with their toll plazas.
   - **Ferries:** Paturia–Daulatdia and Laharhat–Veduria (to Bhola). Stop on the pontoon and press **F**.
   - **M** opens the full map: your route along the real roads, the stops on the way, the part already driven and your bus. It opens zoomed to the trip; zoom with the wheel or ＋ －, drag to move. On a phone, tap the minimap.
 - **Terminals and stops:** every zilla has its own bus terminal (Sayedabad, Gabtoli and Mohakhali in Dhaka; A.K. Khan and Bahaddarhat in Chattogram; Sonadanga, Shiroil, Kadamtali, Nathullabad and others). Passengers board at the origin terminal and the counters on the way out of the city, and get down at every zilla on the way (or at the turn-off for a zilla just off the road).

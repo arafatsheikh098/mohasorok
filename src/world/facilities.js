@@ -150,7 +150,7 @@ export function initFacilities(route) {
   for (const p of route.places) {
     if (!p.town) continue;
     const a = Math.max(20, p.s - p.town / 2, ctx.s0), b = Math.min(route.length - 20, p.s + p.town / 2, ctx.s1);
-    if (b <= a || route.prof((a + b) / 2).two) continue;      // (no median to fence on a 2-lane road)
+    if (b <= a || route.prof((a + b) / 2).two || route.prof((a + b) / 2).barrier) continue;      // (no median to fence on a 2-lane road; an expressway has its barrier)
     const geos = [];
     const q = new THREE.Vector3();
     for (let sx = a; sx < b; sx += 2.5) {

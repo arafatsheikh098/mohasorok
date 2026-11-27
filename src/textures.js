@@ -46,18 +46,19 @@ function speckle(ctx, w, h, n, colors, r, sizeMin = 1, sizeMax = 3) {
 // ---------- Road ----------
 // u: 0 at median curb -> 1 at asphalt edge (ROAD.half - ROAD.median metres). v: one tile = 18 m.
 export const ASPHALT_TILE = 18;
-export function asphaltTexture() {
+// one carriageway of a divided road (u 0 = the median edge, 1 = the outer edge); P = a lane profile (config PROFILE)
+export function asphaltTexture(P = ROAD) {
   const W = 512, H = 1024;
   const [c, ctx] = makeCanvas(W, H);
   const r = rng(7);
-  const span = ROAD.half - ROAD.median;
-  const U = (d) => ((d - ROAD.median) / span) * W;
+  const span = P.half - P.median;
+  const U = (d) => ((d - P.median) / span) * W;
   const V = (m) => (m / ASPHALT_TILE) * H;
   ctx.fillStyle = '#56575a';
   ctx.fillRect(0, 0, W, H);
   // worn shoulder
   ctx.fillStyle = '#66625c';
-  ctx.fillRect(U(ROAD.edge), 0, W, H);
+  ctx.fillRect(U(P.edge), 0, W, H);
   speckle(ctx, W, H, 26000, ['#4b4c4f', '#616265', '#6b6b6d', '#444547', '#5c5a57'], r, 1, 3);
   // patches & cracks
   for (let i = 0; i < 18; i++) {
@@ -65,7 +66,8 @@ export function asphaltTexture() {
     ctx.fillRect(r() * W, r() * H, 20 + r() * 120, 20 + r() * 160);
   }
   // tyre tracks (darker, oily)
-  for (const lc of [ROAD.median + ROAD.lane * 0.5, ROAD.median + ROAD.lane * 1.5]) {
+  for (let k = 0; k < (P.lanes || 2); k++) {
+    const lc = P.median + P.lane * (k + 0.5);
     for (const o of [-0.9, 0.9]) {
       const g = ctx.createLinearGradient(U(lc + o - 0.45), 0, U(lc + o + 0.45), 0);
       g.addColorStop(0, 'rgba(30,30,32,0)');
@@ -81,9 +83,9 @@ export function asphaltTexture() {
     if (!dash) ctx.fillRect(x, 0, w, H);
     else for (let m = 0; m < ASPHALT_TILE; m += 9) ctx.fillRect(x, V(m), w, V(3));
   };
-  line(ROAD.median + 0.25, 0.15, '#d9b43a', false);           // yellow inner edge
-  line(ROAD.median + ROAD.lane, 0.15, '#e9e9e4', true);       // lane divider (dashed)
-  line(ROAD.edge, 0.2, '#ecece6', false);                     // outer edge
+  line(P.median + 0.25, 0.15, '#d9b43a', false);              // yellow inner edge
+  for (let k = 1; k < (P.lanes || 2); k++) line(P.median + P.lane * k, 0.15, '#e9e9e4', true);   // lane dividers (dashed)
+  line(P.edge, 0.2, '#ecece6', false);                        // outer edge
   // grime over the paint
   speckle(ctx, W, H, 5000, ['rgba(60,60,60,0.5)', 'rgba(90,90,90,0.4)'], r, 1, 2);
   const t = canvasTexture(c);

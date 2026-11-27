@@ -5,6 +5,8 @@
 // meet in the game world too. A trip is then built from a path of roads by src/route.js.
 import * as THREE from 'three';
 import { MAP_SCALE, UTURN_SPACING, UTURN_GAP, ROAD } from './config.js';
+
+const FLYOVER_H = 11;          // deck height of a flyover / elevated expressway (m)
 import { NODES, ROADS } from './data/bd_network.js';
 
 export const ORIGIN = { lat: 23.7, lon: 90.35 };
@@ -143,6 +145,12 @@ export class Chain {
       const half = p.river.width / 2 + 30;
       this.bridges.push({ ...p.river, sc, s0: sc - half, s1: sc + half });
     }
+    // flyovers / elevated expressways: one long deck on pillars (a "bridge" with no river), ramps at both ends
+    if (def.elevated) {
+      const e = def.elevated, ramp = ROAD.rampLen * 1.3;
+      const a = Math.max(90 + ramp, e.from * L), b = Math.min(L - 90 - ramp, e.to * L);
+      if (b - a > 60) this.bridges.push({ elevated: true, en: e.en, bn: e.bn, fee: e.fee || 0, width: 0, height: FLYOVER_H, ramp, sc: (a + b) / 2, s0: a, s1: b });
+    }
     // toll plazas
     // (a toll that comes with a bridge stands just past the bridge, on the flat, not on the deck)
     const offBridge = (x) => !this.bridges.some((b) => x > b.s0 - ROAD.rampLen - 140 && x < b.s1 + ROAD.rampLen + 140);
@@ -155,7 +163,7 @@ export class Chain {
     const tollNear = (s, m) => this.tolls.some((t) => Math.abs(s - t.s) < m);
     // fuel stations: a paved forecourt beside the road at road height
     // fuel stations: given, or one about every 45 km (alternating sides) on longer roads (none on a ferry)
-    const fuel = def.ferry ? [] : def.fuel || (this.km >= 22 ? Array.from({ length: Math.floor((this.km - 12) / 45) + 1 }, (_, i) => ({ km: 16 + i * 45, side: i % 2 ? 1 : -1 })) : []);
+    const fuel = def.ferry || def.expressway || def.elevated ? [] : def.fuel || (this.km >= 22 ? Array.from({ length: Math.floor((this.km - 12) / 45) + 1 }, (_, i) => ({ km: 16 + i * 45, side: i % 2 ? 1 : -1 })) : []);
     const fname = ['মেঘনা', 'পদ্মা', 'যমুনা', 'রূপালী', 'সোনালী', 'সবুজ', 'নিউ', 'হাইওয়ে'];
     this.stations = fuel.filter((f) => f.km < this.km - 3).map((f, i) => {
       if (!f.bn) { const k = (this.id.length * 7 + i * 3) % fname.length; Object.assign(f, { bn: `${fname[k]} ফিলিং স্টেশন`, en: 'Filling Station' }); }
@@ -180,7 +188,7 @@ export class Chain {
     }
     // U-turn openings in the median (4-lane roads)
     this.uturns = [];
-    if (this.lanes >= 4) {      // (a 2-lane road has no median: turn round anywhere)
+    if (this.lanes === 4) {     // (a 2-lane road has no median: turn round anywhere; an expressway has none at all)
       for (let s = 1500; s < L - 800; s += UTURN_SPACING) {
         let u = s;
         while (this.bridgeAt(u) || this.bridgeAt(u + 200) || this.bridgeAt(u - 200) || tollNear(u, 300)) u += 150;
@@ -194,7 +202,7 @@ export class Chain {
     }
     // pedestrian footbridges: near town centres and every 4.2 km
     this.footbridges = [];
-    if (!def.ferry) {
+    if (!def.ferry && !def.expressway && !def.elevated) {
       for (const p of this.places) if (!p.node && p.town >= 300 && p.s > 200 && p.s < L - 200) this.footbridges.push(p.s + 40);
       for (let s = 3000; s < L - 500; s += 4200) this.footbridges.push(s);
     }
@@ -241,6 +249,8 @@ export class Network {
           if (b - a > best) { best = b - a; dirA = (a + b) / 2; }
         }
       }
+      // (or a compass bearing given in the data, where the widest gap is taken by something else)
+      if (n.termDir !== undefined) { const b = (n.termDir * Math.PI) / 180; dirA = Math.atan2(-Math.cos(b), Math.sin(b)); }
       const mx = -Math.cos(dirA), mz = -Math.sin(dirA), ml = 1;
       const dist = LINK_KM * 1000 * MAP_SCALE / 1.1;
       const tp = unproject(here.x - (mx / ml) * dist, here.y - (mz / ml) * dist);
@@ -369,7 +379,8 @@ export class Network {
         if (opts.avoid?.has?.(e.road)) continue;
         // a terminal access road is only used at the ends of a trip, never as a short cut through a yard
         if (c.def.link && !starts.includes(e.to) && !goals.has(e.to) && !starts.includes(u) && !goals.has(u)) continue;
-        const nd = best + c.km + (c.def.ferry ? 40 : 0);
+        // cost = time, roughly: expressways and flyovers are faster than town roads, a ferry adds its wait
+        const nd = best + c.km * (c.def.expressway ? 0.72 : c.def.elevated ? 0.6 : c.lanes >= 4 ? 0.9 : 1) + (c.def.ferry ? 40 : 0);
         if (nd < (dist.get(e.to) ?? Infinity)) { dist.set(e.to, nd); prev.set(e.to, { from: u, step: { road: e.road, rev: e.rev } }); }
       }
     }

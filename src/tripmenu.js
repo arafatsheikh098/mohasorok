@@ -21,6 +21,7 @@ export function tripSummary(net, from, to) {
     const c = net.roads.get(st.road);
     km += c.km;
     for (const v of c.def.via || []) if (v.toll) tolls += v.toll.fee || 0;
+    tolls += c.def.elevated?.fee || 0;
     if (c.ref && !['DHK', 'CTG', 'FERRY'].includes(c.ref) && !refs.includes(c.ref)) refs.push(c.ref);
   }
   const gameKm = (km * 1000 * MAP_SCALE) / 1.12 / 1000;
@@ -133,8 +134,8 @@ export function initTripMenu({ net, settings, onChange }) {
     for (const c of net.roads.values()) {
       if (c.def.link) continue;
       g.setLineDash(c.def.ferry ? [8, 8] : []);
-      g.strokeStyle = c.def.ferry ? '#3f7fa8' : c.lanes >= 4 ? '#5d6b78' : '#3d4954';
-      g.lineWidth = c.lanes >= 4 ? 4 : 2.5;
+      g.strokeStyle = c.def.ferry ? '#3f7fa8' : c.def.elevated?.to === 1 ? '#b06ad0' : c.def.expressway ? '#4fae5a' : c.lanes >= 4 ? '#5d6b78' : '#3d4954';
+      g.lineWidth = c.def.expressway || c.def.elevated?.to === 1 ? 5 : c.lanes >= 4 ? 4 : 2.5;
       line(c);
     }
     g.setLineDash([]);
