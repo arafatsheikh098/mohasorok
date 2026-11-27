@@ -3,6 +3,7 @@
 import { DIVISIONS } from './data/bd_network.js';
 import { BN_FONT, EN_FONT } from './textures.js';
 import { MAP_SCALE } from './config.js';
+import { unproject } from './net.js';
 
 const $ = (id) => document.getElementById(id);
 const POPULAR = [
@@ -12,14 +13,15 @@ const POPULAR = [
 // map frame (lat / lon of the canvas edges)
 const LON0 = 87.95, LAT1 = 26.75, K = 177, CX = 0.916;
 
-export function tripSummary(net, from, to) {
-  const path = net.trip(from, to);
+// at: where the bus is (settings.at), used when from === '@here'
+export function tripSummary(net, from, to, at) {
+  const path = from === '@here' ? at?.road && net.pathFromRoad(at, to) : net.trip(from, to);
   if (!path) return null;
   let km = 0, tolls = 0;
   const refs = [];
   for (const st of path) {
     const c = net.roads.get(st.road);
-    km += c.km;
+    km += c.km * (st.cut ? Math.max(0, 1 - st.cut / (c.build().length || 1)) : 1);
     for (const v of c.def.via || []) if (v.toll) tolls += v.toll.fee || 0;
     tolls += c.def.elevated?.fee || 0;
     if (c.ref && !['DHK', 'CTG', 'FERRY'].includes(c.ref) && !refs.includes(c.ref)) refs.push(c.ref);
@@ -37,8 +39,26 @@ export function initTripMenu({ net, settings, onChange }) {
   let mode = 'to';
 
   // ---- From / To lists, grouped by division
+  // where the bus is now (it starts the next trip from there)
+  const busAt = () => {
+    const at = settings.at;
+    if (at?.road) {
+      const c = net.road(at.road);
+      if (c) { const i = Math.round(Math.min(c.length, Math.max(0, at.s)) / 2); return { x: c.px[i], z: c.pz[i], road: true, near: at.near }; }
+    }
+    const z = net.zillas.get(at?.zilla || settings.trip.from);
+    if (!z) return null;
+    const v = net.nodes[z.terminals[0]];
+    return { lat: v.lat, lon: v.lon, zilla: z.key };
+  };
   const fill = (sel) => {
     sel.innerHTML = '';
+    if (sel.id === 'trip-from' && settings.at?.road) {
+      const o = document.createElement('option');
+      o.value = '@here';
+      o.textContent = `📍 Where your bus is (on the road near ${settings.at.near || '…'})`;
+      sel.appendChild(o);
+    }
     for (const [div, [bn, en]] of Object.entries(DIVISIONS)) {
       const og = document.createElement('optgroup');
       og.label = `${en} · ${bn}`;
@@ -54,9 +74,12 @@ export function initTripMenu({ net, settings, onChange }) {
   };
   fill($('trip-from')); fill($('trip-to'));
 
+  const ok = (from, to) => (from === '@here' ? !!(settings.at?.road && net.pathFromRoad(settings.at, to)) : !!net.trip(from, to));
   const set = (from, to) => {
     if (from === to) to = from === settings.trip.from ? settings.trip.to : settings.trip.from;     // picked the other end: swap
-    if (from === to || !net.trip(from, to)) return false;
+    if (to === '@here' || from === to || !ok(from, to)) return false;
+    // choosing another start zilla moves the bus there
+    if (from !== '@here' && from !== settings.trip.from) settings.at = { zilla: from };
     settings.trip = { from, to };
     render();
     onChange(from, to);
@@ -99,23 +122,27 @@ export function initTripMenu({ net, settings, onChange }) {
   };
 
   function render() {
+    // (the "where your bus is" option comes and goes with the bus's position)
+    fill($('trip-from'));
     const { from, to } = settings.trip;
     const isFree = settings.mode === 'free';
     $('trip-from').value = from; $('trip-to').value = to;
     $('trip-to').disabled = isFree; $('trip-swap').disabled = isFree;
     if (isFree) {
-      const zf = net.zillas.get(from);
+      const zf = from === '@here' ? { bn: '📍' } : net.zillas.get(from);
       $('start-route').textContent = `${zf.bn} → 🧭`;
-      $('trip-sum').innerHTML = `<span class="bn">${zf.bn}</span> · free drive: no passengers and no destination. At every junction the green boards show where each road goes — drive onto any of them. <b>O</b> opens the map.`;
+      $('trip-sum').innerHTML = `<span class="bn">${from === '@here' ? `📍 the road near ${settings.at?.near || ''}` : zf.bn}</span> · free drive: no passengers and no destination. At every junction the green boards show where each road goes — drive onto any of them. <b>O</b> opens the map.`;
       draw(null);
       return;
     }
     chips.querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.from === from && b.dataset.to === to));
-    const sum = tripSummary(net, from, to);
-    const zf = net.zillas.get(from), zt = net.zillas.get(to);
+    const sum = tripSummary(net, from, to, settings.at);
+    const here = from === '@here';
+    const zf = here ? { bn: '📍', en: `the road near ${settings.at?.near || ''}` } : net.zillas.get(from), zt = net.zillas.get(to);
     $('start-route').textContent = `${zf.bn} → ${zt.bn}`;
     $('trip-sum').innerHTML = sum
-      ? `<span class="bn">${zf.bn} → ${zt.bn}</span> · <b>${Math.round(sum.km)} km</b> via ${sum.refs.join(', ') || 'local roads'}<br>`
+      ? `${here ? `📍 Your bus is on the road near <b>${settings.at?.near || ''}</b> — the trip starts right there<br>` : `<small>🚌 Your bus is at the ${zf.en} terminal</small><br>`}`
+        + `<span class="bn">${zf.bn} → ${zt.bn}</span> · <b>${Math.round(sum.km)} km</b> via ${sum.refs.join(', ') || 'local roads'}<br>`
         + `about <b>${Math.max(1, Math.round(sum.minutes))} min</b> of driving at 80 km/h · tolls <b>৳${sum.tolls.toLocaleString('en-IN')}</b>`
       : 'No road between these two yet.';
     draw(sum);
@@ -143,6 +170,14 @@ export function initTripMenu({ net, settings, onChange }) {
     if (sum) {
       g.strokeStyle = '#ff8a1c'; g.lineWidth = 7;
       for (const st of sum.path) { const c = net.roads.get(st.road); if (!c.def.link) line(c); }
+    }
+    // where the bus is
+    const b = busAt();
+    if (b) {
+      let x, y;
+      if (b.road) { const ll = unproject(b.x, b.z); x = X(ll.lon); y = Y(ll.lat); } else { x = X(b.lon); y = Y(b.lat); }
+      g.font = `32px ${EN_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('🚌', x, y - 22);
     }
     // towns
     const { from, to } = settings.trip;

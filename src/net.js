@@ -367,6 +367,30 @@ export class Network {
   }
 
   // shortest trip between two zillas (from any of their terminals): [{ road, rev }]
+  // real km of a path
+  pathKm(path) { return path.reduce((a, st) => a + this.roads.get(st.road).km, 0); }
+
+  // A trip from a point on a road (where the bus was left): at = { road, s (m from the road's `from` node), dir
+  // (+1 = facing its `to` node) }. Goes on the way the bus faces, or turns round if that is clearly shorter.
+  // toZilla null = free drive (straight on). Returns [{ road, rev, cut }, ...]; cut = metres of that road skipped.
+  pathFromRoad(at, toZilla) {
+    const c = this.road(at.road);
+    if (!c) return null;
+    const L = c.length, goals = toZilla ? this.zillas.get(toZilla)?.terminals || [] : null;
+    const opt = (rev) => {
+      const cut = THREE.MathUtils.clamp(rev ? L - at.s : at.s, 0, L - 90);
+      const node = rev ? c.from : c.to, first = { road: c.id, rev, cut };
+      const restKm = ((L - cut) / L) * c.km;
+      if (!goals) return { path: [first, ...this.straightOn(node, first)], km: (rev ? 1 : 0) !== (at.dir < 0 ? 1 : 0) ? 9 : 0 };
+      const rest = goals.includes(node) ? [] : this.path(node, goals, { avoid: new Set([c.id]) });
+      if (!rest) return null;
+      // turning round costs a little (find a U-turn), so the bus keeps going unless the other way is shorter
+      return { path: [first, ...rest], km: restKm + this.pathKm(rest) + ((rev ? -1 : 1) !== (at.dir || 1) ? 6 : 0) };
+    };
+    const a = opt(false), b = opt(true);
+    return (!a ? b : !b ? a : a.km <= b.km ? a : b)?.path || null;
+  }
+
   trip(fromZilla, toZilla, opts) {
     const a = this.zillas.get(fromZilla), b = this.zillas.get(toZilla);
     if (!a || !b || a === b) return null;

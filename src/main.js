@@ -85,14 +85,15 @@ const settings = {
 settings.op = OPERATORS.find((o) => o.id === settings.opId) || OPERATORS[0];
 // the trip: any zilla to any zilla (older saves only knew Dhaka ⇄ Chattogram)
 if (!settings.trip?.from || !settings.trip?.to) settings.trip = settings.dir === 'dhk' ? { from: 'Chattogram', to: 'Dhaka' } : { from: 'Dhaka', to: 'Chattogram' };
+if (settings.trip.from === '@here' && !settings.at?.road) settings.trip.from = settings.at?.zilla || 'Dhaka';
 settings.seats = settings.seats || {};
 settings.type = career.ownedType(settings.type);     // career: only buses the company owns can be driven
 function saveSettings() {
-  const { type, time, traffic, quality, qualityManual, trip, mode, seats } = settings;
-  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, trip, mode, seats, opId: settings.op.id })); } catch { /* private mode */ }
+  const { type, time, traffic, quality, qualityManual, trip, mode, seats, at } = settings;
+  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, trip, mode, seats, at, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;   // eslint-disable-line prefer-const
-let net, stream, corridorRoot;   // the road network, the world streamer, and the per-trip objects (src/world/stream.js)
+let net, stream, corridorRoot, tripMenu;   // the road network, the world streamer, and the per-trip objects (src/world/stream.js)
 let passengers;   // bus counters, boarding / alighting (src/passengers.js)
 let weather;      // rain, fog, wet road, wipers (src/world/weather.js)
 let police;       // highway police checkpoints + jam warnings (src/world/police.js)
@@ -202,6 +203,12 @@ function destTerminal() {
 
 // the roads of the chosen trip
 function tripPath() {
+  // the bus was left out on the road: the trip starts right there
+  if (settings.trip.from === '@here') {
+    const p = settings.at?.road && net.pathFromRoad(settings.at, settings.mode === 'free' ? null : settings.trip.to);
+    if (p) return p;
+    settings.trip.from = settings.at?.near || 'Dhaka';
+  }
   if (settings.mode === 'free') {
     // free drive: out of the start zilla's terminal, then straight on
     const z = net.zillas.get(settings.trip.from) || net.zillas.get('Dhaka');
@@ -213,7 +220,7 @@ function tripPath() {
 }
 // the key the career keeps the fastest time under ('ctg' / 'dhk' for the original N1 trips)
 function tripKey() {
-  const { from, to } = settings.trip;
+  const { to } = settings.trip, from = settings.trip.from === '@here' ? settings.at?.near || 'road' : settings.trip.from;
   return from === 'Dhaka' && to === 'Chattogram' ? 'ctg' : from === 'Chattogram' && to === 'Dhaka' ? 'dhk' : `${from}>${to}`;
 }
 
@@ -267,6 +274,34 @@ function buildTripObjects() {
   const obs = { push: (...o) => { for (const x of o) x.police = true; facilities.obstacles.push(...o); } };
   police = new Police({ route, scene: tripRoot, chunks, obstacles: obs, counters: passengers.counters, hud, player });
 }
+// ---------- where the bus is (the next trip starts there) ----------
+// at = { zilla } in a terminal yard, or { road, s, dir, near } out on the road (s: m from the road's `from` node,
+// dir: +1 facing its `to` node, near: the nearest zilla, for names and stats)
+function busPosition() {
+  if (!route || !player.bus) return null;
+  const t = player.inTerminal || route.terminalAt(player.s, player.d);
+  if (t) return { zilla: net.nodes[t.node]?.zilla };
+  const g = route.segAt(player.s), c = g.chain;
+  if (c.def.link) return { zilla: net.nodes[c.def.from]?.zilla };              // on a terminal's own road
+  if (c.def.ferry) return null;
+  const u = THREE.MathUtils.clamp(g.u0 + (player.s - g.o), 0, c.length);
+  const s = g.rev ? c.length - u : u;
+  const ahead = player.side < 0;                                                // driving towards larger corridor s
+  const dir = (ahead ? 1 : -1) * (g.rev ? -1 : 1);
+  const place = [...route.places].filter((p) => p.zilla && p.kind !== 'roadside').sort((a, b) => Math.abs(a.s - player.s) - Math.abs(b.s - player.s))[0];
+  return { road: c.id, s: Math.round(s), dir, near: place?.zilla || settings.trip.to };
+}
+function saveBusPosition() {
+  const at = busPosition();
+  if (!at) return;
+  settings.at = at;
+  settings.trip.from = at.zilla || '@here';
+  if (settings.trip.from === settings.trip.to) settings.trip.to = at.zilla === 'Dhaka' ? 'Chattogram' : 'Dhaka';
+  saveSettings();
+}
+addEventListener('beforeunload', () => { if (state === 'drive' || state === 'paused') saveBusPosition(); });
+addEventListener('visibilitychange', () => { if (document.hidden && (state === 'drive' || state === 'paused')) saveBusPosition(); });
+
 // a different trip chosen in the menu
 function changeTrip() {
   buildWorld(tripPath());
@@ -722,6 +757,13 @@ function events(dt) {
     state = 'arrived';
     passengers?.finishTrip();          // everyone still aboard gets down at the terminal
     hud.arrival(player, settings.op.en, route.endPlace, career.finishTrip(player, { dir: tripKey(), km: route.totalKm }));
+    if (settings.mode !== 'free') {
+      const back = settings.trip.from === '@here' ? (settings.at?.near || 'Dhaka') : settings.trip.from;
+      settings.at = { zilla: settings.trip.to };
+      settings.trip = { from: settings.trip.to, to: back === settings.trip.to ? 'Dhaka' : back };
+      saveSettings();
+      $('again').textContent = `Return trip ▸ ${net.zillas.get(settings.trip.to)?.en || ''}`;
+    }
     renderCompany();
     audio.horn(false);
     $('prompt').style.display = 'none';
@@ -1019,7 +1061,7 @@ function buildMenu() {
   });
   // the trip picker: map of Bangladesh + From / To (rebuilding the world takes a moment, so wait for the clicks to stop)
   let tripT = 0;
-  initTripMenu({ net, settings, onChange: () => { saveSettings(); clearTimeout(tripT); tripT = setTimeout(changeTrip, 250); } });
+  tripMenu = initTripMenu({ net, settings, onChange: () => { saveSettings(); clearTimeout(tripT); tripT = setTimeout(changeTrip, 250); } });
   for (const id of ['traffic', 'quality']) {
     const el = $(id);
     el.querySelectorAll('button').forEach((b) => {
@@ -1051,7 +1093,8 @@ function buildMenu() {
   $('about-close').onclick = () => ($('about').style.display = 'none');
   $('resume').onclick = togglePause;
   $('to-menu').onclick = () => { togglePause(); toMenu(); };
-  $('again').onclick = () => { $('arrival').style.display = 'none'; restartTrip(); state = 'drive'; };
+  // after a trip the bus stays where it arrived: "Return trip" drives back from there
+  $('again').onclick = () => { $('arrival').style.display = 'none'; changeTrip(); tripMenu?.render(); startDrive(); };
   $('arr-menu').onclick = () => { $('arrival').style.display = 'none'; toMenu(); };
 }
 // ---------- career: garage, company card, stats ----------
@@ -1153,12 +1196,16 @@ function renderOps() {
 function selectSeg(parent, btn) { parent.querySelectorAll('button').forEach((x) => x.classList.remove('sel')); btn.classList.add('sel'); }
 
 function toMenu() {
+  // left mid-trip: the bus stays where it stopped, and the next trip starts from there
+  const wasDriving = state === 'drive' || state === 'paused';
+  if (wasDriving && !(player.arriveT > 0.8)) saveBusPosition();
   state = 'menu';
   $('menu').style.display = 'block';
   hud.show(false);
   audio.horn(false);
   updateMusicBox();
-  restartTrip();
+  tripMenu?.render();
+  changeTrip();
   rig.setMode('chase');
 }
 

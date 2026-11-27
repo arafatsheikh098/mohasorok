@@ -73,7 +73,9 @@ export class Route {
       const fil = (th) => Math.min(70, FILLET * Math.max(1, th / (Math.PI / 3)));
       const trimA = k > 0 ? fil(turn(this.path[k - 1], step)) : 0, trimB = k < this.path.length - 1 ? fil(turn(step, this.path[k + 1])) : 0;
       const trim = (t) => Math.min(t, c.length * 0.3);
-      const iA = Math.round(trim(trimA) / DS), iB = N - 1 - Math.round(trim(trimB) / DS);
+      // (a trip that starts where the bus was left on the road skips the part of the first road behind it)
+      const cutA = k === 0 && step.cut ? Math.min(step.cut, c.length - 80) : 0;
+      const iA = Math.round(Math.max(trim(trimA), cutA) / DS), iB = N - 1 - Math.round(trim(trimB) / DS);
       const pt = (u) => (step.rev ? [c.px[N - 1 - u], c.pz[N - 1 - u]] : [c.px[u], c.pz[u]]);
       if (k > 0) {
         // a quadratic curve from the end of the last road to this road, bending through the node they share
@@ -209,7 +211,7 @@ export class Route {
     const byS = (a, b) => a.s - b.s;
     this.places.sort(byS);
     this.places.forEach((p, i) => { p.index = i; });
-    if (this.places.length) { this.places[0].s = 0; this.places[this.places.length - 1].s = this.length; }
+    if (this.places.length) { if (!this.path[0].cut) this.places[0].s = 0; this.places[this.places.length - 1].s = this.length; }
     this.tolls.sort(byS);
     this.bridges.sort((a, b) => a.sc - b.sc);
     this.stations.sort((a, b) => a.sc - b.sc);
@@ -220,6 +222,12 @@ export class Route {
     // bus terminals: a walled yard beside one carriageway, exit gap at the end its own carriageway drives out of,
     // with a median opening in front of it so buses on the other carriageway can cross in (and out)
     const startNode = this.segs[0].from, endNode = this.segs[this.segs.length - 1].to;
+    // a trip that starts out on the road: a place for "here" at s = 0, named after the nearest town
+    if (this.path[0].cut) {
+      const near = this.places.reduce((a, p) => (p.town && p.s < 3000 && (!a || p.s < a.s) ? p : a), null) || this.places[0];
+      const nm = (k) => (near ? near[k].split(' (')[0] : '');
+      this.places.unshift({ en: `On the road near ${nm('en')}`, bn: `${nm('bn')}-এর কাছে রাস্তায়`, town: 0, kind: 'roadside', s: 0, zilla: near?.zilla, index: -1 });
+    }
     this.startNode = startNode; this.endNode = endNode;
     this.terminals = this.terminals.map((t) => {
       const dir = t.side < 0 ? 1 : -1;

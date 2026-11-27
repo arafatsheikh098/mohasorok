@@ -7,6 +7,7 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **highways of Ban
 ## Features
 - **The whole country:** all 64 zilla towns (plus Teknaf, Benapole and Kuakata) on the national and regional highways N1–N8 and more, compressed 1:12, with real kilometres shown.
   - **Pick a trip** on the map of Bangladesh in the menu (any zilla to any zilla), or tick **🧭 Free drive** and take any road you like.
+  - **The bus stays where you leave it.** After a trip it waits at the destination terminal (the arrival screen offers the return trip); leave mid-trip (menu, or close the browser) and the next trip starts out on the road right where it stopped. Pick another "From" zilla to move it.
   - **Turn at any junction.** Green boards before each junction show where every road goes. Drive onto another road and the trip reroutes (or tells you it's the wrong road).
   - **Real lanes:** divided 4-lane highways where the real road is 4-lane (N1, N3, N4, the Padma expressway and others), undivided 2-lane roads elsewhere, where overtaking means pulling into the oncoming lane.
   - **Expressways and flyovers:** the 6-lane Dhaka–Mawa–Bhanga Expressway and the 300 Feet Road (Purbachal Expressway) with a concrete median barrier and service roads, the Dhaka Elevated Expressway on pillars (electronic toll), the Mayor Hanif Flyover and the Dhaka Bypass. Trips choose the faster roads.
