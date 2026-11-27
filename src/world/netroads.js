@@ -12,6 +12,7 @@ import { disposeTree, sharedMats } from './stream.js';
 import { ASPHALT_TILE, asphaltTexture2 } from '../textures.js';
 import { buildInterchange } from './interchange.js';
 import { terminalChunk } from './terminal.js';
+import { padGeometry, padGround, legAt } from './junction.js';
 import { ferryChunk } from './ferry.js';
 import { riverFor } from './road.js';
 
@@ -95,10 +96,10 @@ export class NetRoads {
     this.pieces = [];
     for (const p of pieces) {
       const { c } = p;
+      // (the road runs 1 m under the mouth of the junction pad)
       const rA = p.trimA ? padR(nodeHalf.get(c.from)) : 0, rB = p.trimB ? padR(nodeHalf.get(c.to)) : 0;
-      const half = profileOf(c.lanes).half;
-      const a = p.a + (rA ? Math.sqrt(Math.max(0, rA * rA - half * half)) - 1 : 0);
-      const b = p.b - (rB ? Math.sqrt(Math.max(0, rB * rB - half * half)) - 1 : 0);
+      const a = p.a + (rA ? rA - 1 : 0);
+      const b = p.b - (rB ? rB - 1 : 0);
       if (b - a < 4) continue;
       const n = Math.max(1, Math.round((b - a) / PIECE));
       for (let k = 0; k < n; k++) {
@@ -128,7 +129,7 @@ export class NetRoads {
     for (const [node, half] of nodeHalf) {
       const v = net.nodes[node], P = this._nodeXZ(node);
       if (!v || !P) continue;
-      this.pieces.push({ key: `n:${node}:${padR(half)}`, node, R: padR(half), x: P[0], z: P[1], r: padR(half) });
+      this.pieces.push({ key: `n:${node}:${padR(half)}`, node, R: padR(half), x: P[0], z: P[1], r: padR(half) + 8 });
     }
     // what is no longer wanted (the trip now builds it, or it changed shape) goes at once
     const keys = new Set(this.pieces.map((p) => p.key));
@@ -182,23 +183,19 @@ export class NetRoads {
     if (p.ic) {
       g.add(buildInterchange(this.net, p.ic));
     } else if (p.node) {
-      // a pad where roads meet
+      // a junction where roads meet: shaped like the trip's (world/junction.js), every road's mouth p.R out
       let h = ROAD.height ?? 0;
+      const legs = [];
       for (const c of this.net.roads.values()) {
-        if (c.def.link || c.def.ferry || (c.from !== p.node && c.to !== p.node)) continue;
-        const st = this._st(c.id);
-        h = Math.max(h, st.roadHeight(c.from === p.node ? 1 : st.length - 1));
+        if (c.def.ferry || (c.from !== p.node && c.to !== p.node)) continue;
+        const st = this._st(c.id), atA = c.from === p.node;
+        h = Math.max(h, st.roadHeight(atA ? 1 : st.length - 1));
+        if (st.length > 2 * p.R) legs.push(legAt(st, atA ? p.R : st.length - p.R, atA ? 1 : -1));
       }
-      const geo = new THREE.CircleGeometry(p.R, 40);
-      const uv = geo.attributes.uv;
-      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (2 * p.R) / ASPHALT_TILE, uv.getY(i) * (2 * p.R) / ASPHALT_TILE);
-      const pad = new THREE.Mesh(geo, padMat().pad);
-      pad.rotation.x = -Math.PI / 2;
-      pad.position.set(p.x, h + 0.005, p.z);
+      const pad = new THREE.Mesh(padGeometry(p.x, p.z, legs), padMat().pad);
+      pad.position.y = h + 0.03;
       pad.receiveShadow = true;
-      const skirt = new THREE.Mesh(new THREE.CylinderGeometry(p.R, p.R + ROAD.embank, h, 40, 1, true), M.grass);
-      skirt.position.set(p.x, h / 2 - 0.02, p.z);
-      g.add(pad, skirt);
+      g.add(pad, padGround(p.x, p.z, h, groundR(p.R, legs), M.grass));
     } else {
       const st = this._st(p.id), a = p.s0, e = p.s1;
       const P = st.prof((a + e) / 2), Mh = P.median, H = P.half;
@@ -264,4 +261,5 @@ export class NetRoads {
   disposeAll() { for (const [k, g] of [...this.built]) this._drop(k, g); }
 }
 
-const padR = (half) => half + 6;
+const padR = (half) => half + 14;               // node to the mouth of each road at a junction off the trip
+const groundR = (m, legs) => Math.max(m, ...legs.map((l) => Math.hypot(m, l.H))) + 2;

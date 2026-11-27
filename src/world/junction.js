@@ -2,7 +2,7 @@
 // the first stretch of every other road branching off (built from that road's own centreline, so it is the
 // same road a later trip will drive), and green direction boards before the junction on both carriageways.
 import * as THREE from 'three';
-import { ROAD } from '../config.js';
+import { ROAD, PROFILE } from '../config.js';
 import { Route } from '../route.js';
 import { ribbon, roadMats, buildBridge, splitAround, medianRibbons } from './road.js';
 import { sharedMats } from './stream.js';
@@ -17,12 +17,116 @@ const jMats = sharedMats(() => {
     pad: off(new THREE.MeshStandardMaterial({ map: asphaltTexture2(false, false), roughness: 0.93 }), -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), stub6: off(m.asphalt6, -1), grass: m.grass, median: m.median, curb: m.curb,
     back: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }),
     leg: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }),
+    stop: new THREE.MeshStandardMaterial({ color: 0xe9e8e2, roughness: 0.8 }),
   };
 });
 
 const R = (dy) => (s, h) => h + dy;
 const G = (y) => () => y;
 const nm = (x, k) => x[k].split(' (')[0];
+
+// ---------------------------------------------------------------- the paved junction itself
+// Shaped like a real crossroads, not a disc: every road's mouth, and between two neighbouring roads a kerb
+// that curves from one road's edge round to the next one's. Triangles fanned out from the node (cx, cz);
+// pieces may overlap, which never shows: one material, texture coordinates from world x, z.
+// legs: [{ x, z: the centre of the road's mouth, ux, uz: unit vector along the road away from the node, H: half width }]
+// strips: [[[xl, zl], [xr, zr]], ...] rows across a road that runs through (the trip's own curve over the junction)
+export function padGeometry(cx, cz, legs, strips = []) {
+  const P2 = PROFILE[2];
+  const pos = [];
+  const tri = (a, b, c) => {
+    // (facing up)
+    if ((b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]) < 0) [b, c] = [c, b];
+    pos.push(a[0], 0, a[1], b[0], 0, b[1], c[0], 0, c[1]);
+  };
+  const C = [cx, cz];
+  const L = legs.map((l) => {
+    const px = -l.uz * l.H, pz = l.ux * l.H;            // towards the side with the larger angle round the node
+    return { ...l, th: Math.atan2(l.z - cz, l.x - cx), hi: [l.x + px, l.z + pz], lo: [l.x - px, l.z - pz] };
+  }).sort((a, b) => a.th - b.th);
+  for (const l of L) tri(C, l.lo, l.hi);
+  for (let i = 0; i < L.length && L.length > 1; i++) {
+    const A = L[i], B = L[(i + 1) % L.length];
+    let gap = B.th - A.th;
+    if (gap <= 0) gap += 2 * Math.PI;
+    const P = A.hi, Q = B.lo;
+    // the kerb: a curve leaving A's edge towards the node and turning onto B's edge, with its corner where the
+    // two edges (extended) cross
+    const ax = -A.ux, az = -A.uz, bx = -B.ux, bz = -B.uz, wx = Q[0] - P[0], wz = Q[1] - P[1];
+    const det = -ax * bz + az * bx;
+    let ctrl = null;
+    if (Math.abs(det) > 1e-4) {
+      const t = (wx * -bz + wz * bx) / det, s = (ax * wz - az * wx) / det;
+      const dP = Math.hypot(P[0] - cx, P[1] - cz), dQ = Math.hypot(Q[0] - cx, Q[1] - cz);
+      if (t > 0 && s > 0 && t < dP + 2 && s < dQ + 2) ctrl = [P[0] + ax * t, P[1] + az * t];
+    }
+    const n = 14, pts = [];
+    if (ctrl && gap <= 2.6) {
+      for (let k = 0; k <= n; k++) {
+        const t = k / n, a = (1 - t) * (1 - t), b = 2 * t * (1 - t), c = t * t;
+        pts.push([a * P[0] + b * ctrl[0] + c * Q[0], a * P[1] + b * ctrl[1] + c * Q[1]]);
+      }
+    } else if (gap > 0.35) {
+      // (roads far apart round the node, e.g. the straight side of a T: the kerb runs along the roads' edges,
+      // past the node)
+      const ba = A.th + gap / 2, hb = Math.min(A.H, B.H) / Math.max(0.5, Math.sin(Math.min(gap, 2 * Math.PI - gap, Math.PI) / 2));
+      pts.push(P, [cx + Math.cos(ba) * hb, cz + Math.sin(ba) * hb], Q);
+    } else pts.push(P, Q);
+    for (let k = 0; k < pts.length - 1; k++) tri(C, pts[k], pts[k + 1]);
+  }
+  for (let i = 0; i < strips.length - 1; i++) {
+    const [a, b] = strips[i], [c, d] = strips[i + 1];
+    tri(a, b, c); tri(b, d, c);
+  }
+  const g = new THREE.BufferGeometry();
+  const P = new Float32Array(pos), uv = new Float32Array((pos.length / 3) * 2), nrm = new Float32Array(pos.length);
+  for (let i = 0; i < pos.length / 3; i++) {
+    uv[i * 2] = P[i * 3] / (2 * P2.half);
+    uv[i * 2 + 1] = P[i * 3 + 2] / ASPHALT_TILE;
+    nrm[i * 3 + 1] = 1;
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
+}
+
+// the leg of a road at its mouth `s` metres along corridor `st` (dir +1: the road leaves the node towards larger s)
+export function legAt(st, s, dir) {
+  const [x, z] = st._xz(s, 0), [tx, tz] = st.tangentAt(s);
+  return { x, z, ux: tx * dir, uz: tz * dir, H: st.halfAt(s) };
+}
+
+// a flat grass top round the junction (between the roads, at road level) and its slope down to the fields
+export function padGround(cx, cz, h, r, grassMat) {
+  const g = new THREE.Group();
+  const top = new THREE.CircleGeometry(r, 40);
+  const p = top.attributes.position, uv = top.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (cx + p.getX(i)) / 3, (cz - p.getY(i)) / 3);
+  const m = new THREE.Mesh(top, grassMat);
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(cx, h - 0.06, cz);
+  m.receiveShadow = true;
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(r, r + ROAD.embank, h, 40, 1, true), grassMat);
+  skirt.position.set(cx, h / 2 - 0.06, cz);
+  skirt.receiveShadow = true;
+  g.add(m, skirt);
+  return g;
+}
+
+// a white stop line across the carriageway coming in to the junction, just outside its mouth
+// (leg as legAt; two: an undivided road, whose incoming half is right of the centre line as seen leaving)
+export function stopLine(leg, median, two, h, mat) {
+  const w = leg.H - (two ? 0.3 : median + 0.2) - 0.4;
+  if (w < 1) return null;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.45), mat);
+  // across the road, 2 m out from the mouth, on the incoming side (right of the direction leaving the node)
+  const rx = -leg.uz, rz = leg.ux;                      // right of "leaving", in this x/z frame
+  const off = (two ? 0.3 : median + 0.2) + w / 2;
+  m.position.set(leg.x + leg.ux * 2 + rx * off, h + 0.045, leg.z + leg.uz * 2 + rz * off);
+  m.rotation.set(-Math.PI / 2, 0, Math.atan2(-leg.ux, -leg.uz));
+  return m;
+}
 
 // Branch roads: their centrelines (as small one-road corridors, cached on the network) and the lines the
 // scenery keeps clear of. Call once per trip corridor.
@@ -106,24 +210,27 @@ export function* junctionChunk(route, ctx) {
     const h = route.roadHeight(j.s);
     // (an interchange has no pad: world/interchange.js builds it, the side roads start at the edge of its circle)
     if (!j.ic) {
-    // the pad, and a grass skirt down to the fields
-    const padGeo = new THREE.CircleGeometry(j.R, 48);
-    const uv = padGeo.attributes.uv;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (2 * j.R) / ASPHALT_TILE, uv.getY(i) * (2 * j.R) / ASPHALT_TILE);
-    const pad = new THREE.Mesh(padGeo, M.pad);
-    pad.rotation.x = -Math.PI / 2;
-    pad.position.set(j.x, h + 0.03, j.z);        // (the log depth buffer ignores polygon offset: lift it clear of the roads under it)
-    pad.receiveShadow = true;
-    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(j.R, j.R + ROAD.embank, h, 48, 1, true), M.grass);
-    skirt.position.set(j.x, h / 2 - 0.02, j.z);
-    skirt.receiveShadow = true;
-    g.add(pad, skirt);
+      // the paved junction: the trip's road through it, every road's mouth, kerbs curving between them;
+      // a flat grass top between the roads and a slope down to the fields
+      const legs = [legAt(route, j.sA, -1), legAt(route, j.sB, 1), ...j.branches.map((b) => legAt(b.stub, j.m, 1))];
+      const strip = [];
+      for (let s = j.sA; s < j.sB + 1.9; s += 2) { const q = Math.min(s, j.sB), H = route.halfAt(q); strip.push([route._xz(q, -H), route._xz(q, H)]); }
+      const pad = new THREE.Mesh(padGeometry(j.x, j.z, legs, strip), M.pad);
+      pad.position.y = h + 0.03;                   // (the log depth buffer ignores polygon offset: lift it clear of the roads under it)
+      pad.receiveShadow = true;
+      g.add(pad, padGround(j.x, j.z, h, j.R, M.grass));
+      // stop lines where each road comes in
+      const P0 = route.prof(j.sA - 2), P1 = route.prof(j.sB + 2);
+      // (not where the trip starts or ends right at the junction)
+      const lines = [j.sA > 2 && stopLine(legs[0], P0.median, P0.two, h, M.stop), j.sB < route.length - 2 && stopLine(legs[1], P1.median, P1.two, h, M.stop),
+        ...j.branches.map((b, i) => { const P = b.stub.prof(j.m + 2); return stopLine(legs[2 + i], P.median, P.two, b.stub.roadHeight(j.m), M.stop); })];
+      for (const l of lines) if (l) g.add(l);
     }
     // the branch roads: carriageways, median, embankments (or one 2-lane strip)
     for (const b of j.branches) {
       const st = b.stub, e = b.len, ab = j.R + 1;
-      // the asphalt starts just inside the pad's rim (not under it: two surfaces would flicker), the slopes outside it
-      const a = j.ic ? j.ic.R : Math.sqrt(Math.max(0, j.R * j.R - st.prof(5).half ** 2)) - 3;
+      // the asphalt starts 1 m under the junction's mouth, the slopes outside the flat ground round it
+      const a = j.ic ? j.ic.R : j.m - 1;
       if (e - a < 5) continue;
       const P = st.prof(a + 1), Mh = P.median, H = P.half;
       const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); };
@@ -133,7 +240,7 @@ export function* junctionChunk(route, ctx) {
         add(ribbon(st, a, e, 4, [{ d: -H, y: R(0), u: 1 }, { d: -Mh, y: R(0), u: 0 }], ASPHALT_TILE), am);
         add(ribbon(st, a, e, 4, [{ d: Mh, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), am);
         add(ribbon(st, a, e, 4, [{ d: -Mh, y: R(0.002), u: 0 }, { d: Mh, y: R(0.002), u: 0.4 }], ASPHALT_TILE), M.stub);
-        const m0 = j.ic ? a : j.R + 8;
+        const m0 = j.ic ? a : j.m + 6;
         if (e > m0 + 4) medianRibbons(st, m0, e, P, add, roadMats());
       }
       // embankments, except under a bridge deck; the bridge itself (deck sides, piers, lamps, the river below)

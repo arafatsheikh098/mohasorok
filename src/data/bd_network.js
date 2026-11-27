@@ -133,7 +133,7 @@ export const NODES = {
   // (the centre of the cloverleaf interchange, ভাঙ্গা গোলচত্বর: see data/interchanges.js)
   bhanga: J(23.3901, 89.9839, 'Bhanga', 'ভাঙ্গা', { town: 300 }),
   bhatiapara: J(23.3000, 89.8400, 'Bhatiapara', 'ভাটিয়াপাড়া', { town: 200 }),
-  janjira: J(23.3150, 90.3050, 'Janjira', 'জাজিরা', { town: 150 }),
+  janjira: J(23.3850, 90.2760, 'Janjira', 'জাজিরা', { town: 150 }),
   chowmuhani: J(22.9400, 91.1000, 'Chowmuhani', 'চৌমুহনী', { town: 350 }),
   fakirhat: J(22.7800, 89.7100, 'Fakirhat', 'ফকিরহাট', { town: 200 }),
   keranihat: J(22.1450, 92.0500, 'Keranihat', 'কেরানীহাট', { town: 250, hills: true }),

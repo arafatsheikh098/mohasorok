@@ -121,7 +121,7 @@ export function* roadChunk(route, ctx) {
   const plaza = [...route.tolls.map((t) => ({ s0: t.s - PLAZA.reach, s1: t.s + PLAZA.reach })), ...route.ferries.map((f) => ({ s0: f.s0, s1: f.s1, ferry: true })),
     ...(route.junctions || []).map((j) => {
       if (j.ic) return { s0: j.ic.s0, s1: j.ic.s1, ferry: true };      // an interchange builds its own carriageways
-      const c = Math.sqrt(Math.max(0, j.R * j.R - route.prof(j.s).half ** 2)) - 3; return { s0: j.s - c, s1: j.s + c, ferry: true };
+      return { s0: j.sA + 1, s1: j.sB - 1, ferry: true };          // (the road runs 1 m under the junction's mouth)
     })];
 
   const S0 = ctx.s0, S1 = Math.min(route.length, ctx.s1);

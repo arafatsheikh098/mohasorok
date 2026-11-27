@@ -6,7 +6,8 @@ import { icMove } from './world/interchange.js';
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const FILLET = 30;           // m of each road trimmed at a junction, replaced by a smooth curve through the node
 const EXIT = 30;             // terminal exit gap (m)
-export const PAD_R = 32;     // radius of the paved junction area where roads meet
+export const PAD_R = 32;     // radius of the flat ground round a junction where roads meet
+export const PAD_M = 30;     // m from the node to where each road's own surface ends and the junction's begins
 
 // The trip corridor: the roads of a path (src/net.js) joined end to end into one centreline, sampled every DS
 // metres, with everything along it (towns, bridges, toll plazas, fuel stations, rest stops, terminals, U-turns)
@@ -219,7 +220,9 @@ export class Route {
       for (const p of c.places) {
         if (k > 0 && p.node === g.from) continue;          // the node it shares with the previous road (already in)
         const zn = this.icZones.find((z) => z.node === p.node);
-        const s = zn ? zn.sc : this._s(g, p.s, FILLET + 1);
+        // (a node's own place lies at the road's very end, which a sharp turn trims by up to 70 m: it is then on
+        // the curve through the junction, not gone)
+        const s = zn ? zn.sc : this._s(g, p.s, p.node ? 80 : FILLET + 1);
         if (s === null) continue;
         this.places.push({ ...p, s: THREE.MathUtils.clamp(s, 0, this.length), road: c.id, seg: k });
       }
@@ -318,9 +321,20 @@ export class Route {
       // and the pad reaches the curve's furthest point from the node as well
       let reach = 0;
       for (let ds = -76; ds <= 76; ds += 2) { const [x, z] = this._xz(p.s + ds, 0); reach = Math.max(reach, Math.hypot(x - c[0], z - c[1]) - Math.abs(ds)); }
-      this.junctions.push({ s: p.s, node, k, name: n, x: c[0], z: c[1], R: PAD_R + Math.max(0, Math.min(30, reach)), branches });
-      const R = this.junctions[this.junctions.length - 1].R;
-      this.uturns.push({ s: p.s, s0: p.s - R - 6, s1: p.s + R + 6, junction: true });
+      // where each road's own surface ends and the junction's begins (its mouth): PAD_M from the node; for the
+      // trip's road, measured along its curve through the junction
+      const mouth = (dir) => {
+        for (let ds = 8; ds <= 110; ds++) { const [x, z] = this._xz(p.s + dir * ds, 0); if (Math.hypot(x - c[0], z - c[1]) >= PAD_M) return ds; }
+        return 110;
+      };
+      const sA = Math.max(1, p.s - mouth(-1)), sB = Math.min(this.length - 1, p.s + mouth(1));
+      // (the flat ground round it reaches past the corners of every mouth)
+      let H = this.halfAt(p.s);
+      for (const e of branches) H = Math.max(H, profileOf(this.net.road(e.road).lanes).half);
+      const R = Math.max(PAD_R + Math.max(0, Math.min(30, reach)), Math.hypot(PAD_M, H) + 3);
+      this.junctions.push({ s: p.s, node, k, name: n, x: c[0], z: c[1], R, m: PAD_M, sA, sB, branches });
+      // the median opens across it
+      this.uturns.push({ s: p.s, s0: sA - 6, s1: sB + 6, junction: true });
     }
     this.uturns.sort(byS);
     // keep U-turn openings out of the junction areas
