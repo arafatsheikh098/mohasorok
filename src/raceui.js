@@ -65,8 +65,10 @@ export function initRaceUI({ race, net, me, tripOf, onCreate }) {
   let ready = false;
   $('race-ready').onclick = () => { ready = !ready; race.ready(ready); };
   $('race-copy').onclick = async () => {
-    const link = `${location.origin}${location.pathname}?race=${race.code}`;
-    const text = `Race me in Mohasorok 🚌 — code ${race.code}\n${link}`;
+    // the link joins by itself; the code is in the text too, for typing it in by hand
+    const by = (localStorage.getItem(SAVE('name')) || '').trim();
+    const link = `${location.origin}${location.pathname}?race=${race.code}${by ? `&by=${encodeURIComponent(by)}` : ''}`;
+    const text = `🚌 Race me in Mohasorok! Tap to join: ${link}\n(race code ${race.code})`;
     try {
       if (navigator.share && matchMedia('(pointer: coarse)').matches) await navigator.share({ title: 'Mohasorok race', text, url: link });
       else { await navigator.clipboard.writeText(text); msg('Invite copied — paste it to your friends'); }
@@ -77,9 +79,55 @@ export function initRaceUI({ race, net, me, tripOf, onCreate }) {
     // a freshly made code that happens to be in use: just make another one
     if (code === 'taken') { race.connect(newCode(), true, me()); return; }
     render(); msg(t, true);
+    if (inviting) riMsg(t, true);
   });
-  race.on('status', (t) => msg(t));
-  race.on('change', () => { if (race.connected) msg(''); render(); });
+  race.on('status', (t) => { msg(t); if (inviting) riMsg(t); });
+  race.on('change', () => {
+    if (race.connected) msg('');
+    render();
+    // in through an invite link: the card goes, the lobby shows
+    if (inviting && race.joined) {
+      inviting = false;
+      $('race-invite').style.display = 'none';
+      $('race-box').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      $('race-box').classList.add('flash'); setTimeout(() => $('race-box').classList.remove('flash'), 2400);
+    }
+    // left the room: the invite link in the address bar is used up
+    if (!race.inRoom && new URLSearchParams(location.search).has('race')) history.replaceState(null, '', location.pathname);
+  });
+
+  // ---------- an invite link (?race=CODE&by=NAME): one tap to join ----------
+  let inviting = false;
+  const riMsg = (t, bad) => { const el = $('ri-msg'); el.textContent = t || ''; el.className = 'race-msg' + (bad ? ' bad' : ''); };
+  const riName = $('ri-name');
+  riName.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { riName.blur(); inviteJoin(); } });
+  riName.addEventListener('keyup', (e) => e.stopPropagation());
+  let inviteCode = null;
+  function inviteJoin() {
+    const nm = riName.value.trim();
+    if (!nm) { riMsg('Type your name — it shows over your bus', true); riName.focus(); return; }
+    if (!race.available) { riMsg('The race server is not set up yet', true); return; }
+    nameIn.value = nm;
+    localStorage.setItem(SAVE('name'), nm);
+    codeIn.value = inviteCode;
+    inviting = true;
+    riMsg('Joining…');
+    race.connect(inviteCode, false, me());
+  }
+  $('ri-join').onclick = inviteJoin;
+  $('ri-no').onclick = () => { inviting = false; $('race-invite').style.display = 'none'; history.replaceState(null, '', location.pathname); };
+  function invite(code, by) {
+    inviteCode = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    if (inviteCode.length < 4) return;
+    codeIn.value = inviteCode;
+    $('ri-by').textContent = by ? `${by.slice(0, 18)} invited you to a bus race` : 'You are invited to a bus race';
+    $('ri-code').textContent = inviteCode;
+    riName.value = nameIn.value || '';
+    riMsg('');
+    $('race-invite').style.display = 'flex';
+    // played here before (the name is saved): straight in
+    if (riName.value.trim()) inviteJoin(); else setTimeout(() => riName.focus(), 50);
+  }
 
   function render() {
     const inRoom = race.joined;
@@ -159,5 +207,5 @@ export function initRaceUI({ race, net, me, tripOf, onCreate }) {
   }
 
   render();
-  return { render, countdown, board, renderResults, prefill(code) { codeIn.value = code.toUpperCase(); render(); }, join };
+  return { render, countdown, board, renderResults, invite, join };
 }

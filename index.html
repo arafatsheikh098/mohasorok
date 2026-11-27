@@ -370,6 +370,16 @@
   .race-p span { margin-left: auto; color: var(--mut); font-size: 12px; }
   #race-ready.on { background: rgba(61,220,132,.2); color: #6fdc8c; }
   #race-go:disabled { opacity: .5; cursor: default; }
+  #race-invite { position: fixed; inset: 0; z-index: 46; display: none; align-items: center; justify-content: center; background: rgba(5,8,11,.72); }
+  #race-invite .card { width: min(440px, 92vw); padding: 24px 26px; text-align: center; }
+  #race-invite .ri-flag { font-size: 44px; }
+  #race-invite h2 { margin: 6px 0 6px; font-size: 22px; }
+  #race-invite p { color: var(--mut); font-size: 13px; margin: 0 0 16px; }
+  #race-invite p b { color: var(--acc); letter-spacing: 2px; }
+  #race-invite input { background: rgba(255,255,255,.06); color: var(--txt); border: 1px solid var(--line); border-radius: 7px; padding: 10px; font-size: 16px; user-select: text; -webkit-user-select: text; }
+  #race-invite .btn { padding: 12px 20px; }
+  #race-box.flash { animation: raceflash 0.8s ease 3; }
+  @keyframes raceflash { 50% { border-color: var(--acc); box-shadow: 0 0 0 3px rgba(255,138,28,.35); } }
   #race-count { position: fixed; inset: 0; z-index: 25; display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
   #race-count b { font-size: 160px; font-weight: 900; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,.6); line-height: 1; }
   #race-count b.wait { font-size: 90px; opacity: .85; }
@@ -407,6 +417,14 @@
 <div id="camflash"></div>
 <div id="yt-box"><div id="yt-player"></div><button id="yt-close" title="Stop YouTube">✕</button></div>
 <div id="race-count"></div>
+<div id="race-invite"><div class="card">
+  <div class="ri-flag">🏁</div>
+  <h2 id="ri-by">You are invited to a bus race</h2>
+  <p>Race code <b id="ri-code">-----</b> · same start terminal, first bus into the end terminal wins</p>
+  <label class="race-name">Your name <input id="ri-name" maxlength="18" placeholder="e.g. Rafi" autocomplete="off" spellcheck="false"></label>
+  <button class="btn" id="ri-join">Join the race ▸</button><button class="btn ghost" id="ri-no">Not now</button>
+  <div id="ri-msg" class="race-msg"></div>
+</div></div>
 <div id="restfade"><div>🍛 যাত্রা বিরতি<small>20 minute break…</small></div></div>
 <div id="touch">
   <div id="t-wheel"><div id="t-wheel-img"></div></div>

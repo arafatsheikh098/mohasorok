@@ -1495,13 +1495,8 @@ function initRace() {
   race.on('start', startRace);
   race.on('results', () => raceUI.renderResults());
   // an invite link (?race=CODE)
-  const code = new URLSearchParams(location.search).get('race');
-  if (code) {
-    raceUI.prefill(code);
-    if (localStorage.getItem(SAVE('name'))) raceUI.join();
-    else document.getElementById('race-name')?.focus();
-    $('race-box')?.scrollIntoView({ block: 'center' });
-  }
+  const q = new URLSearchParams(location.search);
+  if (q.get('race')) raceUI.invite(q.get('race'), q.get('by'));
 }
 
 // ---------- main loop ----------
