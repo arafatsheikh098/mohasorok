@@ -131,6 +131,7 @@ export class Traffic {
     if (v.exit) return v.exit;
     const R = this.route;
     const j = v.dir > 0 ? R.junctions.find((x) => x.s > v.s + 20 && x.s < v.s + 450) : [...R.junctions].reverse().find((x) => x.s < v.s - 20 && x.s > v.s - 450);
+    if (j?.ic) return null;          // (at an interchange everyone stays on the trip's own ramps)
     if (!j || v.exitSeen === j) return null;
     v.exitSeen = j;
     const cur = R.segs[v.dir > 0 ? j.k - 1 : j.k]?.road, next = R.segs[v.dir > 0 ? j.k : j.k - 1]?.road;
@@ -155,7 +156,7 @@ export class Traffic {
   // a bus joining from a side road at a junction 300–1300 m ahead of the player, out of sight down the side road
   _spawnMerge(v, ps) {
     const R = this.route, r = this.r;
-    const js = R.junctions.filter((j) => j.branches.length && Math.abs(j.s - ps) > 280 && Math.abs(j.s - ps) < 1300);
+    const js = R.junctions.filter((j) => !j.ic && j.branches.length && Math.abs(j.s - ps) > 280 && Math.abs(j.s - ps) < 1300);
     if (!js.length) return false;
     const j = js[Math.floor(r() * js.length)];
     const b = j.branches[Math.floor(r() * j.branches.length)];
@@ -233,6 +234,7 @@ export class Traffic {
     }
     const ox = v.wrap.position.x, oz = v.wrap.position.z;
     v.wrap.position.set(x, y, z);
+    v.wrap.visible = true;
     if (Math.hypot(x - ox, z - oz) > 0.01) v.wrap.rotation.y = Math.atan2(x - ox, z - oz);
     v.spin += (v.v / v.wheelR) * dt;
     for (const w of v.wheels) w.rotation.x = v.spin;
@@ -475,6 +477,12 @@ export class Traffic {
       if (v.yieldT > 0) v0 = Math.min(v0, Math.max(4, (player.vs ?? player.v) * 0.85));
       // junctions (চৌরাস্তা) are crossed carefully: everyone slows to ~35 km/h across the pad
       for (const j of route.junctions) {
+        // an interchange: round the loops and ramps at ~45 km/h
+        if (j.ic) {
+          const to = v.dir > 0 ? j.ic.s0 - v.s : v.s - j.ic.s1, past = v.dir > 0 ? v.s - j.ic.s1 : j.ic.s0 - v.s;
+          if (to < 120 && past < 0) { v0 = Math.min(v0, 12.5 + Math.max(0, to) * 0.12); break; }
+          continue;
+        }
         const to = (j.s - v.s) * v.dir;
         if (to > -j.R - 10 && to < j.R + 90) { v0 = Math.min(v0, 9.5 + Math.max(0, to - j.R) * 0.12); break; }
       }
@@ -645,6 +653,9 @@ export class Traffic {
       // place the model
       route.pointAt(v.s, v.d, v.wrap.position);
       v.wrap.position.y = route.roadHeight(v.s);
+      // inside an interchange only the trip's own carriageway exists: oncoming traffic is on other ramps there
+      const ghost = v.dir < 0 && route.icZones?.some((z) => v.s > z.s0 - 4 && v.s < z.s1 + 4);
+      v.wrap.visible = !ghost;
       v.wrap.rotation.y = route.yawAt(v.s) + (v.dir < 0 ? Math.PI : 0) - Math.atan2(v.lv, Math.max(v.v, 2)) * v.dir * 0.8;
       v.spin += (v.v / v.wheelR) * dt;
       for (const w of v.wheels) w.rotation.x = v.spin;
@@ -682,7 +693,7 @@ export class Traffic {
       }
 
       // collision with the player: exact oriented boxes (no more phantom hits while overtaking)
-      if (player.box && Math.abs(v.s - ps) < (v.len + player.len) / 2 + 3) {
+      if (!ghost && player.box && Math.abs(v.s - ps) < (v.len + player.len) / 2 + 3) {
         const box = { x: v.wrap.position.x, z: v.wrap.position.z, yaw: v.wrap.rotation.y, hw: v.wid / 2 - 0.04, hl: v.len / 2 - 0.06 };
         const n = obbOverlap(player.box, box);
         if (n) crashes.push({ v, n, box });

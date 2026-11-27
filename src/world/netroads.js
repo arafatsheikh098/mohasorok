@@ -10,6 +10,7 @@ import { Route } from '../route.js';
 import { ribbon, roadMats, buildBridge, splitAround, medianRibbons } from './road.js';
 import { disposeTree, sharedMats } from './stream.js';
 import { ASPHALT_TILE, asphaltTexture2 } from '../textures.js';
+import { buildInterchange } from './interchange.js';
 
 const PIECE = 500;          // m of road per piece
 const NEAR = 2800;          // build pieces closer than this to the bus
@@ -72,8 +73,13 @@ export class NetRoads {
       if (at < L - 1) gaps.push([at, L]);
       const half = profileOf(c.lanes).half;
       for (let [a, b] of gaps) {
+        // at an interchange: the road ends at the edge of its circle (the interchange is built on its own)
+        const icA = a < 1 && net.ic(c.from), icB = b > L - 1 && net.ic(c.to);
+        if (icA) a = Math.max(a, icA.R);
+        if (icB) b = Math.min(b, L - icB.R);
+        if (b - a < 4) continue;
         // ends at a node that is not the trip's: trimmed back to the node pad's rim
-        const trimA = a < 1 && !tripNodes.has(c.from), trimB = b > L - 1 && !tripNodes.has(c.to);
+        const trimA = !icA && a < 1 && !tripNodes.has(c.from), trimB = !icB && b > L - 1 && !tripNodes.has(c.to);
         if (trimA) nodeHalf.set(c.from, Math.max(nodeHalf.get(c.from) || 0, half));
         if (trimB) nodeHalf.set(c.to, Math.max(nodeHalf.get(c.to) || 0, half));
         pieces.push({ c, a, b, trimA, trimB });
@@ -95,6 +101,8 @@ export class NetRoads {
         this.pieces.push({ key: `${c.id}:${s0.toFixed(1)}:${s1.toFixed(1)}`, id: c.id, s0, s1, x: c.px[i], z: c.pz[i], r: (s1 - s0) / 2 + 20, ga: p.a, gb: p.b });
       }
     }
+    // the interchanges themselves, always
+    for (const ic of net.interchanges()) this.pieces.push({ key: `ic:${ic.node}`, ic: ic.node, x: ic.x, z: ic.z, r: ic.R });
     for (const [node, half] of nodeHalf) {
       const v = net.nodes[node], P = this._nodeXZ(node);
       if (!v || !P) continue;
@@ -121,7 +129,9 @@ export class NetRoads {
     const g = new THREE.Group();
     const M = roadMats();
     const addM = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); };
-    if (p.node) {
+    if (p.ic) {
+      g.add(buildInterchange(this.net, p.ic));
+    } else if (p.node) {
       // a pad where roads meet
       let h = ROAD.height ?? 0;
       for (const c of this.net.roads.values()) {

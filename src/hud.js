@@ -73,7 +73,7 @@ export class HUD {
     const road = route.segAt(st.s).chain, nm = (p) => p.bn.split(' (')[0];
     const [A, B] = back ? [route.endPlace, route.startPlace] : [route.startPlace, route.endPlace];
     const label = this.free ? `🧭 <span class="bn">Explore</span>${road.ref ? ` · ${road.ref} ${road.en || ''}` : ''}`
-      : `<span class="bn">${nm(A)} → ${nm(B)}</span>${road.ref ? ` · ${road.ref}` : ''}`;
+      : `<span class="bn">${this.dest && !back ? `${nm(A)} → ${this.dest}` : `${nm(A)} → ${nm(B)}`}</span>${road.ref ? ` · ${road.ref}` : ''}`;
     if (label !== this._label) { this._label = label; document.querySelector('#trip .route').innerHTML = label; }
     const ff = st.fuel / st.tank;
     $('trip-fuel').textContent = `${Math.round(ff * 100)}% · ${Math.round(st.fuel)} L`;

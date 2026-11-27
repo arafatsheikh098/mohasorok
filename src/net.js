@@ -8,6 +8,7 @@ import { MAP_SCALE, UTURN_SPACING, UTURN_GAP, ROAD, profileOf } from './config.j
 
 const FLYOVER_H = 11;          // deck height of a flyover / elevated expressway (m)
 import { NODES, ROADS } from './data/bd_network.js';
+import { INTERCHANGES } from './data/interchanges.js';
 
 export const ORIGIN = { lat: 23.7, lon: 90.35 };
 const KX = Math.cos((ORIGIN.lat * Math.PI) / 180) * 111320 * MAP_SCALE;
@@ -17,6 +18,7 @@ export const project = (lat, lon) => new THREE.Vector2((lon - ORIGIN.lon) * KX, 
 export const unproject = (x, z) => ({ lat: ORIGIN.lat - z / KZ, lon: ORIGIN.lon + x / KX });
 
 const TERMINAL = { len: 120, depth: 42, exit: 30, gap: 8 };
+const smooth01 = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const LINK_KM = 4;            // real km of the access road from a zilla's junction to its bus terminal
 
 // Smooth a polyline (Gaussian, radius r samples) with the ends held in place: the signal is mirrored through
@@ -102,14 +104,30 @@ export class Chain {
     // smooth the centreline (Gaussian, ~±90 m) with the ends pinned to the nodes, and resample.
     [X, Z] = smoothPts(X, Z, 150, 3);
     [this.px, this.pz] = resample(X, Z, DS);
+    // at an interchange (data/interchanges.js) the road leaves exactly along its real direction, dead straight,
+    // to the edge of the interchange and a little beyond, where the interchange's own carriageways meet it
+    for (const atEnd of [false, true]) {
+      const node = atEnd ? this.to : this.from, ic = INTERCHANGES[node], dir = ic?.legs[this.id];
+      if (!dir) continue;
+      const n = this.px.length, X2 = Array.from(this.px), Z2 = Array.from(this.pz);
+      const i0 = atEnd ? n - 1 : 0, ox = X2[i0], oz = Z2[i0], A = ic.R + 30, B = 560;
+      for (let k = 0; k < n; k++) {
+        const u = k * DS, i = atEnd ? n - 1 - k : k;
+        if (u > A + B) break;
+        const w = u <= A ? 0 : smooth01((u - A) / B);
+        X2[i] = (ox + dir[0] * u) * (1 - w) + X2[i] * w;
+        Z2[i] = (oz + dir[1] * u) * (1 - w) + Z2[i] * w;
+      }
+      [this.px, this.pz] = resample(X2, Z2, DS);
+    }
     this.N = this.px.length;
     this.length = (this.N - 1) * DS;
 
-    // places along the road (the nodes at both ends included)
+    // places along the road (the nodes at both ends included; shape points are not places)
     this.places = stops.map((w, i) => {
       const s = i === 0 ? 0 : i === stops.length - 1 ? this.length : this.projectS(wp[i].x, wp[i].y);
       return { ...w, s };
-    });
+    }).filter((p) => !p.shape);
     this._features();
     return this;
   }
@@ -370,6 +388,8 @@ export class Network {
   // is (x, z) on any road of the network (or within `margin` of its embankment)? For the scenery: nothing is
   // built on a road, whether the trip uses it or not.
   nearAny(x, z, margin = 0, skip = null) {
+    // (an interchange: its ramps and loops fill the whole circle)
+    for (const ic of this.interchanges()) if (Math.hypot(x - ic.x, z - ic.z) < ic.R + margin) return true;
     const C = 120;
     if (!this._anyGrid) {
       this._anyGrid = new Map();
@@ -404,6 +424,15 @@ export class Network {
     return false;
   }
 
+  // the interchanges (world position of their centre node)
+  interchanges() {
+    return (this._ics ||= Object.entries(INTERCHANGES).filter(([n]) => this.nodes[n]).map(([node, d]) => {
+      const p = project(this.nodes[node].lat, this.nodes[node].lon);
+      return { node, x: p.x, z: p.y, R: d.R, data: d };
+    }));
+  }
+  ic(node) { return this.interchanges().find((x) => x.node === node) || null; }
+
   // the river under every (non-elevated) bridge of every road, made once: drawn with whichever road's bridge is
   // built, and kept clear of trees and houses whichever trip is driven
   riverList() {
@@ -422,10 +451,27 @@ export class Network {
           const mw = Math.sin(t / 520) * 90 + Math.sin(t / 190) * 20, fall = Math.min(1, Math.abs(t) / 250);
           pts.push(new THREE.Vector3(cx + nx * t + tx * mw * fall, 0, cz + nz * t + tz * mw * fall));
         }
-        this._rivers.push({ pts, width: b.width, centre: new THREE.Vector3(cx, 0, cz), road: c.id, sc: b.sc });
+        this._rivers.push({ pts: this.trimRiver(pts, b.width, c.id), width: b.width, centre: new THREE.Vector3(cx, 0, cz), road: c.id, sc: b.sc });
       }
     }
     return this._rivers;
+  }
+
+  // A river runs out to both sides of its bridge; it stops (narrowing away) before it would reach any other road
+  // or an interchange, since those have no bridge for it. pts: from one end to the other through the bridge.
+  trimRiver(pts, width, ownRoad) {
+    const n = pts.length, mid = (n - 1) / 2, skip = new Set([ownRoad]), clear = width / 2 + 30;
+    let a = 0, b = n - 1;
+    for (let i = Math.ceil(mid); i < n; i++) if (Math.abs(i - mid) * 50 > clear + 40 && this.nearAny(pts[i].x, pts[i].z, clear, skip)) { b = i - 1; break; }
+    for (let i = Math.floor(mid); i >= 0; i--) if (Math.abs(i - mid) * 50 > clear + 40 && this.nearAny(pts[i].x, pts[i].z, clear, skip)) { a = i + 1; break; }
+    const out = pts.slice(a, b + 1).map((p) => p.clone());
+    // narrow away over the last ~400 m of each cut end
+    const T = 8;
+    out.forEach((p, i) => {
+      const fromA = a > 0 ? i : 1e9, fromB = b < n - 1 ? out.length - 1 - i : 1e9;
+      p.w = Math.min(1, 0.12 + Math.min(fromA, fromB) / T);
+    });
+    return out;
   }
 
   // real km of a path

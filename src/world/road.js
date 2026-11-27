@@ -103,7 +103,8 @@ function riverFor(route, b) {
       const fall = Math.min(1, Math.abs(t) / 250);
       pts.push(new THREE.Vector3(centre.x + nx * t + tx * mw * fall, 0, centre.z + nz * t + tz * mw * fall));
     }
-    b.river = { pts, width: b.width, centre };
+    const own = route.segAt?.(b.sc)?.road;
+    b.river = { pts: route.net && own ? route.net.trimRiver(pts, b.width, own) : pts, width: b.width, centre };
     return b.river;
   }
 }
@@ -118,7 +119,10 @@ export function* roadChunk(route, ctx) {
   // toll plaza aprons: concrete, as wide as the plaza needs (route.halfAt)
   // (and no road under a junction pad: the pad is the road there, and two surfaces would flicker)
   const plaza = [...route.tolls.map((t) => ({ s0: t.s - PLAZA.reach, s1: t.s + PLAZA.reach })), ...route.ferries.map((f) => ({ s0: f.s0, s1: f.s1, ferry: true })),
-    ...(route.junctions || []).map((j) => { const c = Math.sqrt(Math.max(0, j.R * j.R - route.prof(j.s).half ** 2)) - 3; return { s0: j.s - c, s1: j.s + c, ferry: true }; })];
+    ...(route.junctions || []).map((j) => {
+      if (j.ic) return { s0: j.ic.s0, s1: j.ic.s1, ferry: true };      // an interchange builds its own carriageways
+      const c = Math.sqrt(Math.max(0, j.R * j.R - route.prof(j.s).half ** 2)) - 3; return { s0: j.s - c, s1: j.s + c, ferry: true };
+    })];
 
   const S0 = ctx.s0, S1 = Math.min(route.length, ctx.s1);
   const group = new THREE.Group();
@@ -157,7 +161,7 @@ export function* roadChunk(route, ctx) {
       }
       // median (with openings for U-turns and junctions, paved inside the gap): a grass strip between kerbs, or on
       // an expressway a concrete jersey barrier on asphalt
-      for (const [a, b] of splitAround([...route.uturns, ...route.ferries], s0, s1)) medianRibbons(route, a, b, P, add, mats);
+      for (const [a, b] of splitAround([...route.uturns, ...route.ferries, ...(route.icZones || [])], s0, s1)) medianRibbons(route, a, b, P, add, mats);
       for (const u of route.uturns) {
         if (u.s1 <= s0 || u.s0 >= s1) continue;
         add(ribbon(route, Math.max(s0, u.s0), Math.min(s1, u.s1), 2, [{ d: -M - 0.01, y: R(0.005), u: 0.12 }, { d: M + 0.01, y: R(0.005), u: 0.3 }], ASPHALT_TILE), mats.asphalt);
@@ -256,7 +260,11 @@ export function buildBridge(route, ctx, mats, b, regS = b.sc) {
   // piers
   const capGeo = new THREE.BoxGeometry(2 * H + 1, 1.2, 2.2);
   const piers = [];
-  for (let s = b.s0 + 18; s < b.s1 - 10; s += 32) piers.push(s);
+  for (let s = b.s0 + 18; s < b.s1 - 10; s += 32) {
+    // (b.pierOk: a flyover keeps its piers off the road it spans)
+    if (b.pierOk && ![-H, 0, H].every((d) => { const q = route.pointAt(s, d); return b.pierOk(q.x, q.z); })) continue;
+    piers.push(s);
+  }
   const pierDs = b.elevated ? [0] : P.two ? [-3, 0, 3, 0] : [-7, -3, 3, 7];
   const pm = new THREE.InstancedMesh(pierGeo, mats.bridgeConcrete, Math.max(1, piers.length * pierDs.length));
   const cm = new THREE.InstancedMesh(capGeo, mats.bridgeConcrete, Math.max(1, piers.length));
@@ -364,7 +372,7 @@ export function polyRibbon(pts, width, y, acc0 = 0) {
     const l = Math.hypot(dx, dz) || 1;
     dx /= l; dz /= l;
     if (i > 0) acc += pts[i].distanceTo(pts[i - 1]);
-    const w = width / 2 * (1 + 0.15 * Math.sin(acc / 300));
+    const w = width / 2 * (1 + 0.15 * Math.sin(acc / 300)) * (pts[i].w ?? 1);      // (w: a river narrowing away)
     // right = (-dz, dx)
     pos.push(pts[i].x + dz * w, y, pts[i].z - dx * w, pts[i].x - dz * w, y, pts[i].z + dx * w);
     uv.push(0, acc / 40, width / 40, acc / 40);

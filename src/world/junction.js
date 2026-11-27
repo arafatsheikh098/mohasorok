@@ -86,8 +86,8 @@ function board(route, s, d, side, tex, w, M) {
 }
 
 // which way a branch leaves, as the driver approaching on `side` sees it
-function arrowFor(route, j, b, side) {
-  const [tx, tz] = route.tangentAt(j.s);
+function arrowFor(route, j, b, side, at = j.s) {
+  const [tx, tz] = route.tangentAt(at);
   const hx = tx * -side, hz = tz * -side;                 // driving direction
   const k = Math.min(8, b.pts.length - 1);
   const dx = b.pts[k][0] - j.x, dz = b.pts[k][1] - j.z, l = Math.hypot(dx, dz) || 1;
@@ -104,6 +104,8 @@ export function* junctionChunk(route, ctx) {
     if (!ctx.in(j.s)) continue;
     const g = new THREE.Group();
     const h = route.roadHeight(j.s);
+    // (an interchange has no pad: world/interchange.js builds it, the side roads start at the edge of its circle)
+    if (!j.ic) {
     // the pad, and a grass skirt down to the fields
     const padGeo = new THREE.CircleGeometry(j.R, 48);
     const uv = padGeo.attributes.uv;
@@ -116,11 +118,12 @@ export function* junctionChunk(route, ctx) {
     skirt.position.set(j.x, h / 2 - 0.02, j.z);
     skirt.receiveShadow = true;
     g.add(pad, skirt);
+    }
     // the branch roads: carriageways, median, embankments (or one 2-lane strip)
     for (const b of j.branches) {
       const st = b.stub, e = b.len, ab = j.R + 1;
       // the asphalt starts just inside the pad's rim (not under it: two surfaces would flicker), the slopes outside it
-      const a = Math.sqrt(Math.max(0, j.R * j.R - st.prof(5).half ** 2)) - 3;
+      const a = j.ic ? j.ic.R : Math.sqrt(Math.max(0, j.R * j.R - st.prof(5).half ** 2)) - 3;
       if (e - a < 5) continue;
       const P = st.prof(a + 1), Mh = P.median, H = P.half;
       const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); };
@@ -130,11 +133,11 @@ export function* junctionChunk(route, ctx) {
         add(ribbon(st, a, e, 4, [{ d: -H, y: R(0), u: 1 }, { d: -Mh, y: R(0), u: 0 }], ASPHALT_TILE), am);
         add(ribbon(st, a, e, 4, [{ d: Mh, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), am);
         add(ribbon(st, a, e, 4, [{ d: -Mh, y: R(0.002), u: 0 }, { d: Mh, y: R(0.002), u: 0.4 }], ASPHALT_TILE), M.stub);
-        const m0 = j.R + 8;
+        const m0 = j.ic ? a : j.R + 8;
         if (e > m0 + 4) medianRibbons(st, m0, e, P, add, roadMats());
       }
       // embankments, except under a bridge deck; the bridge itself (deck sides, piers, lamps, the river below)
-      for (const [p0, p1] of splitAround(b.bridges, ab, e)) {
+      for (const [p0, p1] of splitAround(b.bridges, j.ic ? a : ab, e)) {
         add(ribbon(st, p0, p1, 4, [{ d: -H - ROAD.embank, y: G(0), u: 0 }, { d: -H, y: R(0), u: 2 }], 3), M.grass);
         add(ribbon(st, p0, p1, 4, [{ d: H, y: R(0), u: 0 }, { d: H + ROAD.embank, y: G(0), u: 2 }], 3), M.grass);
       }
@@ -147,10 +150,10 @@ export function* junctionChunk(route, ctx) {
   // direction boards 300 m before each junction, on both carriageways
   for (const j of route.junctions) {
     for (const side of [-1, 1]) {
-      const s = j.s + side * 300;
+      const s = j.ic ? (side < 0 ? j.ic.s0 - 260 : j.ic.s1 + 260) : j.s + side * 300;
       if (!ctx.in(s) || s < 30 || s > route.length - 30 || !j.branches.length) continue;
       if (route.bridgeAt(s) || route.junctions.some((o) => o !== j && Math.abs(o.s - s) < 60)) continue;
-      const lines = j.branches.map((b) => [b.target.bn, b.target.en, b.km, arrowFor(route, j, b, side)]);
+      const lines = j.branches.map((b) => [b.target.bn, b.target.en, b.km, arrowFor(route, j, b, side, j.ic ? s : j.s)]);
       const ahead = side < 0 ? route.places.find((p) => p.s > j.s + 200 && p.town) : [...route.places].reverse().find((p) => p.s < j.s - 200 && p.town);
       if (ahead) lines.push([nm(ahead, 'bn'), nm(ahead, 'en'), Math.max(1, Math.round(Math.abs(route.realKm(ahead.s) - route.realKm(j.s)))), '↑']);
       const road = route.segAt(j.s + side * 40).chain;

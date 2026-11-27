@@ -8,6 +8,7 @@ import { initFacilities } from './world/facilities.js';
 import { Network } from './net.js';
 import { Stream, disposeTree } from './world/stream.js';
 import { NetRoads } from './world/netroads.js';
+import { icMovePath } from './world/interchange.js';
 import { initJunctions, junctionChunk } from './world/junction.js';
 import { ferryChunk } from './world/ferry.js';
 import { buildAICams } from './world/aicams.js';
@@ -276,6 +277,7 @@ function buildWorld(path) {
   facilities = initFacilities(route);
   hud = new HUD(route, road.water);
   hud.free = settings.mode === 'free';
+  hud.dest = settings.mode === 'free' ? null : net.zillas.get(settings.trip.to)?.bn;     // (even after a wrong turn)
   passengers = new Passengers({ route, scene: corridorRoot, chunks, hud, player, free: settings.mode === 'free' });
   passengers.onBreak = onRestBreak;
   buildTripObjects();
@@ -383,33 +385,64 @@ function onward(step) {
   if (settings.mode === 'free') return straight();
   const goals = net.zillas.get(settings.trip.to)?.terminals || [];
   if (goals.includes(far)) return [];
-  return net.path(far, goals, { avoid: new Set([step.road]) }) || straight();
+  // carry on that way only if it is not much longer than turning round right here; otherwise it is the
+  // wrong road (the road goes on straight ahead, and the driver is told to turn round)
+  const on = net.path(far, goals, { avoid: new Set([step.road]) }), back = net.path(far, goals);
+  const Lr = net.roads.get(step.road).km;
+  if (on && (!back || net.pathKm(on) + 2 * Lr <= net.pathKm(back) + 30)) return on;
+  const s = straight();
+  s.wrong = true;
+  return s;
 }
 // is the bus on one of the side roads of a junction it is passing? then switch the trip onto it
 function junctionLogic() {
   const ph = player.phys, sp = player.bus.spec;
   const cx = ph.pos.x + Math.sin(ph.yaw) * sp.center, cz = ph.pos.z + Math.cos(ph.yaw) * sp.center;
+  const take = (j, b, fromS) => {
+    const prefix = route.path.slice(0, j.k);        // the roads up to this junction stay as they are
+    const step = { road: b.road, rev: b.rev };
+    const rest = onward(step);
+    const far = net.nodes[b.to];
+    const nm = (x) => x.bn.split(' (')[0];
+    const msg = settings.mode === 'free'
+      ? `🧭 <span class="bn">${nm(far)}</span> — ${b.stub.segs[0].chain.ref || ''} ${far.en.split(' (')[0]}`
+      : !rest.wrong && (rest.length || net.zillas.get(settings.trip.to)?.terminals.includes(b.to))
+        ? `🔄 <span class="bn">রুট বদল</span> — new route to ${settings.trip.to} via ${far.en.split(' (')[0]}`
+        : `⚠️ <span class="bn">ভুল রাস্তা</span> — this road does not go to ${settings.trip.to}. Turn around`;
+    reroute([...prefix, step, ...rest], fromS, msg);
+  };
   for (const j of route.junctions) {
+    // an interchange: did the bus take another ramp than the trip's? (only while driving through it, forwards)
+    if (j.ic) {
+      if (player.side > 0 || player.s < j.ic.s0 - 5 || player.s > j.ic.s1) continue;
+      const inRoad = route.path[j.k - 1]?.road, own = icMovePath(net, j.node, inRoad, route.path[j.k].road);
+      if (!own || pathDist(own, cx, cz) < 4.5) continue;
+      for (const b of j.branches) {
+        const alt = icMovePath(net, j.node, inRoad, b.road);
+        if (alt && pathDist(alt, cx, cz) < 3.2) { take(j, b, j.ic.s0); return; }
+      }
+      continue;
+    }
     if (Math.abs(player.s - j.s) > j.R + 120) continue;
     for (const b of j.branches) {
       const pr = b.stub.project(cx, cz, b.hint ?? -1);
       b.hint = pr.index;
       if (pr.s < j.R + 10 || pr.s > b.len - 30 || Math.abs(pr.d) > b.stub.prof(pr.s).half + 1.5) continue;
       if (Math.abs(pr.d) > Math.abs(player.d)) continue;           // still nearer the trip's own road
-      const prefix = route.path.slice(0, j.k);        // the roads up to this junction stay as they are
-      const step = { road: b.road, rev: b.rev };
-      const rest = onward(step);
-      const far = net.nodes[b.to];
-      const nm = (x) => x.bn.split(' (')[0];
-      const msg = settings.mode === 'free'
-        ? `🧭 <span class="bn">${nm(far)}</span> — ${b.stub.segs[0].chain.ref || ''} ${far.en.split(' (')[0]}`
-        : rest.length || net.zillas.get(settings.trip.to)?.terminals.includes(b.to)
-          ? `🔄 <span class="bn">রুট বদল</span> — new route to ${settings.trip.to} via ${far.en.split(' (')[0]}`
-          : `⚠️ <span class="bn">ভুল রাস্তা</span> — this road does not go to ${settings.trip.to}. Turn around`;
-      reroute([...prefix, step, ...rest], j.s, msg);
+      take(j, b, j.s);
       return;
     }
   }
+}
+// distance from (x, z) to a path (world/interchange.js PathRoad)
+function pathDist(p, x, z) {
+  let best = Infinity;
+  for (let i = 0; i < p.N - 1; i += 2) {
+    const j = Math.min(p.N - 1, i + 2), ax = p.px[i], az = p.pz[i], bx = p.px[j] - ax, bz = p.pz[j] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz || 1)));
+    best = Math.min(best, Math.hypot(ax + bx * t - x, az + bz * t - z));
+  }
+  return best;
 }
 // free drive: keep the road going ahead of the bus
 function extendFree() {
@@ -531,7 +564,10 @@ function constrain(dt) {
   const inner = P.median + 0.1 + halfAcross;
   const outer = bridge ? P.half - 0.1 - Math.min(halfAcross, 2) : P.toe + 45;
   let lo, hi;
-  if (open) { lo = -outer; hi = outer; } else if (sd < 0) { lo = -outer; hi = -inner; } else { lo = inner; hi = outer; }
+  // inside an interchange the other ramps are on both sides of the trip's carriageway: no median wall (stay
+  // within reach of them up high, where there is only air beyond)
+  const inIC = route.icZones?.some((z) => s > z.s0 && s < z.s1);
+  if (open) { lo = -outer; hi = outer; } else if (inIC) { const o = bridge ? P.half + 8 : P.toe + 45; lo = -o; hi = o; } else if (sd < 0) { lo = -outer; hi = -inner; } else { lo = inner; hi = outer; }
   let push = 0;
   if (d > hi) push = hi - d; else if (d < lo) push = lo - d;
   if (push !== 0) {

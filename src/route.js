@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ROAD, UTURN_GAP, PLAZA, profileOf } from './config.js';
 import { DS } from './net.js';
+import { icMove } from './world/interchange.js';
 
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const FILLET = 30;           // m of each road trimmed at a junction, replaced by a smooth curve through the node
@@ -59,9 +60,25 @@ export class Route {
   }
 
   // ---------------------------------------------------------------- building
+  // the interchange (data/interchanges.js) between path steps a and a + 1, with the corridor's path through it
+  _icAt(a) {
+    this._icMemo ||= new Map();
+    if (this._icMemo.has(a)) return this._icMemo.get(a);
+    let r = null;
+    const A = this.path[a], B = this.path[a + 1];
+    if (A && B && A.road !== B.road) {
+      const ca = this.net.road(A.road), node = A.rev ? ca.from : ca.to, ic = this.net.ic(node);
+      const pts = ic && ic.data.legs[A.road] && ic.data.legs[B.road] ? icMove(this.net, node, A.road, B.road) : null;
+      if (pts) r = { node, R: ic.R, pts, ic };
+    }
+    this._icMemo.set(a, r);
+    return r;
+  }
+
   _centreline() {
     const X = [], Z = [];
     this.segs = [];
+    const zones = [];
     this.path.forEach((step, k) => {
       const c = this.net.road(step.road), N = c.N;
       // the sharper the turn at a junction, the longer the curve through it (so a bus can take it)
@@ -74,13 +91,22 @@ export class Route {
         return Math.acos(Math.max(-1, Math.min(1, dot)));       // 0 = straight on, π = straight back
       };
       const fil = (th) => Math.min(70, FILLET * Math.max(1, th / (Math.PI / 3)));
+      const icA = k > 0 ? this._icAt(k - 1) : null, icB = k < this.path.length - 1 ? this._icAt(k) : null;
       const trimA = k > 0 ? fil(turn(this.path[k - 1], step)) : 0, trimB = k < this.path.length - 1 ? fil(turn(step, this.path[k + 1])) : 0;
       const trim = (t) => Math.min(t, c.length * 0.3);
+      // (at an interchange the road ends exactly at the edge of its circle, where the movement's path begins)
+      const tA = icA ? icA.R : trim(trimA), tB = icB ? icB.R : trim(trimB);
       // (a trip that starts where the bus was left on the road skips the part of the first road behind it)
       const cutA = k === 0 && step.cut ? Math.min(step.cut, c.length - 80) : 0;
-      const iA = Math.round(Math.max(trim(trimA), cutA) / DS), iB = N - 1 - Math.round(trim(trimB) / DS);
+      const iA = Math.round(Math.max(tA, cutA) / DS), iB = N - 1 - Math.round(tB / DS);
       const pt = (u) => (step.rev ? [c.px[N - 1 - u], c.pz[N - 1 - u]] : [c.px[u], c.pz[u]]);
-      if (k > 0) {
+      if (k > 0 && icA) {
+        // through an interchange: along the ramps and carriageways of this movement
+        const idx0 = X.length - 1, hs = [0];
+        for (let j = 1; j < icA.pts.length - 1; j++) { const q = icA.pts[j]; X.push(q.x); Z.push(q.z); hs.push(q.h); }
+        hs.push(0);
+        zones.push({ node: icA.node, ic: icA.ic, idx0, idx1: X.length, hs });
+      } else if (k > 0) {
         // a quadratic curve from the end of the last road to this road, bending through the node they share
         const [nx, nz] = pt(0), [ex, ez] = pt(iA);
         const sx = X[X.length - 1], sz = Z[Z.length - 1];
@@ -98,6 +124,14 @@ export class Route {
     const n = X.length, acc = [0];
     for (let i = 1; i < n; i++) acc.push(acc[i - 1] + Math.hypot(X[i] - X[i - 1], Z[i] - Z[i - 1]));
     for (const g of this.segs) g.o = acc[g.i0];
+    // interchange zones: corridor s range and the road's height along it (above the road base)
+    this.icZones = zones.map((z) => {
+      const s0 = acc[z.idx0], s1 = acc[z.idx1];
+      const hs = z.hs.map((h, i) => [acc[z.idx0 + i], h]);
+      const n = z.ic.node, nm = this.net.nodes[n];
+      return { node: n, s0, s1, sc: (s0 + s1) / 2, R: z.ic.R, x: z.ic.x, z: z.ic.z, hs,
+        bridge: { s0, s1, sc: (s0 + s1) / 2, ic: true, elevated: true, en: `${nm.en} Interchange`, bn: `${nm.bn} ইন্টারচেঞ্জ` } };
+    });
     const N = Math.max(2, Math.floor(acc[n - 1] / DS) + 1);
     this.N = N;
     this.px = new Float64Array(N); this.pz = new Float64Array(N);
@@ -136,6 +170,20 @@ export class Route {
       const at = k === 0 ? -1e9 : (p.o + p.u1 - p.u0 + g.o) / 2;
       return [at, profileOf(g.chain.lanes)];
     });
+    // an expressway narrowing to 2 + 2 lanes into a node (road option narrow: { node: [lanes, m] })
+    this.segs.forEach((g, k) => {
+      const nw = g.chain.def.narrow;
+      if (!nw) return;
+      const c = g.chain, L = c.length;
+      for (const [node, [lanes, len]] of Object.entries(nw)) {
+        if (node !== c.from && node !== c.to) continue;
+        const [u0, u1] = node === c.to ? [L - len, L] : [0, len];
+        const a = this._s(g, u0, 1e9), b = this._s(g, u1, 1e9), lo = Math.min(a, b), hi = Math.max(a, b);
+        if (node === g.to) this.profTab.push([lo, profileOf(lanes)]);
+        else { this.profTab[k][1] = profileOf(lanes); this.profTab.push([hi, profileOf(c.lanes)]); }
+      }
+    });
+    this.profTab.sort((x, y) => x[0] - y[0]);
   }
 
   // the lane profile (PROFILE in config.js) at s
@@ -170,7 +218,8 @@ export class Route {
       }
       for (const p of c.places) {
         if (k > 0 && p.node === g.from) continue;          // the node it shares with the previous road (already in)
-        const s = this._s(g, p.s, FILLET + 1);
+        const zn = this.icZones.find((z) => z.node === p.node);
+        const s = zn ? zn.sc : this._s(g, p.s, FILLET + 1);
         if (s === null) continue;
         this.places.push({ ...p, s: THREE.MathUtils.clamp(s, 0, this.length), road: c.id, seg: k });
       }
@@ -254,6 +303,12 @@ export class Route {
       const used = new Set([this.segs[k - 1].road, this.segs[k].road]);
       const branches = (this.net.adj.get(node) || []).filter((e) => !used.has(e.road));
       const n = this.net.nodes[node];
+      const zn = this.icZones.find((z) => z.node === node);
+      if (zn) {
+        // an interchange: no pad, the movement's ramps; the other roads start at the edge of its circle
+        this.junctions.push({ s: zn.sc, node, k, name: n, x: zn.x, z: zn.z, R: Math.max(zn.R, (zn.s1 - zn.s0) / 2 + 10), branches, ic: zn });
+        continue;
+      }
       // the pad is centred on the node itself (where every road there starts), not on our curve through it:
       // on a sharp turn the curve cuts the corner, and the side roads would start outside the pad
       const g = this.segs[k], ch = g.chain, ni = g.rev ? ch.N - 1 : 0;
@@ -267,7 +322,7 @@ export class Route {
     }
     this.uturns.sort(byS);
     // keep U-turn openings out of the junction areas
-    this.uturns = this.uturns.filter((u) => u.junction || !this.junctions.some((j) => Math.abs(u.s - j.s) < PAD_R + 60));
+    this.uturns = this.uturns.filter((u) => u.junction || !this.junctions.some((j) => Math.abs(u.s - j.s) < (j.ic ? j.R : PAD_R) + 60));
   }
 
   // ---------------------------------------------------------------- real kilometres
@@ -406,6 +461,8 @@ export class Route {
 
   bridgeAt(s) {
     for (const b of this.bridges) if (s > b.s0 && s < b.s1) return b;
+    // up on an interchange's flyover or its ramps: walls either side
+    for (const z of this.icZones || []) if (s > z.s0 && s < z.s1 && this._icH(z, s) > 1.5) return z.bridge;
     for (const f of this.ferries || []) if (s > f.s0 && s < f.s1) return f;      // (nothing is built on the river either)
     return null;
   }
@@ -424,7 +481,15 @@ export class Route {
   halfAt(s) { const h = this.prof(s).half; return h + (PLAZA.half - h) * this.plazaW(s); }
 
   // road surface height (centreline, with bridge ramps)
+  _icH(z, s) {
+    const T = z.hs;
+    let lo = 0, hi = T.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m][0] <= s) lo = m; else hi = m; }
+    const [s0, h0] = T[lo], [s1, h1] = T[hi];
+    return h0 + (h1 - h0) * THREE.MathUtils.clamp((s - s0) / Math.max(1e-6, s1 - s0), 0, 1);
+  }
   roadHeight(s) {
+    for (const z of this.icZones || []) if (s >= z.s0 && s <= z.s1) return ROAD.baseHeight + this._icH(z, s);
     let h = ROAD.baseHeight;
     for (const b of this.bridges) {
       const ramp = b.ramp || ROAD.rampLen, top = b.height || ROAD.bridgeHeight;     // (a flyover is higher, with longer ramps)
@@ -446,7 +511,7 @@ export class Route {
   // the junction pad (s, d) stands on, or null
   junctionAt(s, d) {
     for (const j of this.junctions || []) {
-      if (Math.abs(s - j.s) > j.R + 40) continue;
+      if (j.ic || Math.abs(s - j.s) > j.R + 40) continue;
       const [x, z] = this._xz(s, d);
       if (Math.hypot(x - j.x, z - j.z) < j.R + 1) return j;
     }
