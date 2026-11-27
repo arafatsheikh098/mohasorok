@@ -60,7 +60,8 @@ const counterMats = sharedMats(() => ({
 }));
 
 export class Passengers {
-  constructor({ route, scene, chunks, hud, player }) {
+  constructor({ route, scene, chunks, hud, player, free = false }) {
+    this.free = free;          // free drive: no passengers, no counters
     this.route = route; this.scene = scene; this.hud = hud; this.player = player;
     this.r = Math.random;
     this.counters = [];
@@ -103,6 +104,7 @@ export class Passengers {
   // at every zilla town on the way (and at the turn-off for a zilla just off the road) and at the destination.
   // The trip drives the left carriageway (side -1); the other carriageway gets the same towns' counters.
   _planCounters() {
+    if (this.free) return;
     const R = this.route, net = R.net;
     const offs = [0, 40, -40, 100, -100, 160, -160, 230, -230, 300, -300];
     const nm = (x, k) => x[k].split(' (')[0];
@@ -140,6 +142,36 @@ export class Passengers {
       this.counters.push(c);
     }
     this.counters.sort((x, y) => x.s - y.s);
+  }
+
+  // The bus turned onto another road (src/main.js reroute): plan the counters of the new corridor. Everyone
+  // aboard stays; a passenger whose stop is no longer on the way gets down at the next stop instead (unhappy).
+  setRoute(route) {
+    this.route = route;
+    this.ends = [
+      { kind: 'end', end: 0, s: 0, side: 1, bn: route.startPlace.bn, en: route.startPlace.en },
+      { kind: 'end', end: 1, s: route.length, side: -1, bn: route.endPlace.bn, en: route.endPlace.en },
+    ];
+    for (const c of this.counters) for (const w of c.waiting) this._drop(w.fig);
+    if (this.stop && !this.door) this.stop = null;
+    this.counters = [];
+    this._planCounters();
+    let moved = 0;
+    for (const x of this.aboard) {
+      if (x.dest.kind === 'end') { x.dest = this.ends[x.dest.end]; continue; }
+      const same = this.counters.find((c) => c.side === x.dest.side && c.en === x.dest.en);
+      if (same) { x.dest = same; continue; }
+      const p = this.player, dir = p.side < 0 ? 1 : -1;
+      x.dest = this._later(p.side, p.s)[0];
+      moved++;
+      void dir;
+    }
+    if (moved) {
+      this.mood = Math.max(0, this.mood - 6 * Math.min(3, moved));
+      this.hud.toast(`😠 ${moved} passenger${moved > 1 ? 's' : ''} wanted a town that is not on the new road — they will get down at the next stop`, 'bad', 4000);
+    }
+    this.hud.addMarkers?.(this.counters.map((c) => ({ p: route.pointAt(c.s, c.side * (ROAD.half + 3)), icon: '🚏', col: '#2ecc71' })));
+    this._ui(true);
   }
 
   // counter meshes for one block of the world (world/stream.js)
@@ -327,7 +359,7 @@ export class Passengers {
     // the origin terminal crowd (they appear beside the door when it opens)
     const orig = this.ends[this.originEnd];
     this.originCrowd = [];
-    const n = Math.round(this.capacity() * (0.55 + this.r() * 0.3));
+    const n = this.free ? 0 : Math.round(this.capacity() * (0.55 + this.r() * 0.3));
     for (let k = 0; k < n; k++) this.originCrowd.push(this._newPax(this.tripSide, orig.s));
     this._ui(true);
   }

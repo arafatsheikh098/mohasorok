@@ -47,6 +47,7 @@ export class Stream {
     Object.assign(this, { route, scene, chunks, obstacles, gates, jobs, ahead, behind, keep });
     this.n = Math.ceil(route.length / CHUNK);
     this.blocks = new Map();       // chunk index -> block
+    this.stale = new Map();        // blocks of the previous corridor, still shown until their replacement is built
     this.queue = null;             // block being built: { c, gen }
     this.budget = 4;               // ms per frame
   }
@@ -73,17 +74,44 @@ export class Stream {
   *_run(b) {
     for (const job of this.jobs) yield* job(this.route, b.ctx);
     b.done = true;
+    const old = this.stale.get(b.c);
+    if (old) this._disposeStale(old);
   }
+
+  // The trip turned onto another road at fromS: everything before it is the same road (keep it), everything
+  // after it is rebuilt for the new corridor. The old blocks stay on screen until the new ones are ready, so
+  // nothing flickers; their solid parts and toll gates go at once.
+  setRoute(route, fromS) {
+    this.route = route;
+    this.n = Math.ceil(route.length / CHUNK);
+    const c0 = Math.max(0, Math.floor((fromS - 80) / CHUNK));
+    for (const b of [...this.blocks.values()]) {
+      if (b.c < c0) continue;
+      if (b === this.queue) this.queue = null;
+      this._dropGameplay(b);
+      this.blocks.delete(b.c);
+      if (!b.done || this.stale.has(b.c)) { this._final(b); continue; }    // half built: just remove it
+      this.chunks.retag(b.c, `stale${b.c}`);
+      this.stale.set(b.c, b);
+    }
+  }
+  _dropGameplay(b) {
+    const drop = (arr, list) => { if (!list.length) return; const set = new Set(list); for (let i = arr.length - 1; i >= 0; i--) if (set.has(arr[i])) arr.splice(i, 1); };
+    drop(this.obstacles, b.obstacles); drop(this.gates, b.gates);
+    b.obstacles = []; b.gates = [];
+  }
+  _final(b, tag = b.c) {
+    for (const fn of b.hooks) fn();
+    this.chunks.drop(tag);
+    this.scene.remove(b.root);
+    disposeTree(b.root);
+  }
+  _disposeStale(b) { this.stale.delete(b.c); this._final(b, `stale${b.c}`); }
 
   _dispose(b) {
     if (b === this.queue) this.queue = null;
-    for (const fn of b.hooks) fn();
-    const drop = (arr, list) => { if (!list.length) return; const set = new Set(list); for (let i = arr.length - 1; i >= 0; i--) if (set.has(arr[i])) arr.splice(i, 1); };
-    drop(this.obstacles, b.obstacles);
-    drop(this.gates, b.gates);
-    this.chunks.drop(b.c);
-    this.scene.remove(b.root);
-    disposeTree(b.root);
+    this._dropGameplay(b);
+    this._final(b);
     this.blocks.delete(b.c);
   }
 
@@ -110,6 +138,7 @@ export class Stream {
 
   _trim(s) {
     for (const b of [...this.blocks.values()]) if (Math.abs((b.c + 0.5) * CHUNK - s) > this.keep + CHUNK / 2) this._dispose(b);
+    for (const b of [...this.stale.values()]) if (b.c >= this.n || Math.abs((b.c + 0.5) * CHUNK - s) > this.keep + CHUNK / 2) this._disposeStale(b);
   }
 
   update(s, dir = 1) {
@@ -128,5 +157,8 @@ export class Stream {
   // everything still to build near s (for a loading bar)
   pending(s, dir = 1) { return this._wanted(s, dir).filter((c) => !this.blocks.get(c)?.done).length; }
 
-  disposeAll() { for (const b of [...this.blocks.values()]) this._dispose(b); }
+  disposeAll() {
+    for (const b of [...this.blocks.values()]) this._dispose(b);
+    for (const b of [...this.stale.values()]) this._disposeStale(b);
+  }
 }

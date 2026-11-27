@@ -106,6 +106,16 @@ export class Traffic {
     for (const v of this.list) { v.rest = null; v.restSeen = null; v.booth = null; v.plan = null; }
   }
 
+  // the corridor changed after fromS (the bus turned): vehicles on the old road beyond it go somewhere else
+  rebase(fromS, playerS) {
+    for (const v of this.list) {
+      if (v.s < fromS - 30 && !v.rest) continue;
+      if (v.rest?.slot) v.rest.slot.v = null;
+      v.rest = null; v.restSeen = null; v.booth = null; v.plan = null;
+      this.spawn(v, playerS, false);
+    }
+  }
+
   // lane centre d for a vehicle: forward lanes are negative d, oncoming positive
   laneD(dir, fast) { const d = LANES.fwd[fast ? 1 : 0]; return dir > 0 ? d : -d; }
   isFast(d) { return Math.abs(d) < ROAD.median + ROAD.lane; }

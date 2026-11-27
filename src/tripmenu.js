@@ -64,6 +64,10 @@ export function initTripMenu({ net, settings, onChange }) {
   $('trip-from').onchange = (e) => { if (!set(e.target.value, settings.trip.to)) render(); e.target.blur(); };
   $('trip-to').onchange = (e) => { if (!set(settings.trip.from, e.target.value)) render(); e.target.blur(); };
   $('trip-swap').onclick = () => set(settings.trip.to, settings.trip.from);
+  // free drive: start from a zilla and take whatever road you like
+  const free = $('free-drive');
+  free.checked = settings.mode === 'free';
+  free.onchange = () => { settings.mode = free.checked ? 'free' : 'trip'; free.blur(); render(); onChange(settings.trip.from, settings.trip.to); };
   $('tap-mode').querySelectorAll('button').forEach((b) => {
     b.onclick = () => { mode = b.dataset.v; $('tap-mode').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
   });
@@ -89,13 +93,22 @@ export function initTripMenu({ net, settings, onChange }) {
     for (const z of zillas) { const d = Math.hypot(X(z.lon) - x, Y(z.lat) - y); if (d < bd && reachable.has(z.key)) { bd = d; best = z; } }
     if (!best) return;
     const { from, to } = settings.trip;
-    if (mode === 'from') { if (!set(best.key, best.key === to ? from : to)) set(best.key, from); }
+    if (mode === 'from' || settings.mode === 'free') { if (!set(best.key, best.key === to ? from : to)) set(best.key, from); }
     else if (!set(from, best.key)) set(to, best.key);
   };
 
   function render() {
     const { from, to } = settings.trip;
+    const isFree = settings.mode === 'free';
     $('trip-from').value = from; $('trip-to').value = to;
+    $('trip-to').disabled = isFree; $('trip-swap').disabled = isFree;
+    if (isFree) {
+      const zf = net.zillas.get(from);
+      $('start-route').textContent = `${zf.bn} → 🧭`;
+      $('trip-sum').innerHTML = `<span class="bn">${zf.bn}</span> · free drive: no passengers and no destination. At every junction the green boards show where each road goes — drive onto any of them. <b>O</b> opens the map.`;
+      draw(null);
+      return;
+    }
     chips.querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.from === from && b.dataset.to === to));
     const sum = tripSummary(net, from, to);
     const zf = net.zillas.get(from), zt = net.zillas.get(to);

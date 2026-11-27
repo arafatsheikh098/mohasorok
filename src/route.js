@@ -94,15 +94,13 @@ export class Route {
     const pair = (g, a, b) => { const x = this._s(g, a, 1e9), y = this._s(g, b, 1e9); return x < y ? [x, y] : [y, x]; };
     this.places = []; this.bridges = []; this.tolls = []; this.stations = []; this.rests = []; this.terminals = [];
     this.uturns = []; this.footbridges = []; this.hills = []; this.seas = []; this.policeSpots = [];
-    const seenNode = new Set();
-    for (const g of this.segs) {
+    this.segs.forEach((g, k) => {
       const c = g.chain;
       for (const p of c.places) {
-        if (p.node && seenNode.has(p.node)) continue;
+        if (k > 0 && p.node === g.from) continue;          // the node it shares with the previous road (already in)
         const s = this._s(g, p.s, FILLET + 1);
         if (s === null) continue;
-        if (p.node) seenNode.add(p.node);
-        this.places.push({ ...p, s: THREE.MathUtils.clamp(s, 0, this.length), road: c.id });
+        this.places.push({ ...p, s: THREE.MathUtils.clamp(s, 0, this.length), road: c.id, seg: k });
       }
       for (const b of c.bridges) {
         const sc = this._s(g, b.sc);
@@ -138,7 +136,7 @@ export class Route {
         const a = Math.max(0, s0), b = Math.min(this.length, s1);
         if (b - a > 50) list.push({ s0: a, s1: b, openA: g.rev ? h.openB : h.openA, openB: g.rev ? h.openA : h.openB });
       }
-    }
+    });
     const byS = (a, b) => a.s - b.s;
     this.places.sort(byS);
     this.places.forEach((p, i) => { p.index = i; });
@@ -171,13 +169,13 @@ export class Route {
     // it, and the other roads branch off (their first stretch is built too, see world/junction.js)
     this.junctions = [];
     for (let k = 1; k < this.segs.length; k++) {
-      const node = this.segs[k].from, p = this.places.find((x) => x.node === node);
+      const node = this.segs[k].from, p = this.places.find((x) => x.node === node && x.seg === k - 1);
       if (!p) continue;
       const used = new Set([this.segs[k - 1].road, this.segs[k].road]);
       const branches = (this.net.adj.get(node) || []).filter((e) => !used.has(e.road));
       const n = this.net.nodes[node];
       const c = this._xz(p.s, 0);
-      this.junctions.push({ s: p.s, node, name: n, x: c[0], z: c[1], R: PAD_R, branches });
+      this.junctions.push({ s: p.s, node, k, name: n, x: c[0], z: c[1], R: PAD_R, branches });
       this.uturns.push({ s: p.s, s0: p.s - PAD_R - 6, s1: p.s + PAD_R + 6, junction: true });
     }
     this.uturns.sort(byS);

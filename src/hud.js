@@ -7,19 +7,11 @@ const $ = (id) => document.getElementById(id);
 
 export class HUD {
   constructor(route, water) {
-    this.route = route;
     this.gps = $('gps');
     this.gx = this.gps.getContext('2d');
     this.dash = $('dash');
     this.dx = this.dash.getContext('2d');
     this.toasts = $('toasts');
-    // GPS polyline every 10 m
-    this.pts = [];
-    for (let s = 0; s <= route.length; s += 10) {
-      const p = route.pointAt(s, 0);
-      this.pts.push([p.x, p.z]);
-    }
-    this.rivers = water.rivers.map((r) => ({ pts: r.pts.map((p) => [p.x, p.z]), w: r.width }));
     // the other roads of the network (rough lines through their towns), for the minimap and the big map
     this.net = route.net;
     this.roads = [...route.net.roads.values()].filter((c) => !c.def.link).map((c) => {
@@ -27,13 +19,27 @@ export class HUD {
       const xs = pts.map((p) => p[0]), zs = pts.map((p) => p[1]);
       return { c, pts, box: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] };
     });
-    this.onTrip = new Set(route.path.map((p) => p.road));
+    this.setRoute(route, water);
+  }
+
+  // a new trip corridor (a new trip, or the bus turned onto another road)
+  setRoute(route, water) {
+    this.route = route;
+    // GPS polyline every 10 m
+    this.pts = [];
+    for (let s = 0; s <= route.length; s += 10) {
+      const p = route.pointAt(s, 0);
+      this.pts.push([p.x, p.z]);
+    }
+    this.rivers = water.rivers.map((r) => ({ pts: r.pts.map((p) => [p.x, p.z]), w: r.width }));
     this.markers = [
       ...route.stations.map((st) => ({ p: route.pointAt(st.sc, st.side * 16), icon: '⛽', col: '#ffb300' })),
       ...route.rests.map((r) => ({ p: route.pointAt(r.sc, r.side * 20), icon: '🍛', col: '#ff7043' })),
-      ...route.uturns.map((u) => ({ p: route.pointAt(u.s, 0), icon: 'U', col: '#4aa3ff' })),
+      ...route.uturns.filter((u) => !u.junction).map((u) => ({ p: route.pointAt(u.s, 0), icon: 'U', col: '#4aa3ff' })),
       ...route.tolls.map((t) => ({ p: route.pointAt(t.s, 0), icon: '৳', col: '#ff5252' })),
     ];
+    this.onTrip = new Set(route.path.map((p) => p.road));
+    this._label = null;
   }
 
   // extra minimap markers (bus counters etc.): [{ p: Vector3, icon, col }]

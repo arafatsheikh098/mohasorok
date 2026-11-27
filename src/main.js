@@ -42,6 +42,7 @@ class Chunks {
   // tag: the stream block the object belongs to (dropped with it), or undefined for the whole trip
   register(obj, s, r, tag) { this.list.push({ obj, s, r, tag }); }
   drop(tag) { this.list = this.list.filter((c) => c.tag !== tag); }
+  retag(from, to) { for (const c of this.list) if (c.tag === from) c.tag = to; }
   clear() { this.list = []; }
   update(s) {
     const R = VIEW_CHUNKS * CHUNK;
@@ -83,10 +84,10 @@ if (!settings.trip?.from || !settings.trip?.to) settings.trip = settings.dir ===
 settings.seats = settings.seats || {};
 settings.type = career.ownedType(settings.type);     // career: only buses the company owns can be driven
 function saveSettings() {
-  const { type, time, traffic, quality, qualityManual, trip, seats } = settings;
-  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, trip, seats, opId: settings.op.id })); } catch { /* private mode */ }
+  const { type, time, traffic, quality, qualityManual, trip, mode, seats } = settings;
+  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, trip, mode, seats, opId: settings.op.id })); } catch { /* private mode */ }
 }
-let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;
+let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;   // eslint-disable-line prefer-const
 let net, stream, corridorRoot;   // the road network, the world streamer, and the per-trip objects (src/world/stream.js)
 let passengers;   // bus counters, boarding / alighting (src/passengers.js)
 let weather;      // rain, fog, wet road, wipers (src/world/weather.js)
@@ -188,10 +189,23 @@ function startPoint() {
   return t ? [t.bay.s, t.bay.d] : [20, ROAD.laneCenters[0]];
 }
 // the terminal the trip ends at
-function destTerminal() { return route.terminals.find((x) => x.end === 1); }
+function destTerminal() {
+  if (settings.mode === 'free') return null;
+  const goals = net.zillas.get(settings.trip.to)?.terminals || [];
+  return route.terminals.find((x) => x.end === 1 && goals.includes(x.node));
+}
 
 // the roads of the chosen trip
-function tripPath() { return net.trip(settings.trip.from, settings.trip.to) || net.trip('Dhaka', 'Chattogram'); }
+function tripPath() {
+  if (settings.mode === 'free') {
+    // free drive: out of the start zilla's terminal, then straight on
+    const z = net.zillas.get(settings.trip.from) || net.zillas.get('Dhaka');
+    const t = z.terminals[0], link = net.adj.get(t)[0];
+    const first = { road: link.road, rev: link.rev };
+    return [first, ...net.straightOn(link.to, first, 160)];
+  }
+  return net.trip(settings.trip.from, settings.trip.to) || net.trip('Dhaka', 'Chattogram');
+}
 // the key the career keeps the fastest time under ('ctg' / 'dhk' for the original N1 trips)
 function tripKey() {
   const { from, to } = settings.trip;
@@ -206,22 +220,35 @@ function buildWorld(path) {
   corridorRoot = new THREE.Group();
   corridorRoot.name = 'corridor';
   scene.add(corridorRoot);
+  tripRoot = null;
   chunks.clear();
   route = new Route(net, path);
   initJunctions(route, net);
   road = initRoad(route);
   scenery = initScenery(route, scene, { treeDensity: (QUALITY[settings.quality] || QUALITY.high).treeDensity }, road.water);
   facilities = initFacilities(route);
-  aicams = buildAICams(route, corridorRoot, chunks);
   hud = new HUD(route, road.water);
-  passengers = new Passengers({ route, scene: corridorRoot, chunks, hud, player });
+  passengers = new Passengers({ route, scene: corridorRoot, chunks, hud, player, free: settings.mode === 'free' });
   passengers.onBreak = onRestBreak;
-  police = new Police({ route, scene: corridorRoot, chunks, obstacles: facilities.obstacles, counters: passengers.counters, hud, player });
+  buildTripObjects();
   stream = new Stream({ route, scene, chunks, obstacles: facilities.obstacles, gates: facilities.gates,
     jobs: [roadChunk, junctionChunk, scenery.chunk, facilities.chunk, (r, ctx) => passengers.chunk(r, ctx)] });
   if (weather) { weather.setRoute(route); weather.hud = hud; }
   if (rig) rig.route = route;
   if (traffic) traffic.setRoute(route, facilities.gates);
+}
+// the trip's AI cameras and police checkpoints (made again whenever the corridor changes)
+let tripRoot = null;
+function buildTripObjects() {
+  if (tripRoot) { corridorRoot.remove(tripRoot); disposeTree(tripRoot); }
+  chunks.drop(undefined);
+  // police obstacles: drop the old ones (they are tagged), the new checkpoints add theirs
+  for (let i = facilities.obstacles.length - 1; i >= 0; i--) if (facilities.obstacles[i].police) facilities.obstacles.splice(i, 1);
+  tripRoot = new THREE.Group();
+  corridorRoot.add(tripRoot);
+  aicams = buildAICams(route, tripRoot, chunks);
+  const obs = { push: (...o) => { for (const x of o) x.police = true; facilities.obstacles.push(...o); } };
+  police = new Police({ route, scene: tripRoot, chunks, obstacles: obs, counters: passengers.counters, hud, player });
 }
 // a different trip chosen in the menu
 function changeTrip() {
@@ -229,7 +256,74 @@ function changeTrip() {
   restartTrip();
   stream.buildNow(player.s, 1);
 }
+
+// ---------- turning at junctions (open map) ----------
+// The trip corridor is one road (src/route.js); the other roads at a junction are built for ~900 m
+// (world/junction.js). Drive onto one of them and the corridor is rebuilt: the same road up to the junction,
+// then the road you took, then on to the destination (trip) or straight on (free drive).
+function reroute(path, fromS, msg) {
+  const keepS = player.s;
+  route = new Route(net, path);
+  route.rerouted = true;
+  initJunctions(route, net);
+  road = initRoad(route);
+  scenery.setRoute(route);
+  facilities.setRoute(route);
+  stream.setRoute(route, fromS);
+  hud.setRoute(route, road.water);
+  passengers.setRoute(route);
+  buildTripObjects();
+  weather.setRoute(route); rig.route = route;
+  traffic.setRoute(route, facilities.gates);
+  traffic.rebase(fromS, keepS);
+  player.hint = -1;
+  player.termHint = false;
+  if (msg) hud.toast(msg, 'good', 3500);
+}
+// the onward roads after a turn onto `step` at `node`
+function onward(step) {
+  const far = step.rev ? net.roads.get(step.road).from : net.roads.get(step.road).to;
+  if (settings.mode === 'free') return net.straightOn(far, step);
+  const goals = net.zillas.get(settings.trip.to)?.terminals || [];
+  if (goals.includes(far)) return [];
+  return net.path(far, goals, { avoid: new Set([step.road]) }) || [];
+}
+// is the bus on one of the side roads of a junction it is passing? then switch the trip onto it
+function junctionLogic() {
+  const ph = player.phys, sp = player.bus.spec;
+  const cx = ph.pos.x + Math.sin(ph.yaw) * sp.center, cz = ph.pos.z + Math.cos(ph.yaw) * sp.center;
+  for (const j of route.junctions) {
+    if (Math.abs(player.s - j.s) > j.R + 120) continue;
+    for (const b of j.branches) {
+      const pr = b.stub.project(cx, cz, b.hint ?? -1);
+      b.hint = pr.index;
+      if (pr.s < j.R + 10 || pr.s > b.len - 30 || Math.abs(pr.d) > ROAD.half + 1.5) continue;
+      if (Math.abs(pr.d) > Math.abs(player.d)) continue;           // still nearer the trip's own road
+      const prefix = route.path.slice(0, j.k);        // the roads up to this junction stay as they are
+      const step = { road: b.road, rev: b.rev };
+      const rest = onward(step);
+      const far = net.nodes[b.to];
+      const nm = (x) => x.bn.split(' (')[0];
+      const msg = settings.mode === 'free'
+        ? `🧭 <span class="bn">${nm(far)}</span> — ${b.stub.segs[0].chain.ref || ''} ${far.en.split(' (')[0]}`
+        : rest.length || net.zillas.get(settings.trip.to)?.terminals.includes(b.to)
+          ? `🔄 <span class="bn">রুট বদল</span> — new route to ${settings.trip.to} via ${far.en.split(' (')[0]}`
+          : `⚠️ <span class="bn">ভুল রাস্তা</span> — this road does not go to ${settings.trip.to}. Turn around`;
+      reroute([...prefix, step, ...rest], j.s, msg);
+      return;
+    }
+  }
+}
+// free drive: keep the road going ahead of the bus
+function extendFree() {
+  if (settings.mode !== 'free' || player.s < route.length - 3500 || player.side > 0) return;
+  const last = route.path[route.path.length - 1];
+  const end = last.rev ? net.roads.get(last.road).from : net.roads.get(last.road).to;
+  const more = net.straightOn(end, last, 120);
+  if (more.length) reroute([...route.path, ...more], route.length - 40, null);
+}
 function restartTrip() {
+  if (route.rerouted) { buildWorld(tripPath()); stream.buildNow(startPoint()[0], 1); }
   resetPlayer(...startPoint());
   Object.assign(player, { elapsed: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false,
     fuel: TANK_LITRES * START_FUEL, fuelCost: 0, tollCost: 0, refuelling: false, fuelWarn: 0 });
@@ -237,7 +331,7 @@ function restartTrip() {
   traffic.init(player.s);
   setTime(settings.time);                       // clock back to the chosen start time
   Object.assign(player, { sinceBreak: 0, breaks: 0, breakWarned: false, resting: 0, restPrompt: false, termHint: false, arriveT: 0, inTerminal: route.terminalAt(player.s, player.d) });
-  passengers?.reset(settings.dir);
+  passengers?.reset();
   police?.reset();
   weather?.reset(sky.hour);
 }
@@ -541,7 +635,7 @@ function events(dt) {
     player.termHint = true;
     hud.toast(`🚌 <span class="bn">${dest.bn}</span><br><small>Cross at the median opening by the gate, drive into the yard, stop and press G to let the passengers off</small>`, 'good', 5500);
   }
-  const atEnd = s >= route.length - 4;
+  const atEnd = !!dest && s >= route.length - 4;
   // in the destination yard the trip ends once everyone has got down (G) and the door is shut
   const parked = !!dest && player.inTerminal === dest && Math.abs(player.phys.v) < 0.5;
   player.arriveT = parked && (!passengers || passengers.allOff()) ? (player.arriveT || 0) + dt : 0;
@@ -1021,6 +1115,8 @@ function frame(now) {
       constrain(dt / 2);
     }
     placeBusModel(dt);
+    junctionLogic();
+    extendFree();
     tollLogic(dt);
     fuelLogic(dt);
     voiceLogic(dt);

@@ -263,6 +263,41 @@ export class Network {
     }
   }
 
+  // the direction a road leaves `node` in (unit x, z), from its first stretch
+  leaving(node, step) {
+    const c = this.roads.get(step.road), st = c._stops;
+    const seq = step.rev ? [...st].reverse() : st;
+    const a = project(seq[0].lat, seq[0].lon), b = project(seq[1].lat, seq[1].lon);
+    const d = b.sub(a), l = d.length() || 1;
+    return [d.x / l, d.y / l];
+  }
+  // Free drive: from `node` (arriving along road `fromStep`), keep going the straightest way at every junction
+  // for about `km` real km; never into a terminal yard, a ferry or back the way we came.
+  straightOn(node, fromStep, km = 160) {
+    const out = [];
+    let at = node, prev = fromStep, left = km;
+    const used = new Set([fromStep.road]);
+    while (left > 0) {
+      // the arriving direction = the reverse of how the previous road leaves this node
+      const back = this.leaving(at, { road: prev.road, rev: !prev.rev });
+      const hx = -back[0], hz = -back[1];
+      let best = null, bd = -Infinity;
+      for (const e of this.adj.get(at) || []) {
+        const c = this.roads.get(e.road);
+        if (used.has(e.road) || c.def.link || c.def.ferry) continue;
+        const [dx, dz] = this.leaving(at, e);
+        const dot = dx * hx + dz * hz + (c.lanes >= 4 ? 0.15 : 0);
+        if (dot > bd) { bd = dot; best = e; }
+      }
+      if (!best) break;
+      const step = { road: best.road, rev: best.rev };
+      out.push(step); used.add(best.road);
+      left -= this.roads.get(best.road).km;
+      at = best.to; prev = step;
+    }
+    return out;
+  }
+
   // shortest trip between two zillas (from any of their terminals): [{ road, rev }]
   trip(fromZilla, toZilla, opts) {
     const a = this.zillas.get(fromZilla), b = this.zillas.get(toZilla);
@@ -273,7 +308,7 @@ export class Network {
   road(id) { return this.roads.get(id)?.build(); }
 
   // Shortest path (by real km) from any of the start nodes to any of the goal nodes: [{ road, rev }]
-  // opts.ferry: allow ferry crossings (default: no)
+  // opts.ferry: allow ferry crossings (default: no); opts.avoid: a Set of road ids not to use
   path(starts, goals, opts = {}) {
     starts = [].concat(starts); goals = new Set([].concat(goals));
     const dist = new Map(), prev = new Map(), done = new Set();
@@ -291,6 +326,7 @@ export class Network {
       for (const e of this.adj.get(u) || []) {
         const c = this.roads.get(e.road);
         if (c.def.ferry && !opts.ferry) continue;
+        if (opts.avoid?.has?.(e.road)) continue;
         // a terminal access road is only used at the ends of a trip, never as a short cut through a yard
         if (c.def.link && !starts.includes(e.to) && !goals.has(e.to) && !starts.includes(u) && !goals.has(u)) continue;
         const nd = best + c.km + (c.def.ferry ? 40 : 0);

@@ -207,12 +207,14 @@ export function initScenery(route, scene, quality, water) {
   }
   const ground = groundMesh;
   const smokes = new Set();
-  const signItems = signPlan(route);
+  let signItems = signPlan(route);
   void mats;
   let t = 0;
   return {
     ground,
-    chunk: (r, ctx) => sceneryChunk(route, ctx, quality, water, smokes, signItems),
+    chunk: (r, ctx) => sceneryChunk(r, ctx, quality, water, smokes, signItems),
+    // the trip turned onto another road: plan the signs of the new corridor
+    setRoute(r) { signItems = signPlan(r); },
     update(dt, focus) {
       t += dt;
       ground.position.set(Math.round(focus.x / PADDY_TILE) * PADDY_TILE, 0, Math.round(focus.z / PADDY_TILE) * PADDY_TILE);

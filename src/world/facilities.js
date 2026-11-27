@@ -57,10 +57,11 @@ const facMats = sharedMats(() => ({
 export function initFacilities(route) {
   const obstacles = [];
   const gates = [];
-  const bends = findBends(route);
+  let bends = findBends(route);
   let uTex = null;
   return {
     obstacles, gates,
+    setRoute(r) { route = r; bends = findBends(r); },
     *chunk(r, ctx) {
       const mats = facMats();
       for (const t of route.tolls) if (ctx.in(t.s)) { buildToll(route, ctx, mats, t); yield; }
