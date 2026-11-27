@@ -310,7 +310,7 @@ export class Traffic {
       else if (v.dir > 0) s = r() < 0.8 ? playerS + 1150 + r() * 450 : playerS - 700 - r() * 250;
       else s = playerS + 1200 + r() * 500;
       s = THREE.MathUtils.clamp(s, 20, this.route.length - 20);
-      if (Math.abs(s - playerS) < 40) continue;
+      if (Math.abs(s - playerS) < 40 || this.route.ferryAt(s)) continue;
       if (this.list.every((o) => o === v || o.dir !== v.dir || Math.abs(o.d - v.d) > 2 || Math.abs(o.s - s) > 30)) { v.s = s; break; }
       v.s = s;
     }
@@ -432,6 +432,11 @@ export class Traffic {
         if (tg.ahead < gap) { gap = tg.ahead; lv = tg.aheadV; }
       }
 
+      // ferry ghat ahead: the road ends at the pontoon, so vehicles queue up there for the ferry
+      for (const f of route.ferries) {
+        const end = (v.dir > 0 ? f.s0 + 30 : f.s1 - 30), toEnd = (end - v.s) * v.dir;
+        if (toEnd > -5 && toEnd < 220) { const fg = toEnd - v.len / 2; if (fg < gap) { gap = Math.max(0.1, fg); lv = 0; } }
+      }
       // toll plaza: stop at the barrier, pay, then go
       const T = route.tollNear(v.s);
       const tollDist = T ? (T.s - v.s) * v.dir : -1e9;

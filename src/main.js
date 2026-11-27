@@ -8,6 +8,7 @@ import { initFacilities } from './world/facilities.js';
 import { Network } from './net.js';
 import { Stream, disposeTree } from './world/stream.js';
 import { initJunctions, junctionChunk } from './world/junction.js';
+import { ferryChunk } from './world/ferry.js';
 import { buildAICams } from './world/aicams.js';
 import { Mirrors } from './mirrors.js';
 import { resolveImpulse, obbOverlap } from './collide.js';
@@ -235,7 +236,7 @@ function buildWorld(path) {
   passengers.onBreak = onRestBreak;
   buildTripObjects();
   stream = new Stream({ route, scene, chunks, obstacles: facilities.obstacles, gates: facilities.gates,
-    jobs: [roadChunk, junctionChunk, scenery.chunk, facilities.chunk, (r, ctx) => passengers.chunk(r, ctx)] });
+    jobs: [roadChunk, junctionChunk, ferryChunk, scenery.chunk, facilities.chunk, (r, ctx) => passengers.chunk(r, ctx)] });
   if (weather) { weather.setRoute(route); weather.hud = hud; }
   if (rig) rig.route = route;
   if (traffic) { traffic.setRoute(route, facilities.gates); linkTraffic(); }
@@ -495,6 +496,14 @@ function constrain(dt) {
     }
     wallHit(impact, o.gate ? 'Hit the toll barrier! Stop before the gate and wait.' : o.fence ? 'Hit the toll plaza wall — use a booth lane and pay the toll' : 'Crashed into a concrete island!');
   }
+  // a ferry crossing: the road stops at the end of the pontoon (cross with F, see ferryLogic)
+  const fr = route.ferryAt(s);
+  if (fr && s > fr.s0 + 36 && s < fr.s1 - 36) {
+    const lim = s - fr.s0 < fr.s1 - s ? fr.s0 + 36 : fr.s1 - 36, m = lim - s;
+    phys.pos.x += tx * m; phys.pos.z += tz * m; s = lim;
+    if (Math.abs(phys.v) > 2) wallHit(Math.abs(phys.v) * 0.6, 'End of the pontoon! Stop on it and press F to board the ferry');
+    phys.v = 0;
+  }
   // ends of the route
   if (s < 3) { phys.pos.x += tx * (3 - s); phys.pos.z += tz * (3 - s); s = 3; }
   if (s > route.length - 3) { const m = s - (route.length - 3); phys.pos.x -= tx * m; phys.pos.z -= tz * m; s = route.length - 3; }
@@ -531,6 +540,48 @@ function tollLogic(dt) {
       }
     } else if (Math.abs(ph.v) > 1) player.tollWait = 0;
   }
+}
+
+// ferry ghats: stop on the pontoon and press F; the screen fades while the ferry crosses (fare and the
+// crossing time are paid), and the bus drives off on the other bank
+function ferryLogic() {
+  if (player.crossing) return;
+  for (const f of route.ferries) {
+    const fwd = player.side < 0, dir = fwd ? 1 : -1, gs = fwd ? f.s0 : f.s1;
+    const u = (player.s - gs) * dir;
+    if (u < -60 || u > 45) continue;
+    if (Math.abs(player.phys.v) < 0.5 && u > -30) {
+      $('prompt').style.display = 'block';
+      $('prompt').innerHTML = `⛴️ <b class="bn">${f.bn}</b> — press <kbd>F</kbd> to drive onto the ferry (fare ৳${f.fare.toLocaleString('en-IN')}, about ${f.minutes} min)`;
+      if (input.hit('KeyF')) startCrossing(f, dir);
+    } else if (u > -60 && u < -30 && player.promptCool <= 0) {
+      player.promptCool = 10;
+      hud.toast(`⛴️ <span class="bn">ফেরি ঘাট</span> — drive onto the pontoon and stop to board the ferry`, '', 3000);
+    }
+    return;
+  }
+}
+function startCrossing(f, dir) {
+  player.crossing = { f, dir };
+  player.resting = 1;                      // holds the bus while the ferry crosses
+  $('prompt').style.display = 'none';
+  $('restfade').classList.add('on');
+  player.tollCost += f.fare;
+  hud.toast(`⛴️ Ferry fare ৳${f.fare.toLocaleString('en-IN')} paid — crossing the river…`, 'good', 3000);
+  setTimeout(() => {
+    player.clockMin += f.minutes;
+    const ts = dir > 0 ? f.s1 + 50 : f.s0 - 50;
+    const lane = route.prof(ts).laneCenters[0] * (dir > 0 ? 1 : -1);
+    resetPlayer(ts, lane);
+    stream.buildNow(ts, dir);
+    traffic.init(ts);
+    setTimeout(() => {
+      $('restfade').classList.remove('on');
+      player.crossing = null; player.resting = 0;
+      const far = dir > 0 ? f.to : f.from;
+      hud.toast(`⛴️ <span class="bn">${far.bn}</span> — off the ferry after ${f.minutes} minutes on the river`, 'good', 3500);
+    }, 700);
+  }, 1400);
 }
 
 // fuel use and refuelling at filling stations
@@ -643,7 +694,7 @@ function events(dt) {
   }
   player.lastPlace = place;
   const br = route.bridgeAt(s);
-  if (br && br !== player.lastBridge) hud.toast(`<span class="bn">${br.bn} নদী</span> · ${br.en} River bridge`, '', 3200);
+  if (br && !br.ferry && br !== player.lastBridge) hud.toast(`<span class="bn">${br.bn} নদী</span> · ${br.en} River bridge`, '', 3200);
   player.lastBridge = br;
   // passenger comfort: handled by the mood in src/passengers.js (complaints, rating, tips)
   player.lastS = s;
@@ -1156,6 +1207,7 @@ function frame(now) {
     extendFree();
     tollLogic(dt);
     fuelLogic(dt);
+    ferryLogic();
     voiceLogic(dt);
     passengers.update(dt, input);
     police?.update(dt, input, sky.hour);

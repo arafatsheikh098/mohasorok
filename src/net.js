@@ -86,7 +86,7 @@ export class Chain {
       for (let k = 0; k < n; k++) {
         const t = k / n;
         const g = acc + seg * t;
-        const wig = (Math.sin(g / 610) * 38 + Math.sin(g / 233 + 1.3) * 12 + Math.sin(g / 1370 + 0.4) * 55) * Math.sin(Math.PI * t) * Math.min(1, seg / 2500);
+        const wig = this.def.ferry ? 0 : (Math.sin(g / 610) * 38 + Math.sin(g / 233 + 1.3) * 12 + Math.sin(g / 1370 + 0.4) * 55) * Math.sin(Math.PI * t) * Math.min(1, seg / 2500);
         const p = a.clone().lerp(b, t).addScaledVector(perp, wig);
         ctrl.push(new THREE.Vector3(p.x, 0, p.y));
       }
@@ -154,8 +154,8 @@ export class Chain {
     });
     const tollNear = (s, m) => this.tolls.some((t) => Math.abs(s - t.s) < m);
     // fuel stations: a paved forecourt beside the road at road height
-    // fuel stations: given, or one about every 45 km (alternating sides) on longer roads
-    const fuel = def.fuel || (this.km >= 22 ? Array.from({ length: Math.floor((this.km - 12) / 45) + 1 }, (_, i) => ({ km: 16 + i * 45, side: i % 2 ? 1 : -1 })) : []);
+    // fuel stations: given, or one about every 45 km (alternating sides) on longer roads (none on a ferry)
+    const fuel = def.ferry ? [] : def.fuel || (this.km >= 22 ? Array.from({ length: Math.floor((this.km - 12) / 45) + 1 }, (_, i) => ({ km: 16 + i * 45, side: i % 2 ? 1 : -1 })) : []);
     const fname = ['মেঘনা', 'পদ্মা', 'যমুনা', 'রূপালী', 'সোনালী', 'সবুজ', 'নিউ', 'হাইওয়ে'];
     this.stations = fuel.filter((f) => f.km < this.km - 3).map((f, i) => {
       if (!f.bn) { const k = (this.id.length * 7 + i * 3) % fname.length; Object.assign(f, { bn: `${fname[k]} ফিলিং স্টেশন`, en: 'Filling Station' }); }
@@ -194,8 +194,10 @@ export class Chain {
     }
     // pedestrian footbridges: near town centres and every 4.2 km
     this.footbridges = [];
-    for (const p of this.places) if (!p.node && p.town >= 300 && p.s > 200 && p.s < L - 200) this.footbridges.push(p.s + 40);
-    for (let s = 3000; s < L - 500; s += 4200) this.footbridges.push(s);
+    if (!def.ferry) {
+      for (const p of this.places) if (!p.node && p.town >= 300 && p.s > 200 && p.s < L - 200) this.footbridges.push(p.s + 40);
+      for (let s = 3000; s < L - 500; s += 4200) this.footbridges.push(s);
+    }
     // hills and sea along the road: from the first such place to the last (and on to the end if it is the last place)
     const range = (key, before, after) => {
       const ps = this.places.filter((p) => p[key]);
@@ -336,7 +338,8 @@ export class Network {
   road(id) { return this.roads.get(id)?.build(); }
 
   // Shortest path (by real km) from any of the start nodes to any of the goal nodes: [{ road, rev }]
-  // opts.ferry: allow ferry crossings (default: no); opts.avoid: a Set of road ids not to use
+  // opts.ferry: allow ferry crossings (default: yes, but a crossing counts as 40 km extra so bridges win);
+  // opts.avoid: a Set of road ids not to use
   path(starts, goals, opts = {}) {
     starts = [].concat(starts); goals = new Set([].concat(goals));
     const dist = new Map(), prev = new Map(), done = new Set();
@@ -353,7 +356,7 @@ export class Network {
       done.add(u);
       for (const e of this.adj.get(u) || []) {
         const c = this.roads.get(e.road);
-        if (c.def.ferry && !opts.ferry) continue;
+        if (c.def.ferry && opts.ferry === false) continue;
         if (opts.avoid?.has?.(e.road)) continue;
         // a terminal access road is only used at the ends of a trip, never as a short cut through a yard
         if (c.def.link && !starts.includes(e.to) && !goals.has(e.to) && !starts.includes(u) && !goals.has(u)) continue;

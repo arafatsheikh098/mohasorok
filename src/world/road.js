@@ -75,8 +75,10 @@ export function initRoad(route) {
     waterShared = { mat, normal };
   }
   const { mat: waterMat, normal } = waterShared;
-  waterMatRef = waterMat;
-  const rivers = route.bridges.map((b) => {
+  waterMat_ = waterMat;
+  const rivers = [...route.bridges, ...route.ferries].map((b) => {
+    // a ferry: the river is as wide as the crossing (less the two ghats)
+    if (b.ferry) b.width = Math.max(120, b.s1 - b.s0 - 70);
     const centre = route.pointAt(b.sc, 0);
     const [tx, tz] = route.tangentAt(b.sc);
     const nx = -tz, nz = tx; // road right vector
@@ -100,7 +102,7 @@ export function* roadChunk(route, ctx) {
     [{ d: (s) => route.halfAt(s), y: R(0), u: 0 }, { d: (s) => route.halfAt(s) + ROAD.embank, y: G(0), u: 2 }],
   ];
   // toll plaza aprons: concrete, as wide as the plaza needs (route.halfAt)
-  const plaza = route.tolls.map((t) => ({ s0: t.s - PLAZA.reach, s1: t.s + PLAZA.reach }));
+  const plaza = [...route.tolls.map((t) => ({ s0: t.s - PLAZA.reach, s1: t.s + PLAZA.reach })), ...route.ferries.map((f) => ({ s0: f.s0, s1: f.s1, ferry: true }))];
 
   const S0 = ctx.s0, S1 = Math.min(route.length, ctx.s1);
   const group = new THREE.Group();
@@ -122,7 +124,7 @@ export function* roadChunk(route, ctx) {
       // undivided 2-lane road: one strip of asphalt, centre line and edge lines in the texture
       for (const [a, b] of splitAround(plaza, s0, s1)) add(ribbon(route, a, b, 4, [{ d: -H, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), mats.asphalt2);
       for (const pz of plaza) {
-        if (pz.s1 <= s0 || pz.s0 >= s1) continue;
+        if (pz.s1 <= s0 || pz.s0 >= s1 || pz.ferry) continue;      // (no road at all over a ferry crossing)
         const a = Math.max(s0, pz.s0), b = Math.min(s1, pz.s1);
         for (const side of [-1, 1]) add(ribbon(route, a, b, 2, plazaCols(side), 6), mats.plaza);
         add(ribbon(route, a, b, 2, [{ d: -M - 0.01, y: R(0.004), u: 0 }, { d: M + 0.01, y: R(0.004), u: 0.2 }], 6), mats.plaza);
@@ -138,11 +140,11 @@ export function* roadChunk(route, ctx) {
       ];
       for (const [a, b] of splitAround(plaza, s0, s1)) for (const side of [-1, 1]) add(ribbon(route, a, b, 4, asphaltCols(side), ASPHALT_TILE), mats.asphalt);
       for (const pz of plaza) {
-        if (pz.s1 <= s0 || pz.s0 >= s1) continue;
+        if (pz.s1 <= s0 || pz.s0 >= s1 || pz.ferry) continue;
         for (const side of [-1, 1]) add(ribbon(route, Math.max(s0, pz.s0), Math.min(s1, pz.s1), 2, plazaCols(side), 6), mats.plaza);
       }
       // median (with openings for U-turns and junctions, paved inside the gap)
-      for (const [a, b] of splitAround(route.uturns, s0, s1)) {
+      for (const [a, b] of splitAround([...route.uturns, ...route.ferries], s0, s1)) {
         add(ribbon(route, a, b, 4, medianTop, 3), mats.median);
         for (const cc of curbCols) add(ribbon(route, a, b, 4, cc, 4), mats.curb);
       }
@@ -152,7 +154,7 @@ export function* roadChunk(route, ctx) {
       }
     }
     // embankment except where we are on a bridge deck
-    for (const [a, b] of splitAround(route.bridges, s0, s1)) for (const e of embank) add(ribbon(route, a, b, 4, e, 3), mats.grass);
+    for (const [a, b] of splitAround([...route.bridges, ...route.ferries], s0, s1)) for (const e of embank) add(ribbon(route, a, b, 4, e, 3), mats.grass);
   }
   // end barriers
   for (const s of [0, route.length]) {
@@ -191,7 +193,8 @@ export function splitAround(list, s0, s1) {
 const pierGeo = share(new THREE.CylinderGeometry(0.9, 1.1, 1, 12));
 const lampGeo = share(new THREE.CylinderGeometry(0.08, 0.1, 9, 6));
 const headGeo = share(new THREE.BoxGeometry(0.9, 0.18, 0.35));
-let waterMatRef = null;
+let waterMat_ = null;
+export const waterMatRef = () => waterMat_;
 
 function buildBridge(route, ctx, mats, b) {
   const P = route.prof(b.sc), H = P.half;
@@ -262,7 +265,7 @@ function buildBridge(route, ctx, mats, b) {
   const rv = b.river;
   if (rv) {
     group.add(new THREE.Mesh(polyRibbon(rv.pts, b.width + 30, 0.12), mats.sand));
-    const wm = new THREE.Mesh(polyRibbon(rv.pts, b.width, 0.3), waterMatRef);
+    const wm = new THREE.Mesh(polyRibbon(rv.pts, b.width, 0.3), waterMat_);
     wm.receiveShadow = true;
     group.add(wm);
     // country boats

@@ -37,6 +37,7 @@ export class HUD {
       ...route.rests.map((r) => ({ p: route.pointAt(r.sc, r.side * 20), icon: '🍛', col: '#ff7043' })),
       ...route.uturns.filter((u) => !u.junction).map((u) => ({ p: route.pointAt(u.s, 0), icon: 'U', col: '#4aa3ff' })),
       ...route.tolls.map((t) => ({ p: route.pointAt(t.s, 0), icon: '৳', col: '#ff5252' })),
+      ...route.ferries.flatMap((f) => [f.s0, f.s1].map((s) => ({ p: route.pointAt(s, 0), icon: '⛴', col: '#4fc3f7' }))),
     ];
     this.onTrip = new Set(route.path.map((p) => p.road));
     this._label = null;

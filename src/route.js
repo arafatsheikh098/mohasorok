@@ -109,9 +109,15 @@ export class Route {
     const sd = (g, side) => (g.rev ? -side : side);
     const pair = (g, a, b) => { const x = this._s(g, a, 1e9), y = this._s(g, b, 1e9); return x < y ? [x, y] : [y, x]; };
     this.places = []; this.bridges = []; this.tolls = []; this.stations = []; this.rests = []; this.terminals = [];
-    this.uturns = []; this.footbridges = []; this.hills = []; this.seas = []; this.policeSpots = [];
+    this.uturns = []; this.footbridges = []; this.hills = []; this.seas = []; this.policeSpots = []; this.ferries = [];
     this.segs.forEach((g, k) => {
       const c = g.chain;
+      // a ferry crossing: no road here, the bus crosses on the ferry (main.js ferryLogic)
+      if (c.def.ferry) {
+        const A = this.net.nodes[g.from], B = this.net.nodes[g.to];
+        const s0 = g.o, s1 = g.o + (g.u1 - g.u0);
+        this.ferries.push({ ferry: true, s0, s1, sc: (s0 + s1) / 2, ...c.def.ferry, en: c.en, bn: c.bn, from: A, to: B, width: 0 });
+      }
       for (const p of c.places) {
         if (k > 0 && p.node === g.from) continue;          // the node it shares with the previous road (already in)
         const s = this._s(g, p.s, FILLET + 1);
@@ -337,6 +343,11 @@ export class Route {
 
   bridgeAt(s) {
     for (const b of this.bridges) if (s > b.s0 && s < b.s1) return b;
+    for (const f of this.ferries || []) if (s > f.s0 && s < f.s1) return f;      // (nothing is built on the river either)
+    return null;
+  }
+  ferryAt(s) {
+    for (const f of this.ferries || []) if (s > f.s0 && s < f.s1) return f;
     return null;
   }
 
