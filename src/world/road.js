@@ -89,7 +89,7 @@ export function initRoad(route) {
 }
 
 // a meandering river under bridge b of `route`, roughly at right angles to the road (made once per bridge)
-function riverFor(route, b) {
+export function riverFor(route, b) {
   if (b.river) return b.river;
   {
     // a ferry: the river is as wide as the crossing (less the two ghats)

@@ -344,9 +344,11 @@ export class Network {
       const back = this.leaving(at, { road: prev.road, rev: !prev.rev });
       const hx = -back[0], hz = -back[1];
       let best = null, bd = -Infinity;
+      // (a ferry only where the road ends at its ghat: then the way on is across the river)
+      const onlyFerry = !(this.adj.get(at) || []).some((e) => !used.has(e.road) && !this.roads.get(e.road).def.link && !this.roads.get(e.road).def.ferry);
       for (const e of this.adj.get(at) || []) {
         const c = this.roads.get(e.road);
-        if (used.has(e.road) || c.def.link || c.def.ferry) continue;
+        if (used.has(e.road) || c.def.link || (c.def.ferry && !onlyFerry)) continue;
         const [dx, dz] = this.leaving(at, e);
         const dot = dx * hx + dz * hz + (c.lanes >= 4 ? 0.15 : 0);
         if (dot > bd) { bd = dot; best = e; }
@@ -445,9 +447,11 @@ export class Network {
     if (this._rivers) return this._rivers;
     this._rivers = [];
     for (const c of this.roads.values()) {
-      if (c.def.link || c.def.ferry) continue;
+      if (c.def.link) continue;
       c.build();
-      for (const b of c.bridges) {
+      // (a ferry crossing: the river is as wide as the crossing, less the two ghats)
+      const list = c.def.ferry ? [{ sc: c.length / 2, width: Math.max(120, c.length - 70) }] : c.bridges;
+      for (const b of list) {
         if (b.elevated) continue;
         const i = Math.round(b.sc / DS), i0 = Math.max(0, i - 5), i1 = Math.min(c.N - 1, i + 5);
         const cx = c.px[i], cz = c.pz[i], l = Math.hypot(c.px[i1] - c.px[i0], c.pz[i1] - c.pz[i0]) || 1;

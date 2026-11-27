@@ -12,6 +12,8 @@ import { disposeTree, sharedMats } from './stream.js';
 import { ASPHALT_TILE, asphaltTexture2 } from '../textures.js';
 import { buildInterchange } from './interchange.js';
 import { terminalChunk } from './terminal.js';
+import { ferryChunk } from './ferry.js';
+import { riverFor } from './road.js';
 
 const PIECE = 500;          // m of road per piece
 const NEAR = 2800;          // build pieces closer than this to the bus
@@ -81,7 +83,8 @@ export class NetRoads {
         if (b - a < 4) continue;
         // ends at a node that is not the trip's: trimmed back to the node pad's rim
         // (a terminal's access road just ends in its yard)
-        const isT = (n) => net.nodes[n]?.kind === 'terminal';
+        // (and a road coming down to a ferry ghat runs right to the pontoon)
+        const isT = (n) => net.nodes[n]?.kind === 'terminal' || (net.adj.get(n) || []).some((e) => net.roads.get(e.road).def.ferry);
         const trimA = !icA && a < 1 && !tripNodes.has(c.from) && !isT(c.from), trimB = !icB && b > L - 1 && !tripNodes.has(c.to) && !isT(c.to);
         if (trimA) nodeHalf.set(c.from, Math.max(nodeHalf.get(c.from) || 0, half));
         if (trimB) nodeHalf.set(c.to, Math.max(nodeHalf.get(c.to) || 0, half));
@@ -112,6 +115,13 @@ export class NetRoads {
       if (!c) continue;
       const i = c.from === n.id ? Math.min(c.N - 1, 50) : Math.max(0, c.N - 51);
       this.pieces.push({ key: `term:${n.id}`, term: c.id, x: c.px[i], z: c.pz[i], r: 160 });
+    }
+    // every ferry crossing (both ghats, the ferries, the river), except one the trip itself crosses
+    for (const c of net.roads.values()) {
+      if (!c.def.ferry || own.has(c.id)) continue;
+      c.build();
+      const i = Math.round(c.N / 2);
+      this.pieces.push({ key: `ferry:${c.id}`, ferry: c.id, x: c.px[i], z: c.pz[i], r: c.length / 2 + 400 });
     }
     // the interchanges themselves, always
     for (const ic of net.interchanges()) this.pieces.push({ key: `ic:${ic.node}`, ic: ic.node, x: ic.x, z: ic.z, r: ic.R });
@@ -145,6 +155,22 @@ export class NetRoads {
     const g = new THREE.Group();
     this.root.add(g);
     this.built.set(p.key, g);
+    if (p.ferry) {
+      // the crossing with its approach road on each bank, so the ghats are laid out along the real roads
+      const net = this.net, c = net.road(p.ferry), key = `ferry:${c.id}`;
+      net._stubs ||= new Map();
+      let st = net._stubs.get(key);
+      if (!st) {
+        const inA = (net.adj.get(c.from) || []).find((e) => !net.roads.get(e.road).def.ferry);
+        const outB = (net.adj.get(c.to) || []).find((e) => !net.roads.get(e.road).def.ferry);
+        const path = [...(inA ? [{ road: inA.road, rev: !inA.rev }] : []), { road: c.id, rev: false }, ...(outB ? [{ road: outB.road, rev: outB.rev }] : [])];
+        st = new Route(net, path);
+        net._stubs.set(key, st);
+      }
+      for (const f of st.ferries) riverFor(st, f);
+      yield* ferryChunk(st, { in: () => true, scene: g, chunks: { register() {} }, obstacles: [], gates: [], onDispose() {} });
+      return;
+    }
     if (p.term) {
       // a zilla's bus terminal: the same yard a trip starting or ending there drives into
       const st = this._st(p.term), ctx = { in: () => true, lite: true, scene: g, chunks: { register() {} }, obstacles: [], gates: [], onDispose() {} };
