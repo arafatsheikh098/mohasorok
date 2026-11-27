@@ -403,7 +403,9 @@ export function kmPostTexture(km) {
 
 // an undivided 2-lane road, the whole width (u 0 = left edge of the shoulder, 1 = right edge): dashed white
 // centre line (solid yellow where overtaking is not allowed is left out), white edge lines, worn shoulders
-export function asphaltTexture2(lines = true, tracks = true) {
+// (patches: worn and patched rectangles; not on a junction, where the texture repeats over a wide area and the
+// patches would stand out as a grid of dark squares)
+export function asphaltTexture2(lines = true, tracks = true, patches = true) {
   const P = PROFILE[2];
   const W = 512, H = 1024;
   const [c, ctx] = makeCanvas(W, H);
@@ -418,7 +420,7 @@ export function asphaltTexture2(lines = true, tracks = true) {
     ctx.fillRect(U(P.edge), 0, W, H);
   }
   speckle(ctx, W, H, 26000, ['#4b4c4f', '#616265', '#6b6b6d', '#444547', '#5c5a57'], r, 1, 3);
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < (patches ? 22 : 0); i++) {
     ctx.fillStyle = r() < 0.5 ? 'rgba(40,40,42,0.25)' : 'rgba(110,108,104,0.2)';
     ctx.fillRect(r() * W, r() * H, 20 + r() * 120, 20 + r() * 160);
   }

@@ -396,11 +396,12 @@ function reroute(path, fromS, msg) {
   if (msg) hud.toast(msg, 'good', 3500);
 }
 // the onward roads after a turn onto `step` at `node`
-function onward(step) {
+function onward(step, prefix = []) {
   const far = step.rev ? net.roads.get(step.road).from : net.roads.get(step.road).to;
+  const avoid = pathNodes(prefix);
   // the road never just stops: where it leads nowhere useful it goes straight on (or into the town's terminal)
   const straight = () => {
-    const s = net.straightOn(far, step);
+    const s = net.straightOn(far, step, 160, avoid);
     if (s.length) return s;
     const link = (net.adj.get(far) || []).find((e) => net.roads.get(e.road).def.link);
     return link ? [{ road: link.road, rev: link.rev }] : [];
@@ -417,6 +418,12 @@ function onward(step) {
   s.wrong = true;
   return s;
 }
+// the nodes a path passes through (both ends of every road)
+function pathNodes(path) {
+  const out = new Set();
+  for (const p of path) { const c = net.roads.get(p.road); out.add(c.from); out.add(c.to); }
+  return out;
+}
 // is the bus on one of the side roads of a junction it is passing? then switch the trip onto it
 function junctionLogic() {
   const ph = player.phys, sp = player.bus.spec;
@@ -424,7 +431,7 @@ function junctionLogic() {
   const take = (j, b, fromS) => {
     const prefix = route.path.slice(0, j.k);        // the roads up to this junction stay as they are
     const step = { road: b.road, rev: b.rev };
-    const rest = onward(step);
+    const rest = onward(step, prefix);
     const far = net.nodes[b.to];
     const nm = (x) => x.bn.split(' (')[0];
     const msg = settings.mode === 'free'
@@ -475,7 +482,7 @@ function extendFree() {
   const end = last.rev ? net.roads.get(last.road).from : net.roads.get(last.road).to;
   // (in a trip after a wrong turn: back towards the destination if there is a way, else straight on)
   const goals = settings.mode === 'free' ? null : net.zillas.get(settings.trip.to)?.terminals;
-  const more = (goals && net.path(end, goals, { avoid: new Set([last.road]) })) || net.straightOn(end, last, 120);
+  const more = (goals && net.path(end, goals, { avoid: new Set([last.road]) })) || net.straightOn(end, last, 120, pathNodes(route.path.slice(0, -1)));
   if (more.length) reroute([...route.path, ...more], route.length - 40, null);
 }
 function restartTrip() {

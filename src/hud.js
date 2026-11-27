@@ -70,9 +70,13 @@ export class HUD {
     const km = back ? route.realKm(st.s) : route.realKm(route.length) - route.realKm(st.s);
     const next = back ? ([...route.places].reverse().find((p) => p.s < st.s - 20) || route.places[0]) : route.nextPlace(st.s);
     const nextKm = Math.abs(route.realKm(next.s) - route.realKm(st.s));
-    const road = route.segAt(st.s).chain, nm = (p) => p.bn.split(' (')[0];
+    // (on a link road or a junction curve without a number of its own: still the highway you were on, so the card
+    // does not jump about at every junction)
+    const here = route.segAt(st.s).chain;
+    if (here.ref && !here.def.link) this._road = here;
+    const road = this._road || here, nm = (p) => p.bn.split(' (')[0];
     const [A, B] = back ? [route.endPlace, route.startPlace] : [route.startPlace, route.endPlace];
-    const label = this.free ? `🧭 <span class="bn">Explore</span>${road.ref ? ` · ${road.ref} ${road.en || ''}` : ''}`
+    const label = this.free ? `🧭 <span class="bn">Explore</span>${road.ref ? ` · ${road.ref}<small>${road.en || ''}</small>` : ''}`
       : `<span class="bn">${this.dest && !back ? `${nm(A)} → ${this.dest}` : `${nm(A)} → ${nm(B)}`}</span>${road.ref ? ` · ${road.ref}` : ''}`;
     if (label !== this._label) { this._label = label; document.querySelector('#trip .route').innerHTML = label; }
     const ff = st.fuel / st.tank;

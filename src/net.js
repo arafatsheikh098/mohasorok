@@ -335,7 +335,9 @@ export class Network {
   }
   // Free drive: from `node` (arriving along road `fromStep`), keep going the straightest way at every junction
   // for about `km` real km; never into a terminal yard, a ferry or back the way we came.
-  straightOn(node, fromStep, km = 160) {
+  // (avoid: nodes the way on must not come back through, e.g. the trip's own junctions behind the bus: the road
+  // would run back over itself)
+  straightOn(node, fromStep, km = 160, avoid = null) {
     const out = [];
     let at = node, prev = fromStep, left = km;
     const used = new Set([fromStep.road]);
@@ -348,7 +350,7 @@ export class Network {
       const onlyFerry = !(this.adj.get(at) || []).some((e) => !used.has(e.road) && !this.roads.get(e.road).def.link && !this.roads.get(e.road).def.ferry);
       for (const e of this.adj.get(at) || []) {
         const c = this.roads.get(e.road);
-        if (used.has(e.road) || c.def.link || (c.def.ferry && !onlyFerry)) continue;
+        if (used.has(e.road) || c.def.link || (c.def.ferry && !onlyFerry) || avoid?.has(e.to)) continue;
         const [dx, dz] = this.leaving(at, e);
         // (bigger roads first, and the same highway on: N8 goes on as N8 where it bends at a junction)
         const ref = this.roads.get(prev.road).ref;

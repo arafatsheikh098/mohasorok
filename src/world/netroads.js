@@ -22,7 +22,7 @@ const FAR = 3600;           // take them down beyond this
 
 const R = (dy) => (s, h) => h + dy;
 const G = (y) => () => y;
-const padMat = sharedMats(() => ({ pad: new THREE.MeshStandardMaterial({ map: asphaltTexture2(false, false), roughness: 0.93 }) }));
+const padMat = sharedMats(() => ({ pad: new THREE.MeshStandardMaterial({ map: asphaltTexture2(false, false, false), roughness: 0.93 }) }));
 
 export class NetRoads {
   constructor(net, scene) {

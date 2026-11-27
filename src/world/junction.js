@@ -14,7 +14,7 @@ const jMats = sharedMats(() => {
   const m = roadMats();
   const off = (mat, f) => { const c = mat.clone(); c.polygonOffset = true; c.polygonOffsetFactor = f; c.polygonOffsetUnits = f; return c; };
   return {
-    pad: off(new THREE.MeshStandardMaterial({ map: asphaltTexture2(false, false), roughness: 0.93 }), -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), stub6: off(m.asphalt6, -1), grass: m.grass, median: m.median, curb: m.curb,
+    pad: off(new THREE.MeshStandardMaterial({ map: asphaltTexture2(false, false, false), roughness: 0.93 }), -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), stub6: off(m.asphalt6, -1), grass: m.grass, median: m.median, curb: m.curb,
     back: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }),
     leg: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }),
     stop: new THREE.MeshStandardMaterial({ color: 0xe9e8e2, roughness: 0.8 }),
