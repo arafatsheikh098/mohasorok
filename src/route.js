@@ -19,6 +19,40 @@ export class Route {
     this.DS = DS;
     this._centreline();
     this._features();
+    this._grid();
+  }
+
+  // a coarse spatial index of the centreline (every 8 m, 50 m cells) for "is this point on the road?"
+  _grid() {
+    this.cell = 50;
+    this.cells = new Map();
+    for (let i = 0; i < this.N; i += 4) {
+      const k = `${Math.floor(this.px[i] / this.cell)},${Math.floor(this.pz[i] / this.cell)}`;
+      if (!this.cells.has(k)) this.cells.set(k, []);
+      this.cells.get(k).push(i);
+    }
+  }
+  // is (x, z) on this road, its embankment or within `margin` of it, anywhere along the trip (also on a part
+  // of the trip far away in s, e.g. where it doubles back near a junction), on a side road or a junction pad?
+  nearRoad(x, z, margin = 0) {
+    const c = this.cell, r = Math.ceil((20 + ROAD.embank + margin + 14) / c);
+    const cx = Math.floor(x / c), cz = Math.floor(z / c);
+    for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) {
+      const list = this.cells.get(`${cx + a},${cz + b}`);
+      if (!list) continue;
+      for (const i of list) {
+        // distance to the centreline pieces either side of this sample
+        for (const k of [Math.max(0, i - 4), i]) {
+          const k2 = Math.min(this.N - 1, k + 4);
+          const ax = this.px[k], az = this.pz[k], bx = this.px[k2] - ax, bz = this.pz[k2] - az;
+          const t = Math.max(0, Math.min(1, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz || 1)));
+          const d = Math.hypot(ax + bx * t - x, az + bz * t - z);
+          if (d < this.halfAt((k + 4 * t) * DS) + ROAD.embank + margin) return true;
+        }
+      }
+    }
+    for (const j of this.junctions || []) if (Math.hypot(x - j.x, z - j.z) < j.R + ROAD.embank + margin) return true;
+    return !!this.nearBranch?.(x, z, margin);
   }
 
   // ---------------------------------------------------------------- building
@@ -404,6 +438,17 @@ export class Route {
     const half = this.halfAt(s);
     if (ad <= half) return h;
     if (this.junctionAt(s, d)) return h;    // the flat junction pad
+    // on one of the side roads at a junction (driving off the pad onto it, before the trip switches over to it)
+    for (const j of this.junctions || []) {
+      if (Math.abs(s - j.s) > j.R + 140 || !j.branches.length) continue;
+      const [x, z] = this._xz(s, d);
+      for (const b of j.branches) {
+        if (!b.stub) continue;
+        const pr = b.stub.project(x, z, b.hHint ?? -1);
+        b.hHint = pr.index;
+        if (pr.s > 0 && pr.s < b.len && Math.abs(pr.d) <= b.stub.halfAt(pr.s) + 0.5) return b.stub.roadHeight(pr.s);
+      }
+    }
     if (this.bridgeAt(s)) return h; // off the deck there is nothing, the walls keep you on
     if (this.paved(s, d)) return h; // paved forecourt / rest-stop lot
     const t = (ad - half) / ROAD.embank;

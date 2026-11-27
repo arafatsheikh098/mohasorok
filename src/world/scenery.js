@@ -270,12 +270,20 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
     };
     const B = new Batch();
     const validAt = (s, d, x, z, margin = 4) => {
+      // off every road: this one anywhere along the trip, the side roads and the junction pads
+      if (route.nearRoad(x, z, margin)) return false;
       const pr = route.project(x, z, Math.round(s / route.DS));
-      if (Math.abs(pr.d) < route.halfAt(pr.s) + ROAD.embank + margin) return false;
       if (nearStation(pr.s, pr.d, 15)) return false;
       if (rivers.length && inWater(x, z, margin)) return false;
-      if (route.nearBranch?.(x, z, margin)) return false;      // side roads at junctions
-      for (const j of route.junctions || []) if (Math.abs(pr.s - j.s) < j.R + 80 && Math.hypot(x - j.x, z - j.z) < j.R + ROAD.embank + margin) return false;
+      return true;
+    };
+    // a building's whole footprint (w along the road, dep across, centred at x, z, turned to yaw) must be clear
+    const footprintClear = (x, z, yaw, w, dep, margin = 1) => {
+      const ax = Math.cos(yaw), az = -Math.sin(yaw), bx = Math.sin(yaw), bz = Math.cos(yaw);
+      for (const [u, v] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0]]) {
+        const px = x + ax * u * w / 2 + bx * v * dep / 2, pz = z + az * u * w / 2 + bz * v * dep / 2;
+        if (route.nearRoad(px, pz, margin)) return false;
+      }
       return true;
     };
     const tree = (x, z, scale, palm) => {
@@ -465,9 +473,10 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
           const sm = s + w / 2;
           const d = side * (route.prof(s).toe + 9 + dep / 2 + r() * 3);
           route.pointAt(sm, d, p);
-          if (route.nearBranch?.(p.x, p.z, w / 2 + dep / 2) || route.junctionAt(sm, side * route.prof(sm).half)) { s += w + gap + 6; continue; }   // keep side roads clear
           const [tx, tz] = route.tangentAt(sm);
           const yaw = Math.atan2(-tz, tx) + (side > 0 ? Math.PI : 0); // front faces the road
+          // never on a road: on the inside of a bend, by a side road or another part of the trip
+          if (!footprintClear(p.x, p.z, yaw, w + 0.6, dep + 2.6)) { s += w + gap; continue; }
           m4.compose(p.setY(0.05), q.setFromAxisAngle(UP, yaw), sc.set(1, 1, 1));
           const fi = Math.floor(r() * N_FACADES);
           B.add(`f${fi}`, buildingGeo(w, h, dep).applyMatrix4(m4));
@@ -489,7 +498,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
         if (r() < 0.8 && pl.town >= 300 && side === (pl.index % 2 ? 1 : -1)) {
           const sm = (a + b) / 2;
           route.pointAt(sm, side * (route.prof(sm).toe + 48), p);
-          if (validAt(sm, 0, p.x, p.z, 10)) {
+          if (validAt(sm, 0, p.x, p.z, 10) && footprintClear(p.x, p.z, route.yawAt(sm), 18, 18, 2)) {
             const mq = new THREE.Group();
             mq.position.set(p.x, 0, p.z);
             mq.rotation.y = route.yawAt(sm);
@@ -548,7 +557,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
         const side = r() < 0.5 ? -1 : 1;
         const bb = new THREE.Group();
         route.pointAt(s, side * (route.halfAt(s) + ROAD.embank + 12), p);
-        if (route.nearBranch?.(p.x, p.z, 10)) p.set(1e9, 0, 1e9);     // no billboard on a side road
+        if (route.nearRoad(p.x, p.z, 6)) p.set(1e9, 0, 1e9);     // no billboard on a road
         bb.position.set(p.x, 0, p.z);
         bb.rotation.y = route.yawAt(s) + Math.PI + side * -0.35 + (side > 0 ? 0 : 0);
         const panel = new THREE.Mesh(new THREE.PlaneGeometry(12, 6), mats.billboards[Math.floor(r() * BILLBOARD_COUNT)]);

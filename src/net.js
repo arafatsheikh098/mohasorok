@@ -145,6 +145,20 @@ export class Chain {
       const half = p.river.width / 2 + 30;
       this.bridges.push({ ...p.river, sc, s0: sc - half, s1: sc + half });
     }
+    // a bridge's ramps must end before the junctions at both ends of the road (they are flat), so on a short road
+    // the ramps get steeper, and if even that does not fit the bridge is made shorter
+    for (const b of this.bridges) {
+      const keep = 70;                                  // flat ground kept at each end (junction pad + a bit)
+      let room = Math.min(b.s0 - keep, L - keep - b.s1);
+      if (room < 45) {
+        const half = Math.max(20, Math.min((b.s1 - b.s0) / 2, L / 2 - keep - 45));
+        b.sc = THREE.MathUtils.clamp(b.sc, keep + 45 + half, L - keep - 45 - half);
+        b.s0 = b.sc - half; b.s1 = b.sc + half;
+        room = Math.min(b.s0 - keep, L - keep - b.s1);
+      }
+      b.ramp = Math.max(40, Math.min(ROAD.rampLen, room));
+      if (room < 40) b.height = ROAD.baseHeight + Math.max(1.5, (ROAD.bridgeHeight - ROAD.baseHeight) * room / 40);   // a low bridge
+    }
     // flyovers / elevated expressways: one long deck on pillars (a "bridge" with no river), ramps at both ends
     if (def.elevated) {
       const e = def.elevated, ramp = ROAD.rampLen * 1.3;
