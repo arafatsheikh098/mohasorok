@@ -14,7 +14,7 @@ const jMats = sharedMats(() => {
   const m = roadMats();
   const off = (mat, f) => { const c = mat.clone(); c.polygonOffset = true; c.polygonOffsetFactor = f; c.polygonOffsetUnits = f; return c; };
   return {
-    pad: off(new THREE.MeshStandardMaterial({ map: asphaltTexture2(false), roughness: 0.93 }), -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), stub6: off(m.asphalt6, -1), grass: m.grass, median: m.median, curb: m.curb,
+    pad: off(new THREE.MeshStandardMaterial({ map: asphaltTexture2(false, false), roughness: 0.93 }), -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), stub6: off(m.asphalt6, -1), grass: m.grass, median: m.median, curb: m.curb,
     back: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }),
     leg: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }),
   };
@@ -118,7 +118,9 @@ export function* junctionChunk(route, ctx) {
     g.add(pad, skirt);
     // the branch roads: carriageways, median, embankments (or one 2-lane strip)
     for (const b of j.branches) {
-      const st = b.stub, a = j.R - 4, e = b.len, ab = j.R + 1;     // asphalt starts under the pad, slopes outside it
+      const st = b.stub, e = b.len, ab = j.R + 1;
+      // the asphalt starts just inside the pad's rim (not under it: two surfaces would flicker), the slopes outside it
+      const a = Math.sqrt(Math.max(0, j.R * j.R - st.prof(5).half ** 2)) - 3;
       if (e - a < 5) continue;
       const P = st.prof(a + 1), Mh = P.median, H = P.half;
       const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); };

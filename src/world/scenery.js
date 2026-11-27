@@ -275,6 +275,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
       if (nearStation(pr.s, pr.d, 15)) return false;
       if (rivers.length && inWater(x, z, margin)) return false;
       if (route.nearBranch?.(x, z, margin)) return false;      // side roads at junctions
+      for (const j of route.junctions || []) if (Math.abs(pr.s - j.s) < j.R + 80 && Math.hypot(x - j.x, z - j.z) < j.R + ROAD.embank + margin) return false;
       return true;
     };
     const tree = (x, z, scale, palm) => {

@@ -403,7 +403,7 @@ export function kmPostTexture(km) {
 
 // an undivided 2-lane road, the whole width (u 0 = left edge of the shoulder, 1 = right edge): dashed white
 // centre line (solid yellow where overtaking is not allowed is left out), white edge lines, worn shoulders
-export function asphaltTexture2(lines = true) {
+export function asphaltTexture2(lines = true, tracks = true) {
   const P = PROFILE[2];
   const W = 512, H = 1024;
   const [c, ctx] = makeCanvas(W, H);
@@ -412,15 +412,17 @@ export function asphaltTexture2(lines = true) {
   const V = (m) => (m / ASPHALT_TILE) * H;
   ctx.fillStyle = '#58585a';
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#69655e';
-  ctx.fillRect(0, 0, U(-P.edge), H);
-  ctx.fillRect(U(P.edge), 0, W, H);
+  if (lines) {          // worn shoulders (a plain surface, e.g. a junction pad, has none)
+    ctx.fillStyle = '#69655e';
+    ctx.fillRect(0, 0, U(-P.edge), H);
+    ctx.fillRect(U(P.edge), 0, W, H);
+  }
   speckle(ctx, W, H, 26000, ['#4b4c4f', '#616265', '#6b6b6d', '#444547', '#5c5a57'], r, 1, 3);
   for (let i = 0; i < 22; i++) {
     ctx.fillStyle = r() < 0.5 ? 'rgba(40,40,42,0.25)' : 'rgba(110,108,104,0.2)';
     ctx.fillRect(r() * W, r() * H, 20 + r() * 120, 20 + r() * 160);
   }
-  for (const lc of [-P.lane / 2, P.lane / 2]) {
+  for (const lc of tracks ? [-P.lane / 2, P.lane / 2] : []) {
     for (const o of [-0.9, 0.9]) {
       const g = ctx.createLinearGradient(U(lc + o - 0.45), 0, U(lc + o + 0.45), 0);
       g.addColorStop(0, 'rgba(30,30,32,0)'); g.addColorStop(0.5, 'rgba(30,30,32,0.3)'); g.addColorStop(1, 'rgba(30,30,32,0)');

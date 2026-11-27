@@ -198,9 +198,16 @@ export class Route {
       const used = new Set([this.segs[k - 1].road, this.segs[k].road]);
       const branches = (this.net.adj.get(node) || []).filter((e) => !used.has(e.road));
       const n = this.net.nodes[node];
-      const c = this._xz(p.s, 0);
-      this.junctions.push({ s: p.s, node, k, name: n, x: c[0], z: c[1], R: PAD_R, branches });
-      this.uturns.push({ s: p.s, s0: p.s - PAD_R - 6, s1: p.s + PAD_R + 6, junction: true });
+      // the pad is centred on the node itself (where every road there starts), not on our curve through it:
+      // on a sharp turn the curve cuts the corner, and the side roads would start outside the pad
+      const g = this.segs[k], ch = g.chain, ni = g.rev ? ch.N - 1 : 0;
+      const c = [ch.px[ni], ch.pz[ni]];
+      // and the pad reaches the curve's furthest point from the node as well
+      let reach = 0;
+      for (let ds = -FILLET - 6; ds <= FILLET + 6; ds += 2) { const [x, z] = this._xz(p.s + ds, 0); reach = Math.max(reach, Math.hypot(x - c[0], z - c[1]) - Math.abs(ds)); }
+      this.junctions.push({ s: p.s, node, k, name: n, x: c[0], z: c[1], R: PAD_R + Math.max(0, Math.min(14, reach)), branches });
+      const R = this.junctions[this.junctions.length - 1].R;
+      this.uturns.push({ s: p.s, s0: p.s - R - 6, s1: p.s + R + 6, junction: true });
     }
     this.uturns.sort(byS);
     // keep U-turn openings out of the junction areas

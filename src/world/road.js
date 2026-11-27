@@ -114,7 +114,9 @@ export function* roadChunk(route, ctx) {
     [{ d: (s) => route.halfAt(s), y: R(0), u: 0 }, { d: (s) => route.halfAt(s) + ROAD.embank, y: G(0), u: 2 }],
   ];
   // toll plaza aprons: concrete, as wide as the plaza needs (route.halfAt)
-  const plaza = [...route.tolls.map((t) => ({ s0: t.s - PLAZA.reach, s1: t.s + PLAZA.reach })), ...route.ferries.map((f) => ({ s0: f.s0, s1: f.s1, ferry: true }))];
+  // (and no road under a junction pad: the pad is the road there, and two surfaces would flicker)
+  const plaza = [...route.tolls.map((t) => ({ s0: t.s - PLAZA.reach, s1: t.s + PLAZA.reach })), ...route.ferries.map((f) => ({ s0: f.s0, s1: f.s1, ferry: true })),
+    ...(route.junctions || []).map((j) => { const c = Math.sqrt(Math.max(0, j.R * j.R - route.prof(j.s).half ** 2)) - 3; return { s0: j.s - c, s1: j.s + c, ferry: true }; })];
 
   const S0 = ctx.s0, S1 = Math.min(route.length, ctx.s1);
   const group = new THREE.Group();
