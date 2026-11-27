@@ -61,7 +61,7 @@ const counterMats = sharedMats(() => ({
 
 export class Passengers {
   constructor({ route, scene, chunks, hud, player, free = false }) {
-    this.free = free;          // free drive: no passengers, no counters
+    this.freeDrive = free;     // free drive: no passengers, no counters
     this.route = route; this.scene = scene; this.hud = hud; this.player = player;
     this.r = Math.random;
     this.counters = [];
@@ -104,7 +104,7 @@ export class Passengers {
   // at every zilla town on the way (and at the turn-off for a zilla just off the road) and at the destination.
   // The trip drives the left carriageway (side -1); the other carriageway gets the same towns' counters.
   _planCounters() {
-    if (this.free) return;
+    if (this.freeDrive) return;
     const R = this.route, net = R.net;
     const offs = [0, 40, -40, 100, -100, 160, -160, 230, -230, 300, -300];
     const nm = (x, k) => x[k].split(' (')[0];
@@ -121,7 +121,7 @@ export class Passengers {
         const far = net.nodes[b.to];
         // a zilla town just off the road (up to ~40 km down the side road): its passengers get down at the turn-off
         if (!far?.term || b.km > 40 || far.zilla === startZ || far.zilla === endZ || R.places.some((p) => p.node === b.to)) continue;
-        for (const side of [-1, 1]) plan.push({ s0: j.s, side, role: 'drop', place: { ...far, s: j.s, turnOff: true }, bn: `${nm(far, 'bn')} মোড়`, en: `${nm(far, 'en')} turn-off` });
+        for (const side of [-1, 1]) plan.push({ s0: j.s, side, role: 'drop', place: { ...far, s: j.s, turnOff: true }, bn: `${nm(far, 'bn')} মোড়`, en: `${nm(far, 'en')} turn-off`, say: nm(far, 'bn') });
       }
     }
     plan.sort((x, y) => x.s0 - y.s0);
@@ -130,7 +130,7 @@ export class Passengers {
       let s = null;
       for (const o of offs) { const c = def.s0 + o * dir; if (this._clearAt(c) && !this.counters.some((x) => Math.abs(x.s - c) < 70)) { s = c; break; } }
       if (s === null) { console.warn(`[passengers] no room for the ${def.en} counter`); continue; }
-      const c = { kind: 'counter', role: def.role, place: def.place, bn: def.bn, en: def.en, side, dir, s, waiting: [], announced: false, spots: [], refillT: 0 };
+      const c = { kind: 'counter', role: def.role, place: def.place, bn: def.bn, en: def.en, say: def.say || def.bn, side, dir, s, waiting: [], announced: false, spots: [], refillT: 0 };
       // standing spots for waiting passengers (on the platform, near the road edge)
       const top = R.roadHeight(s) + 0.18;
       for (let i = 0; i < 10; i++) {
@@ -360,7 +360,7 @@ export class Passengers {
     // the origin terminal crowd (they appear beside the door when it opens)
     const orig = this.ends[this.originEnd];
     this.originCrowd = [];
-    const n = this.free ? 0 : Math.round(this.capacity() * (0.55 + this.r() * 0.3));
+    const n = this.freeDrive ? 0 : Math.round(this.capacity() * (0.55 + this.r() * 0.3));
     for (let k = 0; k < n; k++) this.originCrowd.push(this._newPax(this.tripSide, orig.s));
     this._ui(true);
   }
@@ -630,8 +630,8 @@ export class Passengers {
       const ahead = (c.s - p.s) * dir;
       if (!c.announced && ahead > 0 && ahead < ANNOUNCE) {
         c.announced = true;
-        voice.say('pax.stop_request', { place: c.bn });
-        setTimeout(() => voice.say('helper.next_stop', { place: c.bn }), 2600);
+        voice.say('pax.stop_request', { place: c.say });
+        setTimeout(() => voice.say('helper.next_stop', { place: c.say }), 2600);
         this.hud.toast(`🔔 <span class="bn">ভাই, ${c.bn} নামবো!</span> — ${mine.length} passenger${mine.length > 1 ? 's' : ''} getting down at ${c.en}. Stop at the counter.`, '', 4200);
       }
       if (ahead < -(ZONE + 15) && !(this.stop && this.stop.here === c)) {
@@ -641,7 +641,7 @@ export class Passengers {
         if (next.kind === 'counter') next.announced = false;
         this.stats.missed += mine.length;
         p.rating = Math.max(1, p.rating - 0.5);
-        voice.say('pax.missed', { place: c.bn });
+        voice.say('pax.missed', { place: c.say });
         this.hud.toast(`<span class="bn">ও ভাই, ${c.bn} তো চলে গেল!</span> — You drove past ${c.en}: ${mine.length} passenger${mine.length > 1 ? 's' : ''} must get down at ${next.en.split(' (')[0]}`, 'bad', 4200);
       }
     }

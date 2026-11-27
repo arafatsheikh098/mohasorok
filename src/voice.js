@@ -4,6 +4,7 @@
 // Fallbacks: no clip → speechSynthesis with a Bengali voice if the browser has one → subtitle only.
 import { LINES, VOICES, placeKey, clipKey } from './voiceLines.js';
 import { WAYPOINTS } from './config.js';
+import { NODES } from './data/bd_network.js';
 
 const BASE = `${import.meta.env.BASE_URL}voice/`;
 const STORE = 'mohasorok.voice';
@@ -11,6 +12,7 @@ const KEEP_DECODED = 24;     // decoded clips kept in memory (a decoded clip is 
 // English names for the subtitle gloss
 const EN = { 'সায়েদাবাদ': 'Sayedabad', 'চট্টগ্রাম': 'Chattogram', 'ঢাকা': 'Dhaka', 'এ কে খান': 'A.K. Khan', 'মহিপাল': 'Mohipal' };
 for (const w of WAYPOINTS) EN[placeKey(w.bn)] ??= w.en.split(' (')[0];
+for (const n of Object.values(NODES)) EN[placeKey(n.bn)] ??= n.en.split(' (')[0];
 const LABEL = { helper: ['🧑‍🔧', 'হেলপার'], pax: ['🧳', 'যাত্রী'], police: ['👮', 'পুলিশ'] };
 
 class Voice {
@@ -151,6 +153,16 @@ class Voice {
     const place = LINES[item.id].places ? item.place : '';
     const ids = [item.voice, ...VOICES[item.speaker].map((v) => v.id).filter((x) => x !== item.voice)];
     for (const vid of ids) { const c = m[clipKey(item.id, item.k, vid, place)]; if (c) return c; }
+    // another variant of the line for this place (the newer zilla towns have one variant each)
+    if (place) {
+      const L = LINES[item.id];
+      for (let k = 0; k < L.v.length; k++) {
+        for (const vid of ids) {
+          const c = m[clipKey(item.id, k, vid, place)];
+          if (c) { item.bn = L.v[k][0].replaceAll('{place}', place); item.en = L.v[k][1].replaceAll('{place}', EN[place] || place); return c; }
+        }
+      }
+    }
     // no clip for this place (e.g. a counter added since the clips were made): say a sentence without the name
     const gen = LINES[item.id].generic;
     if (gen?.length) {

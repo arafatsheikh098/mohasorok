@@ -6,6 +6,7 @@
 //
 // speaker: 'helper' | 'pax' | 'police'   prio: higher wins when the queue is busy   cool: seconds before the id repeats
 import { WAYPOINTS, BUS_STOPS } from './config.js';
+import { NODES } from './data/bd_network.js';
 
 // Microsoft neural voices (edge-tts). The helper is a Bangladeshi man; passengers alternate two voices.
 export const VOICES = {
@@ -24,7 +25,12 @@ const TOWNS = WAYPOINTS.filter((w) => w.town).map((w) => placeKey(w.bn));
 const COUNTERS = Object.values(BUS_STOPS).flatMap((d) => [...(d.pickup || []), ...(d.drop || [])])
   .map((x) => x.bn || WAYPOINTS.find((w) => w.en === x.place)?.bn).filter(Boolean).map(placeKey);
 const STOPS = [...new Set([...TOWNS, ...COUNTERS])].filter((x) => !DEST.includes(x));
-export const PLACE_SETS = { dest: DEST, stops: [...STOPS, ...DEST] };
+// the original N1 places have every variant; the zilla towns of the whole country (added later) get one
+// variant per line, which keeps the download small (voice.js uses whichever variant exists for a place)
+const FULL = new Set([...DEST, ...STOPS]);
+const ZILLAS = [...new Set(Object.values(NODES).filter((n) => n.term).map((n) => placeKey(n.bn)))].filter((x) => !FULL.has(x));
+export const PLACE_SETS = { dest: [...DEST, ...ZILLAS], stops: [...STOPS, ...DEST, ...ZILLAS] };
+export const fullPlace = (place) => FULL.has(place);
 
 export const LINES = {
   'helper.call': { speaker: 'helper', prio: 2, cool: 6, places: 'dest', v: [
@@ -176,6 +182,7 @@ export function allClips() {
     const places = line.places ? PLACE_SETS[line.places] : [''];
     line.v.forEach(([bn], k) => {
       for (const vo of VOICES[line.speaker]) for (const place of places) {
+        if (k > 0 && place && !fullPlace(place)) continue;
         out.push({ key: clipKey(id, k, vo.id, place), text: bn.replaceAll('{place}', place), voice: vo });
       }
     });

@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>মহাসড়ক Mohasorok — Bangladesh Bus Simulator (Dhaka–Chattogram N1)</title>
-<meta name="description" content="Drive a Hino AK1J and other Bangladeshi intercity buses on the Dhaka–Chattogram N1 highway, right in your browser. Toll plaza, fuel stations, U-turns, live mirrors, Bangla signs." />
+<title>মহাসড়ক Mohasorok — Bangladesh Bus Simulator (all 64 zillas)</title>
+<meta name="description" content="Drive a Hino AK1J and other Bangladeshi intercity buses between any of the 64 zillas of Bangladesh, right in your browser: N1–N8, Padma and Jamuna bridges, ferries, toll plazas, bus terminals, Bangla signs." />
 <meta name="theme-color" content="#0b0f13" />
 <meta property="og:title" content="মহাসড়ক Mohasorok — Bangladesh Bus Simulator" />
-<meta property="og:description" content="Dhaka → Chattogram on the N1 in a Hino AK1J. Free, runs in the browser on PC and phone." />
+<meta property="og:description" content="Any zilla to any zilla on Bangladesh's highways in a Hino AK1J. Free, runs in the browser on PC and phone." />
 <meta property="og:type" content="website" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -369,13 +369,13 @@
 </div>
 <div id="about"><div class="card">
   <h2>About Mohasorok</h2>
-  <p><b>মহাসড়ক Mohasorok</b> is a free, fan-made bus driving game set on the Dhaka–Chattogram N1 highway. Everything you see — buses, liveries, roads, towns — is drawn by the game's own code; no images or 3D models from other games or mods are included.</p>
+  <p><b>মহাসড়ক Mohasorok</b> is a free, fan-made bus driving game set on the highways of Bangladesh: all 64 zillas, from Teknaf to Panchagarh. Everything you see — buses, liveries, roads, towns — is drawn by the game's own code; no images or 3D models from other games or mods are included.</p>
   <p><b>Not affiliated</b> with any bus operator, Hino Motors, or any company. Operator names belong to their owners and are used only to show the buses that run on this road. If you represent an operator and want your name changed or removed, please open an issue on the project page.</p>
   <p><b>Controls (PC):</b> W/S throttle-brake (hold S to reverse) · A/D steer · H horn · Q/E indicators · L lights · U high beam · J fog lights · X cruise · C or 1–4 camera · V screen mirrors · F refuel · R reset · P pause · M mute. Gamepad supported. <b>Phone:</b> turn the wheel, hold GAS/BRAKE, drag the view to look around.</p>
-  <p><b>Credits:</b> 3D engine <a href="https://threejs.org" style="color:var(--acc)">three.js</a> (MIT). Bangla font Noto Sans Bengali (SIL Open Font License). Bus liveries and shapes painted from public photos (Wikimedia Commons, CC BY-SA/CC0) and the community's reference images. Speeds/distances: N1 compressed 1:12, ~245 km shown.</p>
+  <p><b>Credits:</b> 3D engine <a href="https://threejs.org" style="color:var(--acc)">three.js</a> (MIT). Bangla font Noto Sans Bengali (SIL Open Font License). Bus liveries and shapes painted from public photos (Wikimedia Commons, CC BY-SA/CC0) and the community's reference images. Speeds/distances: the road network is compressed 1:12; real kilometres are shown. Road data: towns and highways placed by hand from public maps (approximate).</p>
   <button class="btn" id="about-close">Close</button>
 </div></div>
-<div id="loading"><b>মহাসড়ক · Mohasorok</b><div id="load-msg">Building the N1 highway…</div><div class="bar"><i></i></div></div>
+<div id="loading"><b>মহাসড়ক · Mohasorok</b><div id="load-msg">Building the highways of Bangladesh…</div><div class="bar"><i></i></div></div>
 
 <div id="menu">
   <div class="panel">
@@ -410,7 +410,7 @@
     <h3>Traffic</h3>
     <div class="seg" id="traffic">
       <button data-v="22">Light<small>early morning</small></button>
-      <button data-v="38" class="sel">Normal<small>typical N1</small></button>
+      <button data-v="38" class="sel">Normal<small>typical highway</small></button>
       <button data-v="58">Heavy<small>Eid rush</small></button>
     </div>
 
@@ -436,7 +436,7 @@
     <div class="keys">
       <kbd>W</kbd>/<kbd>S</kbd> throttle / brake (hold <kbd>S</kbd> to reverse) · <kbd>A</kbd>/<kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
       <kbd>H</kbd> horn · <kbd>Q</kbd>/<kbd>E</kbd> indicators · <kbd>L</kbd> lights · <kbd>U</kbd> high beam · <kbd>J</kbd> fog lights · <kbd>X</kbd> cruise · <kbd>C</kbd> / <kbd>1</kbd>–<kbd>4</kbd> camera<br>
-      <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>G</kbd> door (passengers) · <kbd>T</kbd> time of day · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>B</kbd>/<kbd>N</kbd> music play / next · <kbd>F1</kbd> help · mouse drag = look · <kbd>Alt</kbd>+arrows = adjust seat<br>
+      <kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel · <kbd>G</kbd> door (passengers) · <kbd>T</kbd> time of day · <kbd>O</kbd> map of Bangladesh · <kbd>R</kbd> reset to road · <kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>B</kbd>/<kbd>N</kbd> music play / next · <kbd>F1</kbd> help · mouse drag = look · <kbd>Alt</kbd>+arrows = adjust seat<br>
       Stop at the toll gate to pay · turn round at U-turn gaps in the median to drive back to Dhaka
     </div>
   </div>
