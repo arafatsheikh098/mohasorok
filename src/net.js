@@ -19,7 +19,10 @@ export const unproject = (x, z) => ({ lat: ORIGIN.lat - z / KZ, lon: ORIGIN.lon 
 
 const TERMINAL = { len: 120, depth: 42, exit: 30, gap: 8 };
 const smooth01 = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
-const LINK_KM = 4;            // real km of the access road from a zilla's junction to its bus terminal
+const LINK_KM = 4;
+// division headquarters: a big terminal (longer yard, more bays, a two-storey building)
+const DIV_HQ = new Set(['Dhaka', 'Chattogram', 'Rajshahi', 'Khulna', 'Barishal', 'Sylhet', 'Rangpur', 'Mymensingh']);
+const BIG_LEN = 200;            // real km of the access road from a zilla's junction to its bus terminal
 
 // Smooth a polyline (Gaussian, radius r samples) with the ends held in place: the signal is mirrored through
 // each end point, so the first and last points (and the direction there) stay where the road meets its node.
@@ -220,8 +223,9 @@ export class Chain {
     for (const [key, atEnd] of [[this.from, false], [this.to, true]]) {
       const t = this.nodes[key]?.terminal;
       if (!t || t.road !== this.id) continue;
-      const s0 = atEnd ? L - TERMINAL.gap - TERMINAL.len : TERMINAL.gap;
-      this.terminals.push({ id: key, bn: t.bn, en: t.en, node: key, side: t.side, s0, s1: s0 + TERMINAL.len, depth: TERMINAL.depth });
+      const len = t.big ? BIG_LEN : TERMINAL.len;
+      const s0 = atEnd ? L - TERMINAL.gap - len : TERMINAL.gap;
+      this.terminals.push({ id: key, bn: t.bn, en: t.en, node: key, side: t.side, s0, s1: s0 + len, depth: TERMINAL.depth, big: !!t.big });
     }
     // U-turn openings in the median (4-lane roads)
     this.uturns = [];
@@ -295,7 +299,7 @@ export class Network {
       const [tbn, ten] = Array.isArray(n.term) ? n.term : [`${nm(n.bn)} কেন্দ্রীয় বাস টার্মিনাল`, `${nm(n.en)} Central Bus Terminal`];
       const tid = `t:${id}`, lid = `L:${id}`;
       this.nodes[tid] = { id: tid, lat: tp.lat, lon: tp.lon, en: n.en, bn: n.bn, town: 0, kind: 'terminal', terminalOf: id, zilla: n.zilla, div: n.div,
-        hills: n.hills, sea: n.sea, terminal: { en: ten, bn: tbn, road: lid, side: -1 } };
+        hills: n.hills, sea: n.sea, terminal: { en: ten, bn: tbn, road: lid, side: -1, big: DIV_HQ.has(n.zilla) } };
       defs.push({ id: lid, ref: '', lanes: 4, from: tid, to: id, via: [], km: LINK_KM, link: true, en: ten, bn: tbn });
     }
     this.roads = new Map();
@@ -394,15 +398,17 @@ export class Network {
     if (!this._anyGrid) {
       this._anyGrid = new Map();
       for (const c of this.roads.values()) {
-        if (c.def.link || c.def.ferry) continue;
+        if (c.def.ferry) continue;
         c.build();
-        const lim = profileOf(c.lanes).half + ROAD.embank;
+        // (a terminal's access road has its walled yard beside it)
+        const lim = c.def.link ? 70 : profileOf(c.lanes).half + ROAD.embank;
         for (let i = 0; i < c.N - 1; i += 4) {
           const j = Math.min(c.N - 1, i + 4);
           // (the last ~30 m at each end: the pad where roads meet is a little wider)
           const seg = [c.px[i], c.pz[i], c.px[j], c.pz[j], lim + (i * DS < 30 || (c.N - 1 - j) * DS < 30 ? 6 : 0), c.id];
-          const x0 = Math.floor((Math.min(seg[0], seg[2]) - 40) / C), x1 = Math.floor((Math.max(seg[0], seg[2]) + 40) / C);
-          const z0 = Math.floor((Math.min(seg[1], seg[3]) - 40) / C), z1 = Math.floor((Math.max(seg[1], seg[3]) + 40) / C);
+          const pad = Math.max(40, seg[4] + 10);
+          const x0 = Math.floor((Math.min(seg[0], seg[2]) - pad) / C), x1 = Math.floor((Math.max(seg[0], seg[2]) + pad) / C);
+          const z0 = Math.floor((Math.min(seg[1], seg[3]) - pad) / C), z1 = Math.floor((Math.max(seg[1], seg[3]) + pad) / C);
           for (let a = x0; a <= x1; a++) for (let b = z0; b <= z1; b++) {
             const k = a * 100003 + b;
             if (!this._anyGrid.has(k)) this._anyGrid.set(k, []);
@@ -461,6 +467,9 @@ export class Network {
   // or an interchange, since those have no bridge for it. pts: from one end to the other through the bridge.
   trimRiver(pts, width, ownRoad) {
     const n = pts.length, mid = (n - 1) / 2, skip = new Set([ownRoad]), clear = width / 2 + 30;
+    // (a ferry's river: the roads coming down to its two ghats end at the water)
+    const own = this.roads.get(ownRoad);
+    if (own?.def.ferry) for (const nd of [own.from, own.to]) for (const e of this.adj.get(nd) || []) skip.add(e.road);
     let a = 0, b = n - 1;
     for (let i = Math.ceil(mid); i < n; i++) if (Math.abs(i - mid) * 50 > clear + 40 && this.nearAny(pts[i].x, pts[i].z, clear, skip)) { b = i - 1; break; }
     for (let i = Math.floor(mid); i >= 0; i--) if (Math.abs(i - mid) * 50 > clear + 40 && this.nearAny(pts[i].x, pts[i].z, clear, skip)) { a = i + 1; break; }

@@ -11,6 +11,7 @@ import { ribbon, roadMats, buildBridge, splitAround, medianRibbons } from './roa
 import { disposeTree, sharedMats } from './stream.js';
 import { ASPHALT_TILE, asphaltTexture2 } from '../textures.js';
 import { buildInterchange } from './interchange.js';
+import { terminalChunk } from './terminal.js';
 
 const PIECE = 500;          // m of road per piece
 const NEAR = 2800;          // build pieces closer than this to the bus
@@ -63,7 +64,7 @@ export class NetRoads {
     const nodeHalf = new Map();
     const pieces = [];
     for (const c of net.roads.values()) {
-      if (c.def.link || c.def.ferry) continue;
+      if (c.def.ferry) continue;
       c.build();
       const L = c.length;
       const cv = (cover.get(c.id) || []).sort((x, y) => x[0] - y[0]);
@@ -79,7 +80,9 @@ export class NetRoads {
         if (icB) b = Math.min(b, L - icB.R);
         if (b - a < 4) continue;
         // ends at a node that is not the trip's: trimmed back to the node pad's rim
-        const trimA = !icA && a < 1 && !tripNodes.has(c.from), trimB = !icB && b > L - 1 && !tripNodes.has(c.to);
+        // (a terminal's access road just ends in its yard)
+        const isT = (n) => net.nodes[n]?.kind === 'terminal';
+        const trimA = !icA && a < 1 && !tripNodes.has(c.from) && !isT(c.from), trimB = !icB && b > L - 1 && !tripNodes.has(c.to) && !isT(c.to);
         if (trimA) nodeHalf.set(c.from, Math.max(nodeHalf.get(c.from) || 0, half));
         if (trimB) nodeHalf.set(c.to, Math.max(nodeHalf.get(c.to) || 0, half));
         pieces.push({ c, a, b, trimA, trimB });
@@ -100,6 +103,15 @@ export class NetRoads {
         const i = Math.min(c.N - 1, Math.round((s0 + s1) / 2 / 2));
         this.pieces.push({ key: `${c.id}:${s0.toFixed(1)}:${s1.toFixed(1)}`, id: c.id, s0, s1, x: c.px[i], z: c.pz[i], r: (s1 - s0) / 2 + 20, ga: p.a, gb: p.b });
       }
+    }
+    // every zilla's bus terminal (its yard beside the end of its access road), except the trip's own
+    const own = new Set(route.segs.map((g) => g.road));
+    for (const n of Object.values(net.nodes)) {
+      if (n.kind !== 'terminal' || own.has(n.terminal?.road)) continue;
+      const c = net.road(n.terminal.road);
+      if (!c) continue;
+      const i = c.from === n.id ? Math.min(c.N - 1, 50) : Math.max(0, c.N - 51);
+      this.pieces.push({ key: `term:${n.id}`, term: c.id, x: c.px[i], z: c.pz[i], r: 160 });
     }
     // the interchanges themselves, always
     for (const ic of net.interchanges()) this.pieces.push({ key: `ic:${ic.node}`, ic: ic.node, x: ic.x, z: ic.z, r: ic.R });
@@ -123,10 +135,22 @@ export class NetRoads {
     return null;
   }
 
-  _drop(k, g) { this.root.remove(g); disposeTree(g); this.built.delete(k); }
+  _drop(k, g) {
+    if (this._cur?.p.key === k) this._cur = null;
+    this.root.remove(g); disposeTree(g); this.built.delete(k);
+  }
 
-  _build(p) {
+  // build a piece (a generator: the work is spread over frames; see update)
+  *_make(p) {
     const g = new THREE.Group();
+    this.root.add(g);
+    this.built.set(p.key, g);
+    if (p.term) {
+      // a zilla's bus terminal: the same yard a trip starting or ending there drives into
+      const st = this._st(p.term), ctx = { in: () => true, lite: true, scene: g, chunks: { register() {} }, obstacles: [], gates: [], onDispose() {} };
+      yield* terminalChunk(st, ctx);
+      return;
+    }
     const M = roadMats();
     const addM = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); };
     if (p.ic) {
@@ -173,8 +197,6 @@ export class NetRoads {
         buildBridge(st, ctx, M, x);
       }
     }
-    this.root.add(g);
-    this.built.set(p.key, g);
   }
 
   _wanted(x, z) {
@@ -184,7 +206,9 @@ export class NetRoads {
 
   // build everything near (x, z) now (loading, teleports)
   buildNow(x, z) {
-    for (const p of this._wanted(x, z)) this._build(p);
+    if (this._cur) { for (const _ of this._cur.gen); this._cur = null; }
+    // (terminals off the trip come in over the next frames: they are not needed to start driving)
+    for (const p of this._wanted(x, z)) if (!p.term) for (const _ of this._make(p));
     this._trim(x, z);
   }
 
@@ -200,9 +224,14 @@ export class NetRoads {
     this._t -= dt;
     if (this._t <= 0 || !this._todo) { this._t = 0.5; this._todo = this._wanted(x, z); this._trim(x, z); }
     const t0 = performance.now();
-    while (this._todo.length && performance.now() - t0 < this.budget) {
-      const p = this._todo.shift();
-      if (!this.built.has(p.key)) this._build(p);
+    while (performance.now() - t0 < this.budget) {
+      if (!this._cur) {
+        const p = this._todo.shift();
+        if (!p) break;
+        if (this.built.has(p.key)) continue;
+        this._cur = { p, gen: this._make(p) };
+      }
+      if (this._cur.gen.next().done) this._cur = null;
     }
   }
 

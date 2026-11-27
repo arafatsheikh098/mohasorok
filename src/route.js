@@ -304,6 +304,8 @@ export class Route {
       const branches = (this.net.adj.get(node) || []).filter((e) => !used.has(e.road));
       const n = this.net.nodes[node];
       const zn = this.icZones.find((z) => z.node === node);
+      // (two roads simply meeting, e.g. at a ferry ghat: no junction, no pad)
+      if (!branches.length && !zn) continue;
       if (zn) {
         // an interchange: no pad, the movement's ramps; the other roads start at the edge of its circle
         this.junctions.push({ s: zn.sc, node, k, name: n, x: zn.x, z: zn.z, R: Math.max(zn.R, (zn.s1 - zn.s0) / 2 + 10), branches, ic: zn });

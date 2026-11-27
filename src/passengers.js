@@ -106,16 +106,16 @@ export class Passengers {
   // at every zilla town on the way (and at the turn-off for a zilla just off the road) and at the destination.
   // The trip drives the left carriageway (side -1); the other carriageway gets the same towns' counters.
   _planCounters() {
-    if (this.freeDrive) return;
+    // (exploring: no passengers, but the zilla towns still have their bus stoppages by the road)
     const R = this.route, net = R.net;
     const offs = [0, 40, -40, 100, -100, 160, -160, 230, -230, 300, -300];
     const nm = (x, k) => x[k].split(' (')[0];
     const startZ = R.startPlace.zilla, endZ = R.endPlace.zilla;
     const plan = [];
-    const pick = R.places.filter((p) => p.town && p.kind !== 'terminal' && p.zilla !== startZ && R.realKm(p.s) > 1 && R.realKm(p.s) < 30).slice(0, 2);
+    const pick = this.freeDrive ? [] : R.places.filter((p) => p.town && p.kind !== 'terminal' && p.zilla !== startZ && R.realKm(p.s) > 1 && R.realKm(p.s) < 30).slice(0, 2);
     for (const p of pick) plan.push({ s0: p.s, side: -1, role: 'pickup', place: p, bn: nm(p, 'bn'), en: nm(p, 'en') });
     for (const p of R.places) {
-      if (!p.node || !p.term || p.zilla === startZ || p.zilla === endZ || pick.includes(p)) continue;
+      if (!p.node || !p.term || (!this.freeDrive && (p.zilla === startZ || p.zilla === endZ)) || pick.includes(p)) continue;
       for (const side of [-1, 1]) plan.push({ s0: p.s, side, role: 'drop', place: p, bn: nm(p, 'bn'), en: nm(p, 'en') });
     }
     for (const j of R.junctions) {

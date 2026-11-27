@@ -74,6 +74,8 @@ export function* terminalChunk(route, ctx) {
   for (const [ti, t] of route.terminals.entries()) {
     if (!ctx.in((t.s0 + t.s1) / 2)) continue;
     const sd = t.side, dir = t.dir, h = route.roadHeight(t.sc);
+    // yard length along the road (a division's big terminal is longer, with more bays and a bigger building)
+    const Ly = Math.abs(t.s1 - t.s0), big = !!t.big, nBays = Math.floor((Ly - 24) / 16);
     const grp = new THREE.Group();
     // s along the yard measured from the closed end towards the exit
     const S = (off) => t.closed + dir * off;
@@ -104,9 +106,9 @@ export function* terminalChunk(route, ctx) {
       const cols = [{ d: d - w / 2, y: R(0.045), u: 0 }, { d: d + w / 2, y: R(0.045), u: 1 }];
       grp.add(new THREE.Mesh(ribbon(route, Math.min(a, b), Math.max(a, b), 3, cols, 10), mat));
     };
-    strip(sd * (H + 18), 0.18, S(4), S(96), mats.line);
-    strip(sd * (H + 27.2), 0.3, S(4), S(96), mats.yellow);
-    for (let k = 0; k <= 5; k++) {
+    strip(sd * (H + 18), 0.18, S(4), S(Ly - 24), mats.line);
+    strip(sd * (H + 27.2), 0.3, S(4), S(Ly - 24), mats.yellow);
+    for (let k = 0; k <= nBays; k++) {
       const bar = new THREE.Mesh(new THREE.PlaneGeometry(11.5, 0.16), mats.line);
       bar.rotation.order = 'YXZ'; bar.rotation.x = -Math.PI / 2;
       put(bar, S(10 + k * 16), sd * (H + 24), 0.05);
@@ -137,20 +139,32 @@ export function* terminalChunk(route, ctx) {
     }
 
     // ---- terminal building along the back of the yard
-    const bLen = 62, bDepth = 9, bH = 7.6;
-    const bS = S(50), bD = sd * (H + 36);
+    const bLen = big ? Ly - 60 : 62, bDepth = big ? 11 : 9, bH = big ? 12.5 : 7.6;
+    const bS = S(big ? (Ly - 20) / 2 : 50), bD = sd * (H + 36 + (bDepth - 9) / 2);
     const counters = [];
-    for (let k = 0; k < 8; k++) counters.push(ops[(ti * 3 + k) % ops.length]);
+    for (let k = 0; k < (big ? 14 : 8); k++) counters.push(ops[(ti * 3 + k) % ops.length]);
     const facade = new THREE.MeshStandardMaterial({ map: facadeTexture(counters), roughness: 0.75 });
     const wallMat = new THREE.MeshStandardMaterial({ color: 0xe4dccb, roughness: 0.8 });
     const bld = new THREE.Mesh(new THREE.BoxGeometry(bDepth, bH, bLen), wallMat);
     put(bld, bS, bD, bH / 2);
     bld.castShadow = true; bld.receiveShadow = true;
     // local x = -d: the side facing the yard (towards the road) is local x = +sd
-    const front = new THREE.Mesh(new THREE.PlaneGeometry(bLen, bH), facade);
-    front.position.set(sd * (bDepth / 2 + 0.02), 0, 0);
+    // the counters along the ground floor (a big terminal has an upper floor with windows above them)
+    const fH = big ? 7.6 : bH;
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(bLen, fH), facade);
+    front.position.set(sd * (bDepth / 2 + 0.02), -bH / 2 + fH / 2, 0);
     front.rotation.y = sd * Math.PI / 2;
     bld.add(front);
+    if (big) {
+      const win = panel(1024, 128, '#d9d2c3', (x, w, hh) => {
+        for (let i = 0; i < 16; i++) { x.fillStyle = '#35505f'; x.fillRect(i * 64 + 10, 26, 44, 70); x.fillStyle = '#9fb7c4'; x.fillRect(i * 64 + 12, 28, 18, 30); }
+      });
+      win.wrapS = THREE.RepeatWrapping; win.repeat.set(bLen / 40, 1);
+      const upper = new THREE.Mesh(new THREE.PlaneGeometry(bLen, bH - fH), new THREE.MeshStandardMaterial({ map: win, roughness: 0.7 }));
+      upper.position.set(sd * (bDepth / 2 + 0.02), -bH / 2 + fH + (bH - fH) / 2, 0);
+      upper.rotation.y = sd * Math.PI / 2;
+      bld.add(upper);
+    }
     // flat roof slab with a parapet, awning over the counters
     const roof = new THREE.Mesh(new THREE.BoxGeometry(bDepth + 0.6, 0.35, bLen + 0.6), mats.white);
     roof.position.y = bH / 2 + 0.17;
@@ -173,22 +187,24 @@ export function* terminalChunk(route, ctx) {
       x.fillStyle = '#fff'; x.font = `bold 118px ${BN_FONT}`; x.fillText(t.bn, w * 0.33, hh / 2 + 6);
       x.font = `bold 62px ${EN_FONT}`; x.fillText(t.en.toUpperCase(), w * 0.8, hh / 2 + 2);
     });
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(40, 3.4), new THREE.MeshStandardMaterial({ map: nameTex, roughness: 0.5, emissive: 0x333333, emissiveMap: nameTex }));
+    const bw = big ? Math.min(bLen - 10, 70) : 40;
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(bw, big ? 5 : 3.4), new THREE.MeshStandardMaterial({ map: nameTex, roughness: 0.5, emissive: 0x333333, emissiveMap: nameTex }));
     board.position.set(sd * (bDepth / 2 - 0.4), bH / 2 + 2.2, 0);
     board.rotation.y = sd * Math.PI / 2;
     bld.add(board);
-    const boardBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.6, 40.4), mats.dark);
+    const boardBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, big ? 5.2 : 3.6, bw + 0.4), mats.dark);
     boardBack.position.set(sd * (bDepth / 2 - 0.6), bH / 2 + 2.2, 0);
     bld.add(boardBack);
     // the building and the covered walkway in front of it (awning posts, benches)
     ob(bS - bLen / 2, bS + bLen / 2, sd * (H + 27.6), sd * (H + 36 + bDepth / 2));
 
     // ---- parked buses in the second row, noses towards the exit
-    const kinds = ['ak1j', 'local', 'coach', 'ak1j', 'local'];
+    const kinds = big ? ['coach', 'ak1j', 'highdeck', 'local', 'coach', 'ak1j', 'coach', 'local', 'ak1j', 'coach'].slice(0, nBays) : ['ak1j', 'local', 'coach', 'ak1j', 'local'];
     // the buses waiting in the bays run this terminal's services; their placards say where to
     const zilla = route.net?.nodes[t.node]?.zilla;
     const svcs = (route.net?._svc?.all || []).filter((x) => x.from === zilla);
-    for (const [k, kind] of kinds.entries()) {
+    // (a terminal off the trip, seen in passing: fewer buses parked, to keep memory down)
+    for (const [k, kind] of kinds.slice(0, ctx.lite ? (big ? 5 : 3) : kinds.length).entries()) {
       const svc = svcs.length ? svcs[(ti * 3 + k * 7) % svcs.length] : null;
       const op = (svc && ops.find((o) => o.id === svc.op)) || ops[(ti * 5 + k * 3 + 1) % ops.length];
       const b = buildBus(kind, op, { texScale: 0.5, seed: 500 + ti * 11 + k });
@@ -203,9 +219,9 @@ export function* terminalChunk(route, ctx) {
     // ---- lamp posts along the roadside wall and the row divider
     const lampGeo = new THREE.CylinderGeometry(0.09, 0.13, 8, 8);
     const headGeo = new THREE.BoxGeometry(0.5, 0.18, 1.1);
-    for (let off = 8; off <= 112; off += 26) {
+    for (let off = 8; off <= Ly - 8; off += 26) {
       for (const dd of [H + 1.3, H + 18]) {
-        if (off > 88) continue;                      // keep the exit / entry area clear
+        if (off > Ly - 32) continue;                 // keep the exit / entry area clear
         const pole = new THREE.Mesh(lampGeo, mats.pole);
         put(pole, S(off), sd * dd, 4);
         const head = new THREE.Mesh(headGeo, streetGlowMat);

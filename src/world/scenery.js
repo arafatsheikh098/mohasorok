@@ -690,6 +690,7 @@ function signPlan(route) {
 function buildSign(route, ctx, mats, it) {
   const pp = route.pointAt(it.s, it.d);
   if ((route.junctions || []).some((j) => Math.abs(it.s - j.s) < j.R + 30) || route.nearBranch?.(pp.x, pp.z, 1)) return;   // not in a side road's way
+  if (route.ferryAt?.(it.s) || route.ferryAt?.(it.s - 40) || route.ferryAt?.(it.s + 40)) return;     // (nor out on a ferry's river)
   const group = new THREE.Group();
   const road = route.segAt(it.s).chain;
   const tex = it.lines ? directionSignTexture(it.lines, road.ref, road.bn) : it.place ? placeSignTexture(it.place.bn.split(' (')[0], it.place.en) : null;
