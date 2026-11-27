@@ -384,6 +384,11 @@
     <div id="company"><div class="bal">Company bank <span class="bn">· কোম্পানির টাকা</span><b id="co-balance">৳ 0</b></div>
       <button class="btn ghost" id="stats-open">📊 Stats</button></div>
 
+    <h3>Play <small class="h3note">a trip with passengers, or explore any road you like</small></h3>
+    <div class="seg" id="play-mode">
+      <button data-v="trip"><b>🚌 Trip</b><small>zilla to zilla with passengers</small></button>
+      <button data-v="free"><b>🧭 Explore</b><small>no destination — take any road</small></button>
+    </div>
     <h3>Route <small class="h3note">any zilla to any zilla · tap a town on the map</small></h3>
     <div id="trip-pick">
       <div class="seg" id="tap-mode"><button data-v="from">Tap sets <b>FROM</b></button><button data-v="to" class="sel">Tap sets <b>TO</b></button></div>
@@ -393,7 +398,6 @@
         <button id="trip-swap" class="btn ghost" title="Swap">⇄</button>
         <label>To<select id="trip-to"></select></label>
       </div>
-      <label class="chk free-chk"><input type="checkbox" id="free-drive"> 🧭 Free drive — no destination, take any road you like</label>
       <div id="trip-sum"></div>
       <div class="seg" id="route"></div>
     </div>
@@ -445,7 +449,7 @@
 <div id="hud">
   <div id="trip" class="card">
     <div class="route"><span class="bn">ঢাকা → চট্টগ্রাম</span> · N1</div>
-    <div class="r">Remaining <b id="trip-remaining">-</b></div>
+    <div class="r"><span id="trip-rem-l">Remaining</span> <b id="trip-remaining">-</b></div>
     <div class="r">Drive time <b id="trip-time">-</b></div>
     <div class="r">ETA <b id="trip-eta">-</b></div>
     <div class="r">Fuel <b id="trip-fuel">-</b></div>

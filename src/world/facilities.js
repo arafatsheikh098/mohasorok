@@ -660,6 +660,8 @@ function buildRestStop(route, scene, chunks, obstacles, mats, r, ri) {
 function addSign(parent, chunks, route, s, d, flip, tex, w, h, lift = 1.8) {
   const g = new THREE.Group();
   const p = route.pointAt(s, d);
+  // never a sign post on a junction pad or in the way of a side road
+  if ((route.junctions || []).some((j) => Math.hypot(p.x - j.x, p.z - j.z) < j.R + 6) || route.nearBranch?.(p.x, p.z, 1)) return;
   g.position.set(p.x, route.roadHeight(s), p.z);
   g.rotation.y = route.yawAt(s) + (flip ? 0 : Math.PI);
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }));

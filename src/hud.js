@@ -72,7 +72,8 @@ export class HUD {
     const nextKm = Math.abs(route.realKm(next.s) - route.realKm(st.s));
     const road = route.segAt(st.s).chain, nm = (p) => p.bn.split(' (')[0];
     const [A, B] = back ? [route.endPlace, route.startPlace] : [route.startPlace, route.endPlace];
-    const label = `<span class="bn">${nm(A)} → ${nm(B)}</span>${road.ref ? ` · ${road.ref}` : ''}`;
+    const label = this.free ? `🧭 <span class="bn">Explore</span>${road.ref ? ` · ${road.ref} ${road.en || ''}` : ''}`
+      : `<span class="bn">${nm(A)} → ${nm(B)}</span>${road.ref ? ` · ${road.ref}` : ''}`;
     if (label !== this._label) { this._label = label; document.querySelector('#trip .route').innerHTML = label; }
     const ff = st.fuel / st.tank;
     $('trip-fuel').textContent = `${Math.round(ff * 100)}% · ${Math.round(st.fuel)} L`;
@@ -82,7 +83,8 @@ export class HUD {
     $('fuel-fill').style.background = ff < 0.15 ? '#ff5252' : '#ffb300';
     $('hud-il').classList.toggle('on', st.indL && st.blink);
     $('hud-ir').classList.toggle('on', st.indR && st.blink);
-    $('trip-remaining').textContent = `${km.toFixed(1)} km`;
+    const remL = this.free ? 'Driven' : 'Remaining'; if (this._remL !== remL) { this._remL = remL; $('trip-rem-l').textContent = remL; }
+    $('trip-remaining').textContent = this.free ? `${route.realKm(st.s).toFixed(1)} km` : `${km.toFixed(1)} km`;
     $('trip-next').innerHTML = `<span class="bn">${next.bn}</span> · ${nextKm.toFixed(0)} km`;
     $('trip-time').textContent = fmtTime(st.elapsed);
     const avg = st.elapsed > 1 ? route.realKm(st.s) / (st.elapsed / 3600) : 0;

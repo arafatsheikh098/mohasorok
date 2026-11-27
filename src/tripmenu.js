@@ -88,10 +88,11 @@ export function initTripMenu({ net, settings, onChange }) {
   $('trip-from').onchange = (e) => { if (!set(e.target.value, settings.trip.to)) render(); e.target.blur(); };
   $('trip-to').onchange = (e) => { if (!set(settings.trip.from, e.target.value)) render(); e.target.blur(); };
   $('trip-swap').onclick = () => set(settings.trip.to, settings.trip.from);
-  // free drive: start from a zilla and take whatever road you like
-  const free = $('free-drive');
-  free.checked = settings.mode === 'free';
-  free.onchange = () => { settings.mode = free.checked ? 'free' : 'trip'; free.blur(); render(); onChange(settings.trip.from, settings.trip.to); };
+  // explore (free drive): start where the bus is and take whatever road you like; trip: zilla to zilla
+  const modeSeg = $('play-mode');
+  modeSeg.querySelectorAll('button').forEach((b) => {
+    b.onclick = () => { settings.mode = b.dataset.v; b.blur(); render(); onChange(settings.trip.from, settings.trip.to); };
+  });
   $('tap-mode').querySelectorAll('button').forEach((b) => {
     b.onclick = () => { mode = b.dataset.v; $('tap-mode').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
   });
@@ -126,12 +127,19 @@ export function initTripMenu({ net, settings, onChange }) {
     fill($('trip-from'));
     const { from, to } = settings.trip;
     const isFree = settings.mode === 'free';
+    $('play-mode').querySelectorAll('button').forEach((b) => b.classList.toggle('sel', (b.dataset.v === 'free') === isFree));
+    document.querySelector('#trip-pick .trip-sel label:last-of-type').style.display = isFree ? 'none' : '';
+    $('trip-swap').style.display = isFree ? 'none' : '';
+    $('route').style.display = isFree ? 'none' : '';
+    $('tap-mode').style.display = isFree ? 'none' : '';
     $('trip-from').value = from; $('trip-to').value = to;
     $('trip-to').disabled = isFree; $('trip-swap').disabled = isFree;
     if (isFree) {
       const zf = from === '@here' ? { bn: '📍' } : net.zillas.get(from);
-      $('start-route').textContent = `${zf.bn} → 🧭`;
-      $('trip-sum').innerHTML = `<span class="bn">${from === '@here' ? `📍 the road near ${settings.at?.near || ''}` : zf.bn}</span> · free drive: no passengers and no destination. At every junction the green boards show where each road goes — drive onto any of them. <b>O</b> opens the map.`;
+      $('start-route').textContent = `${zf.bn} → 🧭 Explore`;
+      $('trip-sum').innerHTML = `🧭 <b>Explore</b> from <span class="bn">${from === '@here' ? `📍 the road near ${settings.at?.near || ''}` : zf.bn}</span>: no passengers and no destination. `
+        + 'The road goes on straight ahead; at every junction the green boards show where each road goes — drive onto any of them and the world follows you. '
+        + 'Turn round anywhere on a 2-lane road (or at a U-turn on a highway). <b>M</b> shows the whole map.';
       draw(null);
       return;
     }

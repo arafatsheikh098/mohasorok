@@ -240,6 +240,7 @@ function buildWorld(path) {
   scenery = initScenery(route, scene, { treeDensity: (QUALITY[settings.quality] || QUALITY.high).treeDensity }, road.water);
   facilities = initFacilities(route);
   hud = new HUD(route, road.water);
+  hud.free = settings.mode === 'free';
   passengers = new Passengers({ route, scene: corridorRoot, chunks, hud, player, free: settings.mode === 'free' });
   passengers.onBreak = onRestBreak;
   buildTripObjects();
@@ -336,10 +337,17 @@ function reroute(path, fromS, msg) {
 // the onward roads after a turn onto `step` at `node`
 function onward(step) {
   const far = step.rev ? net.roads.get(step.road).from : net.roads.get(step.road).to;
-  if (settings.mode === 'free') return net.straightOn(far, step);
+  // the road never just stops: where it leads nowhere useful it goes straight on (or into the town's terminal)
+  const straight = () => {
+    const s = net.straightOn(far, step);
+    if (s.length) return s;
+    const link = (net.adj.get(far) || []).find((e) => net.roads.get(e.road).def.link);
+    return link ? [{ road: link.road, rev: link.rev }] : [];
+  };
+  if (settings.mode === 'free') return straight();
   const goals = net.zillas.get(settings.trip.to)?.terminals || [];
   if (goals.includes(far)) return [];
-  return net.path(far, goals, { avoid: new Set([step.road]) }) || [];
+  return net.path(far, goals, { avoid: new Set([step.road]) }) || straight();
 }
 // is the bus on one of the side roads of a junction it is passing? then switch the trip onto it
 function junctionLogic() {
@@ -369,10 +377,13 @@ function junctionLogic() {
 }
 // free drive: keep the road going ahead of the bus
 function extendFree() {
-  if (settings.mode !== 'free' || player.s < route.length - 3500 || player.side > 0) return;
+  if (player.s < route.length - 3500 || player.side > 0) return;
+  if (settings.mode !== 'free' && destTerminal()) return;          // a trip that ends at its destination
   const last = route.path[route.path.length - 1];
   const end = last.rev ? net.roads.get(last.road).from : net.roads.get(last.road).to;
-  const more = net.straightOn(end, last, 120);
+  // (in a trip after a wrong turn: back towards the destination if there is a way, else straight on)
+  const goals = settings.mode === 'free' ? null : net.zillas.get(settings.trip.to)?.terminals;
+  const more = (goals && net.path(end, goals, { avoid: new Set([last.road]) })) || net.straightOn(end, last, 120);
   if (more.length) reroute([...route.path, ...more], route.length - 40, null);
 }
 function restartTrip() {

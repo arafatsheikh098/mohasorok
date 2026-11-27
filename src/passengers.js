@@ -90,6 +90,8 @@ export class Passengers {
     if (s < 250 || s > R.length - 250) return false;
     if (R.bridgeAt(s) || R.bridgeAt(s - 60) || R.bridgeAt(s + 60)) return false;
     if (R.tollDist(s) < 260) return false;
+    if ((R.junctions || []).some((j) => Math.abs(s - j.s) < j.R + 70)) return false;
+    for (const sd of [-1, 1]) { const p = R.pointAt(s, sd * (R.prof(s).half + 3)); if (R.nearBranch?.(p.x, p.z, 4)) return false; }   // not on a side road
     if (R.uturns.some((u) => s > u.s0 - 45 && s < u.s1 + 45)) return false;
     if (R.stations.some((st) => s > st.s0 - 60 && s < st.s1 + 60)) return false;
     if (R.rests.some((r) => s > r.s0 - 60 && s < r.s1 + 60)) return false;

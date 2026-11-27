@@ -661,8 +661,10 @@ function signPlan(route) {
   const end = places[places.length - 1], start = places[0];
   const nm = (p) => [p.bn.split(' (')[0], p.en.split(' (')[0]];
   const items = [];
+  const atJunction = (s) => (route.junctions || []).some((j) => Math.abs(s - j.s) < j.R + 90);
   for (let s = 400; s < L - 300; s += 1900) {
     if (route.bridgeAt(s) || route.bridgeAt(s + 20) || route.tollDist(s) < PLAZA.reach + 70) s += 300;
+    while (atJunction(s) || atJunction(s + 60)) s += 60;       // never a sign gantry across a junction
     const ahead = majors.filter((p) => p.s > s + 200).slice(0, 2);
     const lines = ahead.map((p) => [...nm(p), kmTo(s, p)]);
     if (!lines.length || lines[lines.length - 1][1] !== nm(end)[1]) lines.push([...nm(end), kmTo(s, end)]);
@@ -686,6 +688,8 @@ function signPlan(route) {
 }
 
 function buildSign(route, ctx, mats, it) {
+  const pp = route.pointAt(it.s, it.d);
+  if ((route.junctions || []).some((j) => Math.abs(it.s - j.s) < j.R + 30) || route.nearBranch?.(pp.x, pp.z, 1)) return;   // not in a side road's way
   const group = new THREE.Group();
   const road = route.segAt(it.s).chain;
   const tex = it.lines ? directionSignTexture(it.lines, road.ref, road.bn) : it.place ? placeSignTexture(it.place.bn.split(' (')[0], it.place.en) : null;

@@ -8,7 +8,7 @@ import { ribbon, roadMats, buildBridge, splitAround, medianRibbons } from './roa
 import { sharedMats } from './stream.js';
 import { directionSignTexture, ASPHALT_TILE, asphaltTexture2 } from '../textures.js';
 
-export const STUB_LEN = 900;        // m of each branch road built at a junction
+export const STUB_LEN = 1400;        // m of each branch road built at a junction
 
 const jMats = sharedMats(() => {
   const m = roadMats();
