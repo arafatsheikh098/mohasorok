@@ -39,6 +39,8 @@ import { initTripMenu } from './tripmenu.js';
 import { BigMap } from './bigmap.js';
 import { SERVICES } from './data/services.js';
 import { setBusRouteBoard } from './busModel.js';
+import { Race } from './race.js';
+import { initRaceUI, fmtRace } from './raceui.js';
 
 const $ = (id) => document.getElementById(id);
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -105,6 +107,10 @@ const input = new Input();
 const touch = new TouchControls(input);
 let state = 'loading';
 
+// racing with friends (src/race.js): the room, and whether this drive is the race (not a solo practice trip)
+const race = new Race(scene);
+let raceUI = null, raceRun = false;
+const raceMe = () => ({ name: localStorage.getItem('mohasorok.name') || 'Driver', op: settings.op.id, opName: settings.op.en, type: settings.type });
 const player = {
   bus: null, phys: null, s: 0, d: 0, hint: -1, len: 12, wid: 2.5, v: 0,
   lights: false, indL: false, indR: false, blinkT: 0, blink: false,
@@ -180,6 +186,7 @@ function createPlayerBus() {
   if (mirrors) mirrors.attach(bus);
   playerBoard();
   resetPlayer(...startPoint());
+  if (race.inRoom) race.hello(raceMe());       // friends see the new bus / livery
 }
 
 // ---------- speed code: only for the Sakura AK1J Non-AC. Any code can be typed; only the right one works ----------
@@ -225,7 +232,13 @@ function resetPlayer(s, d) {
 // (the trip corridor always runs from the origin at s = 0 to the destination)
 function startPoint() {
   const t = route.terminals.find((x) => x.end === 0);
-  return t ? [t.bay.s, t.bay.d] : [20, ROAD.laneCenters[0]];
+  if (!t) return [20, ROAD.laneCenters[0]];
+  // a race: the starting grid, two buses side by side in the first row of the yard, one row behind another
+  if (raceRun) {
+    const k = race.slot(), Ly = Math.abs(t.s1 - t.s0);
+    return [t.closed + t.dir * Math.min(22 + Math.floor(k / 2) * 15, Ly - 30), t.side * (ROAD.half + (k % 2 ? 14.5 : 8.5))];
+  }
+  return [t.bay.s, t.bay.d];
 }
 // the terminal the trip ends at
 function destTerminal() {
@@ -835,9 +848,12 @@ function events(dt) {
   const atEnd = !!dest && s >= route.length - 4;
   // in the destination yard the trip ends once everyone has got down (G) and the door is shut
   const parked = !!dest && player.inTerminal === dest && Math.abs(player.phys.v) < 0.5;
-  player.arriveT = parked && (!passengers || passengers.allOff()) ? (player.arriveT || 0) + dt : 0;
+  // (a race ends as soon as the bus stops in the yard: the passengers get down after the finish)
+  const raceEnd = raceRun && race.racing;
+  player.arriveT = parked && (raceEnd || !passengers || passengers.allOff()) ? (player.arriveT || 0) + dt : 0;
   if (player.arriveT > 0.8 || atEnd) {
     state = 'arrived';
+    if (raceEnd) { race.finish(player); hud.toast(`🏁 Finished in ${fmtRace(race.raceTime())}!`, 'good', 4000); }
     passengers?.finishTrip();          // everyone still aboard gets down at the terminal
     hud.arrival(player, settings.op.en, route.endPlace, career.finishTrip(player, { dir: tripKey(), km: route.totalKm }));
     if (settings.mode !== 'free') {
@@ -981,7 +997,7 @@ function mapCtx() {
   const refs = [...new Set(route.segs.map((g) => g.chain.ref).filter((r) => r && !['DHK', 'CTG'].includes(r)))].join(', ');
   const free = settings.mode === 'free';
   return {
-    hud, route, stops, st: { x: ph.pos.x, z: ph.pos.z, yaw: ph.yaw, s: player.s, side: player.side },
+    hud, route, stops, st: { x: ph.pos.x, z: ph.pos.z, yaw: ph.yaw, s: player.s, side: player.side }, friends: race.friends(),
     title: free ? `🧭 Free drive from <span class="bn">${nm(route.startPlace, 'bn')}</span><small>Take any road at a junction — the map follows you</small>`
       : `<span class="bn">${nm(route.startPlace, 'bn')} → ${nm(route.endPlace, 'bn')}</span><small>${nm(route.startPlace, 'en')} → ${nm(route.endPlace, 'en')} · ${Math.round(route.totalKm)} km via ${refs}</small>`,
     info: `${free ? '' : `Remaining <b>${left.toFixed(0)} km</b>`}${next ? ` · next stop <b class="bn">${next.bn}</b> (${Math.abs(route.realKm(next.s) - route.realKm(player.s)).toFixed(0)} km)` : ''}`
@@ -1145,7 +1161,15 @@ function buildMenu() {
   });
   // the trip picker: map of Bangladesh + From / To (rebuilding the world takes a moment, so wait for the clicks to stop)
   let tripT = 0;
-  tripMenu = initTripMenu({ net, settings, onChange: () => { saveSettings(); clearTimeout(tripT); tripT = setTimeout(changeTrip, 250); } });
+  tripMenu = initTripMenu({ net, settings, onChange: () => {
+    // in a race room only the host picks the route
+    if (race.inRoom && race.room?.trip && !race.isHost) {
+      settings.trip = { ...race.room.trip }; settings.mode = 'trip'; tripMenu.render();
+      hud.toast('🏁 The race host picks the route', '', 2500);
+    }
+    if (race.inRoom && race.isHost && settings.mode !== 'free') race.setTrip(settings.trip);
+    saveSettings(); clearTimeout(tripT); tripT = setTimeout(changeTrip, 250);
+  } });
   for (const id of ['traffic', 'quality']) {
     const el = $(id);
     el.querySelectorAll('button').forEach((b) => {
@@ -1286,8 +1310,14 @@ function toMenu() {
   const wasDriving = state === 'drive' || state === 'paused';
   if (wasDriving && !(player.arriveT > 0.8)) saveBusPosition();
   state = 'menu';
+  raceRun = false;
+  raceUI?.board(false);
   $('menu').style.display = 'block';
   hud.show(false);
+  // in a race room: back to the room's route (the host's next pick is the next race)
+  if (race.inRoom && race.room?.trip && !race.isHost) { settings.trip = { ...race.room.trip }; settings.mode = 'trip'; }
+  if (race.inRoom && race.isHost && settings.mode !== 'free') race.setTrip(settings.trip);
+  raceUI?.render();
   audio.horn(false);
   updateMusicBox();
   tripMenu?.render();
@@ -1295,7 +1325,8 @@ function toMenu() {
   rig.setMode('chase');
 }
 
-function startDrive() {
+function startDrive(isRace = false) {
+  if (isRace !== true) raceRun = false;          // the START button: a practice / solo trip
   audio.init();
   music.attach(audio.ctx);
   voice.init(audio.ctx, audio.master, () => audio.muted);
@@ -1354,6 +1385,70 @@ function autoPerf(dt) {
   hud.toast(`Graphics lowered for smoother driving (${Math.round(fps)} fps) · pick a Graphics level in the menu to keep yours`, '', 3500);
 }
 
+// ---------- racing with friends ----------
+let raceT = 0, raceMapT = 0;
+function raceRemainKm() { return route ? Math.max(0, route.totalKm - route.realKm(player.s)) : 0; }
+function raceFrame(dt) {
+  if (!race.code) { if (raceRun) raceRun = false; raceUI?.board(false); return; }
+  const ph = player.phys, sending = raceRun && race.inRace && (state === 'drive' || state === 'paused' || state === 'arrived');
+  race.update(dt, { bus: player.bus, phys: ph, remainKm: raceRemainKm(), night: sky.night, camera, send: sending,
+    flags: { head: player.lights, high: player.high, fog: player.fog, brake: ph.brake > 0.1 || input.handbrake, indL: player.indL, indR: player.indR, reverse: ph.gear < 0 } });
+  if (raceRun) raceUI.countdown(race.countdown(), {
+    onBeep: (go) => { audio.tick(true); if (go) setTimeout(() => audio.tick(false), 120); },
+    onGo: () => { player.elapsed = 0; },
+  });
+  raceT -= dt;
+  if (raceT <= 0) { raceT = 0.5; raceUI.board(raceRun && race.inRace && state !== 'menu', raceRemainKm()); }
+  // the big map pauses your bus, but your friends keep driving: keep their dots moving
+  raceMapT -= dt;
+  if (bigmap.isOpen && race.inRace && raceMapT <= 0) { raceMapT = 0.5; bigmap.update(mapCtx()); }
+}
+// the host started the race (or started it again): everyone in the room goes to the start terminal
+function startRace(room) {
+  if (!room?.trip || !room.grid?.includes(race.you)) return;
+  for (const id of ['arrival', 'pause', 'stats', 'about']) $(id).style.display = 'none';
+  if (bigmap.isOpen) closeMap();
+  settings.trip = { from: room.trip.from, to: room.trip.to };
+  settings.mode = 'trip';
+  raceRun = true;
+  tripMenu?.render();
+  changeTrip();
+  startDrive(true);
+  const s = Math.max(0, Math.round(race.countdown() / 1000));
+  hud.toast(`🏁 Race ${race.code}: <span class="bn">${net.zillas.get(room.trip.from)?.bn} → ${net.zillas.get(room.trip.to)?.bn}</span><br><small>Starts in ${s} s — first bus to stop in the destination terminal wins</small>`, 'good', 5000);
+}
+// the room's route, for everyone but the host (the host's own menu choice is the room's route)
+function applyRoomTrip() {
+  const t = race.room?.trip;
+  if (!t || race.isHost || state !== 'menu') return;
+  if (settings.trip.from === t.from && settings.trip.to === t.to && settings.mode !== 'free') return;
+  settings.trip = { from: t.from, to: t.to };
+  settings.mode = 'trip';
+  saveSettings();
+  tripMenu?.render();
+  clearTimeout(applyRoomTrip.t);
+  applyRoomTrip.t = setTimeout(changeTrip, 250);
+}
+function initRace() {
+  raceUI = initRaceUI({ race, net, me: raceMe, tripOf: (t) => { const p = net.trip(t.from, t.to); return p && { km: net.pathKm(p) }; } });
+  race.on('room', applyRoomTrip);
+  race.on('change', () => {
+    // a fresh room (or a new host): the host's route becomes the race route
+    if (race.isHost && race.connected && race.room?.phase !== 'race' && settings.mode !== 'free' && settings.trip.from !== '@here'
+      && (race.room?.trip?.from !== settings.trip.from || race.room?.trip?.to !== settings.trip.to)) race.setTrip(settings.trip);
+  });
+  race.on('start', startRace);
+  race.on('results', () => raceUI.renderResults());
+  // an invite link (?race=CODE)
+  const code = new URLSearchParams(location.search).get('race');
+  if (code) {
+    raceUI.prefill(code);
+    if (localStorage.getItem('mohasorok.name')) raceUI.join();
+    else document.getElementById('race-name')?.focus();
+    $('race-box')?.scrollIntoView({ block: 'center' });
+  }
+}
+
 // ---------- main loop ----------
 let last = performance.now();
 let hudT = 0, menuT = 0;
@@ -1377,8 +1472,9 @@ function frame(now) {
     const hr = player.clockMin / 60;
     if (Math.abs(((hr % 24) + 24) % 24 - sky.hour) > 0.02) { sky.setHour(hr); applyNight(); }
     // two physics substeps for stability
+    const raceHold = raceRun && race.countdown() > 0;       // on the grid, waiting for the green light
     for (let k = 0; k < 2; k++) {
-      ph.update(dt / 2, { throttle: player.fuel > 0 && !player.refuelling && !(player.resting > 0) ? input.throttle : 0, brake: input.brake, steer: input.steer, handbrake: input.handbrake || player.refuelling || player.resting > 0 });
+      ph.update(dt / 2, { throttle: player.fuel > 0 && !player.refuelling && !(player.resting > 0) && !raceHold ? input.throttle : 0, brake: input.brake, steer: input.steer, handbrake: input.handbrake || player.refuelling || player.resting > 0 || raceHold });
       constrain(dt / 2);
     }
     placeBusModel(dt);
@@ -1422,6 +1518,7 @@ function frame(now) {
         place: route.placeAt(player.s), clock, camLabel: rig.label(), indL: player.indL, indR: player.indR, blink,
         lights: player.lights, high: player.high, fog: player.fog, cruise: ph.cruise != null, cruiseKmh: (ph.cruise || 0) * 3.6, traffic: traffic.list,
         side: player.side, heading: player.heading, fuel: player.fuel, tank: TANK_LITRES, costs: player.fuelCost + player.tollCost, mirrorsHud: mirrors.hudOn,
+        friends: race.friends(),
       };
       hud.update(st);
       if (rig.mode === 'cabin') drawGauges(player.bus, { kmh, rpm: ph.rpm, gear: st.gear, cruise: st.cruise, lights: player.lights, high: player.high, fog: player.fog, indL: player.indL && blink, indR: player.indR && blink, limit: SPEED_LIMIT, odo: route.realKm(player.s), fuel: player.fuel / TANK_LITRES, temp: 0.45 + ph.throttle * 0.1, clock });
@@ -1442,6 +1539,7 @@ function frame(now) {
     if (state === 'arrived') rig.update(dt, player.bus, ph, input, player.s);
   }
 
+  raceFrame(dt);
   const focus = player.bus.root.position;
   stream.update(player.s, player.side < 0 ? 1 : -1);
   netRoads.update(player.phys.pos.x, player.phys.pos.z, dt);
@@ -1510,6 +1608,7 @@ async function boot() {
   mirrors.layoutHUD(innerWidth, innerHeight);
   setTime(settings.time);
   buildMenu();
+  initRace();
   // warm up: compile shaders before showing the menu
   renderer.compile(scene, camera);
   $('loading').style.display = 'none';

@@ -186,6 +186,19 @@ export class HUD {
       g.fillStyle = v.dir > 0 ? '#c9d3dc' : '#7c8a96';
       g.fillRect(a - 1.5, b - 1.5, 3, 3);
     }
+    // friends in a race: a coloured arrow each
+    for (const f of st.friends || []) {
+      let [a, b] = T(f.x, f.z);
+      const off = a < 8 || b < 8 || a > W - 8 || b > H - 8;
+      a = Math.max(8, Math.min(W - 8, a)); b = Math.max(8, Math.min(H - 8, b));      // off the map: pinned to the edge
+      g.save(); g.translate(a, b);
+      if (!off) g.rotate(st.yaw - f.yaw);
+      g.fillStyle = f.color; g.strokeStyle = '#0b1117'; g.lineWidth = 2;
+      g.beginPath();
+      if (off) g.arc(0, 0, 5, 0, Math.PI * 2); else { g.moveTo(0, -8); g.lineTo(6, 7); g.lineTo(0, 3); g.lineTo(-6, 7); g.closePath(); }
+      g.fill(); g.stroke();
+      g.restore();
+    }
     // town labels
     g.font = `600 13px ${BN_FONT}`;
     g.textAlign = 'center';

@@ -340,6 +340,58 @@
     #musicbox { left: 50%; bottom: 8px; transform: translateX(-50%) scale(.82); transform-origin: bottom center; }
     #touch.open ~ #hud #place, body.tray-open #place { display: none; }
   }
+
+  /* ---------- race with friends ---------- */
+  #race-box { background: rgba(255,255,255,.03); border: 1px solid var(--line); border-radius: 9px; padding: 12px; }
+  #race-box.off { opacity: .6; }
+  #race-box input { background: rgba(255,255,255,.06); color: var(--txt); border: 1px solid var(--line); border-radius: 7px; padding: 9px 10px; font-size: 14px; user-select: text; -webkit-user-select: text; }
+  .race-name { display: flex; align-items: center; gap: 10px; color: var(--mut); font-size: 13px; margin-bottom: 10px; }
+  .race-name input { flex: 1; }
+  .race-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .race-row .btn { margin: 0; padding: 9px 14px; }
+  .race-or { color: var(--mut); font-size: 12px; }
+  #race-code { width: 96px; text-transform: uppercase; letter-spacing: 3px; font-weight: 800; text-align: center; }
+  .race-msg { margin-top: 8px; font-size: 12px; color: var(--mut); min-height: 0; }
+  .race-msg.bad { color: #ff8a80; }
+  .race-codebar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .race-codebar span { color: var(--mut); font-size: 12px; }
+  .race-codebar b { font-size: 26px; letter-spacing: 5px; color: var(--acc); font-family: Menlo, Consolas, monospace; user-select: text; -webkit-user-select: text; }
+  .race-codebar .btn { margin: 0 0 0 auto; padding: 8px 12px; }
+  #race-trip { font-size: 15px; margin-bottom: 10px; }
+  #race-trip small { color: var(--mut); margin-left: 6px; }
+  #race-trip .race-hint, .race-hint { display: block; margin: 4px 0 0; color: var(--mut); font-size: 11px; }
+  #race-players { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  .race-p { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,.03); font-size: 13px; }
+  .race-p.me { background: rgba(255,138,28,.1); }
+  .race-p i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .race-p small { color: var(--mut); }
+  .race-p span { margin-left: auto; color: var(--mut); font-size: 12px; }
+  #race-ready.on { background: rgba(61,220,132,.2); color: #6fdc8c; }
+  #race-go:disabled { opacity: .5; cursor: default; }
+  #race-count { position: fixed; inset: 0; z-index: 25; display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+  #race-count b { font-size: 160px; font-weight: 900; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,.6); line-height: 1; }
+  #race-count b.wait { font-size: 90px; opacity: .85; }
+  #race-count b.go { color: #3ddc84; }
+  #race-count small { font-size: 24px; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.7); margin-top: 6px; }
+  #race-board { position: absolute; right: 18px; top: 70px; min-width: 230px; padding: 8px 10px; font-size: 13px; display: none; }
+  #race-board .rb-h { display: flex; justify-content: space-between; color: var(--mut); font-size: 11px; letter-spacing: .5px; margin-bottom: 4px; }
+  #race-board .rb-h b { color: var(--txt); font-size: 13px; }
+  #race-board .rb-r { display: flex; align-items: center; gap: 7px; padding: 2px 0; }
+  #race-board .rb-r em { font-style: normal; color: var(--mut); width: 14px; }
+  #race-board .rb-r i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  #race-board .rb-r span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
+  #race-board .rb-r b { font-variant-numeric: tabular-nums; }
+  #race-board .rb-r.me span { color: var(--acc); font-weight: 800; }
+  #race-board .rb-r.gone { opacity: .45; }
+  #race-results { display: none; margin: 0 0 16px; text-align: left; }
+  #race-results .rr-me { font-size: 18px; text-align: center; margin-bottom: 10px; }
+  #race-results .rr-me b { color: var(--acc); }
+  #race-results .row.me span { color: var(--acc); }
+  #race-results .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+  @media (max-height: 520px) {
+    #race-board { right: auto; left: 50%; top: auto; bottom: 6px; transform: translateX(-50%) scale(.78); transform-origin: bottom center; }
+    #race-count b { font-size: 110px; }
+  }
 </style>
 </head>
 <body>
@@ -349,6 +401,7 @@
 <div id="nogl"><div><h2>WebGL is not available</h2><p>This browser or device can't run 3D graphics. Please try the latest Chrome, Edge, Firefox or Safari, and turn on hardware acceleration.</p></div></div>
 <div id="camflash"></div>
 <div id="yt-box"><div id="yt-player"></div><button id="yt-close" title="Stop YouTube">✕</button></div>
+<div id="race-count"></div>
 <div id="restfade"><div>🍛 যাত্রা বিরতি<small>20 minute break…</small></div></div>
 <div id="touch">
   <div id="t-wheel"><div id="t-wheel-img"></div></div>
@@ -393,6 +446,22 @@
     <div class="seg" id="play-mode">
       <button data-v="trip"><b>🚌 Trip</b><small>zilla to zilla with passengers</small></button>
       <button data-v="free"><b>🧭 Explore</b><small>no destination — take any road</small></button>
+    </div>
+    <h3>👥 Race with friends <small class="h3note">one code · same start terminal · first bus into the end terminal wins</small></h3>
+    <div id="race-box">
+      <div id="race-join">
+        <label class="race-name">Your name <input id="race-name" maxlength="18" placeholder="e.g. Arafat" autocomplete="off" spellcheck="false"></label>
+        <div class="race-row"><button class="btn" id="race-create">＋ Create a race</button><span class="race-or">or</span>
+          <input id="race-code" maxlength="8" placeholder="CODE" autocomplete="off" spellcheck="false"><button class="btn ghost" id="race-join-btn">Join</button></div>
+        <div id="race-msg" class="race-msg"></div>
+      </div>
+      <div id="race-lobby" style="display:none">
+        <div class="race-codebar"><span>Race code</span><b id="race-code-show">-----</b><button class="btn ghost" id="race-copy">📋 Invite friends</button></div>
+        <div id="race-trip"></div>
+        <div id="race-players"></div>
+        <div class="race-row"><button class="btn" id="race-go">🏁 Start the race</button><button class="btn ghost" id="race-ready">✋ I am ready</button><button class="btn ghost" id="race-leave">Leave</button></div>
+        <div id="race-msg2" class="race-msg"></div>
+      </div>
     </div>
     <h3>Route <small class="h3note">any zilla to any zilla · tap a town on the map</small></h3>
     <div id="trip-pick">
@@ -482,6 +551,7 @@
     <div class="seat-foot"><button class="btn ghost" id="seat-reset">Reset</button><small>PC: Alt + ← → ↑ ↓ move · Alt + PgUp/PgDn height · Alt + [ ] view</small></div>
   </div>
   <div id="toasts"></div>
+  <div id="race-board" class="card"></div>
   <div id="help" class="card">
     <kbd>W</kbd> throttle · <kbd>S</kbd> brake/reverse<br><kbd>A</kbd> <kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
     <kbd>H</kbd> horn (traffic ahead moves over)<br><kbd>Q</kbd> <kbd>E</kbd> indicators · <kbd>L</kbd> lights<br><kbd>U</kbd> high beam · <kbd>J</kbd> fog lights<br>
@@ -532,6 +602,7 @@
 <div id="arrival"><div class="card">
   <h2 id="arr-title">Arrived in Chattogram</h2><div class="bn big" id="arr-bn">চট্টগ্রামে স্বাগতম!</div>
   <div id="arrival-body"></div>
+  <div id="race-results"></div>
   <button class="btn" id="again">Drive again</button><button class="btn ghost" id="arr-menu">Main menu</button>
 </div></div>
 <div id="stats"><div class="card">

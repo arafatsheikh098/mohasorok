@@ -1,0 +1,18 @@
+# Mohasorok race server: one Durable Object per race room (Cloudflare free plan).
+# Local test:  npm run dev     (no account needed)
+# Go live:     npx wrangler login, then npm run deploy
+name = "mohasorok-race"
+main = "src/index.js"
+compatibility_date = "2025-10-01"
+
+[vars]
+# pages allowed to connect (comma-separated hostnames; "*" allows any)
+ALLOWED_HOSTS = "arafatsheikh098.github.io,localhost,127.0.0.1"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RaceRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RaceRoom"]

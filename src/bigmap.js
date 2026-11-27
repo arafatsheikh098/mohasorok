@@ -183,6 +183,17 @@ export class BigMap {
     };
     flag(0, '#3ddc84', R.startPlace.bn.split(' (')[0]);
     flag(R.length, '#ff8a1c', R.endPlace.bn.split(' (')[0]);
+    // friends in a race
+    for (const f of this.friends || []) {
+      const x = X(f.x), y = Y(f.z);
+      g.save(); g.translate(x, y); g.rotate(Math.PI - f.yaw);
+      g.fillStyle = f.color; g.strokeStyle = '#0b1117'; g.lineWidth = px(3);
+      g.beginPath(); g.moveTo(0, px(-13)); g.lineTo(px(9), px(10)); g.lineTo(0, px(5)); g.lineTo(px(-9), px(10)); g.closePath(); g.fill(); g.stroke();
+      g.restore();
+      g.font = `800 ${px(13)}px ${EN_FONT}`; g.textAlign = 'left'; g.textBaseline = 'middle';
+      g.lineWidth = px(4); g.strokeStyle = '#0b0f13'; g.strokeText(f.name, x + px(13), y);
+      g.fillStyle = f.color; g.fillText(f.name, x + px(13), y);
+    }
     // the bus
     if (this.st) {
       const x = X(this.st.x), y = Y(this.st.z);
