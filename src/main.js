@@ -128,9 +128,9 @@ function cycleGraphics() {
   const order = ['high', 'medium', 'low'];
   settings.quality = order[(order.indexOf(settings.quality) + 1) % order.length];
   settings.qualityManual = true;
-  perf.steps = 0; perf.slow = 0;
+  // (the player's own choice: whatever the automatic easing had taken away comes back first)
+  undoPerfSteps();
   applyQuality();
-  if (perf.mirrorsOff) { mirrors.hudOn = true; perf.mirrorsOff = false; }   // (the automatic drop had turned the screen mirrors off)
   saveSettings();
   gfxLabel();
   // (the menu's Graphics buttons show the same choice)
@@ -1383,6 +1383,7 @@ function startDrive(isRace = false) {
     // full screen + landscape on phones (ignored where the browser doesn't allow it)
     document.documentElement.requestFullscreen?.().then(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {});
   }
+  undoPerfSteps(); gfxLabel();       // (a new drive starts at the full chosen level)
   applyQuality();
   if (traffic.list.length !== settings.traffic || traffic.opCount !== OPERATORS.length) {
     for (const v of traffic.list) scene.remove(v.wrap);
@@ -1425,20 +1426,43 @@ function autoPerf(dt) {
   // A steady ~30 fps is the browser's own cap (iPhone Low Power Mode and the like); lower graphics wouldn't help.
   // Only a device that stays well below that for 12 s gets lighter settings.
   perf.slow = fps < 26 ? perf.slow + 1 : 0;
-  if (perf.slow < 3 || perf.steps >= 3) return;
-  perf.slow = 0; perf.steps++;
-  const floor = IS_TOUCH ? 1.0 : 0.75;
-  if (renderer.getPixelRatio() > floor) {
-    renderer.setPixelRatio(Math.max(floor, renderer.getPixelRatio() - 0.25));
-    renderer.setSize(innerWidth, innerHeight);
-  } else if (sky.sun.shadow.mapSize.x > 1024) {
-    sky.sun.shadow.mapSize.set(1024, 1024); sky.sun.shadow.map?.dispose(); sky.sun.shadow.map = null;
+  // smooth again for 20 s (e.g. past a heavy town, out of the rain): give back the last thing taken away
+  // (until it has to ease off again after giving something back: then the device is on the edge, and it stays
+  // where it is rather than switching back and forth)
+  perf.fast = fps >= 50 ? (perf.fast || 0) + 1 : 0;
+  if (perf.fast >= 5 && perf.done?.length && !perf.settled) {
+    perf.fast = 0; perf.restored = true;
+    perf.done.pop().undo();
+    gfxAuto(perf.done.length ? '🖥 Auto ↓' : `🖥 ${GFX_NAME[settings.quality]}`);
+    if (!perf.done.length) hud.toast('🖥 Graphics back to full', '', 2000);
+    return;
   }
-  if (perf.steps === 2 && mirrors.hudOn) { mirrors.hudOn = false; perf.mirrorsOff = true; }
-  const gb = document.getElementById('gfx-btn');
-  if (gb) gb.textContent = '🖥 Auto ↓';
-  hud.toast(`Graphics lowered for smoother driving (${Math.round(fps)} fps) · press <b>I</b> (or 🖥) to pick your own`, '', 4000);
+  if (perf.slow < 3) return;
+  perf.slow = 0;
+  // the least visible first: mirror refresh, then shadow detail, then a little sharpness (never blurry: the
+  // picture stays at least 1 pixel per screen pixel), and the screen mirrors only as the very last step
+  perf.done ||= [];
+  if (perf.restored) perf.settled = true;
+  const step = PERF_STEPS.find((x) => !perf.done.includes(x) && x.applies());
+  if (!step) return;
+  step.do();
+  perf.done.push(step);
+  gfxAuto('🖥 Auto ↓');
+  hud.toast(`Graphics eased a little for smoother driving (${Math.round(fps)} fps) · press <b>I</b> (or 🖥) to pick your own`, '', 4000);
 }
+// put back everything the automatic easing took away (a new trip, or the player picks a level)
+function undoPerfSteps() { for (const st of (perf.done || []).reverse()) st.undo(); perf.done = []; perf.slow = 0; perf.fast = 0; perf.restored = perf.settled = false; }
+function gfxAuto(text) { const gb = document.getElementById('gfx-btn'); if (gb) gb.textContent = text; }
+const setShadow = (n) => { if (sky.sun.shadow.mapSize.x === n) return; sky.sun.shadow.mapSize.set(n, n); sky.sun.shadow.map?.dispose(); sky.sun.shadow.map = null; };
+const setPR = (r) => { renderer.setPixelRatio(r); renderer.setSize(innerWidth, innerHeight); };
+const PERF_STEPS = [
+  { applies: () => !mirrors.lowRes, do() { mirrors.lowRes = true; }, undo() { mirrors.lowRes = mirrors_defaultOff; } },
+  { applies: () => sky.sun.shadow.mapSize.x > 2048, do() { this.was = sky.sun.shadow.mapSize.x; setShadow(2048); }, undo() { setShadow(this.was); } },
+  { applies: () => sky.sun.shadow.mapSize.x > 1024, do() { this.was = sky.sun.shadow.mapSize.x; setShadow(1024); }, undo() { setShadow(this.was); } },
+  { applies: () => renderer.getPixelRatio() > 1.0, do() { this.was = renderer.getPixelRatio(); setPR(Math.max(1.0, this.was - 0.25)); }, undo() { setPR(this.was); } },
+  { applies: () => renderer.getPixelRatio() > 1.0, do() { this.was = renderer.getPixelRatio(); setPR(Math.max(1.0, this.was - 0.25)); }, undo() { setPR(this.was); } },
+  { applies: () => mirrors.hudOn, do() { mirrors.hudOn = false; }, undo() { mirrors.hudOn = true; } },
+];
 
 // ---------- racing with friends ----------
 let raceT = 0, raceMapT = 0;
