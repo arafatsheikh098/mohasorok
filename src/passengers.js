@@ -740,6 +740,7 @@ export class Passengers {
       row.innerHTML = 'Mood <b id="trip-mood"></b>';
       const after = $('trip-rating')?.parentElement;
       if (after && after.parentElement === trip) after.after(row); else trip.appendChild(row);
+      if (this.freeDrive) row.style.display = 'none';     // (Explore: no passengers)
       el = $('trip-mood');
     }
     const v = this.stats.mood, face = v >= 80 ? '😊' : v >= 60 ? '🙂' : v >= 40 ? '😐' : v >= 20 ? '😟' : '😡';

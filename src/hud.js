@@ -84,7 +84,16 @@ export class HUD {
     $('hud-il').classList.toggle('on', st.indL && st.blink);
     $('hud-ir').classList.toggle('on', st.indR && st.blink);
     const remL = this.free ? 'Driven' : 'Remaining'; if (this._remL !== remL) { this._remL = remL; $('trip-rem-l').textContent = remL; }
-    $('trip-remaining').textContent = this.free ? `${route.realKm(st.s).toFixed(1)} km` : `${km.toFixed(1)} km`;
+    // (Explore: how far you have driven, not where you are along the road ahead of you)
+    $('trip-remaining').textContent = this.free ? `${st.odo.toFixed(1)} km` : `${km.toFixed(1)} km`;
+    // (Explore: no passengers, no destination: no seats, fares, stops, ratings or ETA)
+    if (this._freeRows !== this.free) {
+      this._freeRows = this.free;
+      for (const id of ['trip-eta', 'trip-seats', 'trip-fares', 'trip-stop', 'trip-rating', 'trip-mood']) {
+        const r = $(id)?.parentElement;
+        if (r) r.style.display = this.free ? 'none' : '';
+      }
+    }
     $('trip-next').innerHTML = `<span class="bn">${next.bn}</span> · ${nextKm.toFixed(0)} km`;
     $('trip-time').textContent = fmtTime(st.elapsed);
     const avg = st.elapsed > 1 ? route.realKm(st.s) / (st.elapsed / 3600) : 0;

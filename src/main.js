@@ -481,7 +481,7 @@ function extendFree() {
 function restartTrip() {
   if (route.rerouted) { buildWorld(tripPath()); stream.buildNow(startPoint()[0], 1); netRoads.buildNow(player.phys.pos.x, player.phys.pos.z); }
   resetPlayer(...startPoint());
-  Object.assign(player, { elapsed: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false, paidFlyovers: new Set(),
+  Object.assign(player, { elapsed: 0, odo: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false, paidFlyovers: new Set(),
     fuel: TANK_LITRES * START_FUEL, fuelCost: 0, tollCost: 0, refuelling: false, fuelWarn: 0 });
   for (const g of facilities.gates) { g.holdPlayer = false; g.openT = 0; }
   playerBoard();
@@ -1007,17 +1007,20 @@ let mapPaused = false;
 function mapCtx() {
   const ph = player.phys, nm = (p, k) => p[k].split(' (')[0];
   const dir = player.side < 0 ? 1 : -1;
-  const stops = passengers?.counters.filter((c) => c.side === -1) || [];
+  const stops = settings.mode === 'free' ? [] : passengers?.counters.filter((c) => c.side === -1) || [];
   const next = stops.find((c) => (c.s - player.s) * dir > 20);
   const left = Math.max(0, route.totalKm - route.realKm(player.s));
   const refs = [...new Set(route.segs.map((g) => g.chain.ref).filter((r) => r && !['DHK', 'CTG'].includes(r)))].join(', ');
   const free = settings.mode === 'free';
   return {
     hud, route, stops, st: { x: ph.pos.x, z: ph.pos.z, yaw: ph.yaw, s: player.s, side: player.side }, friends: race.friends(),
-    title: free ? `🧭 Free drive from <span class="bn">${nm(route.startPlace, 'bn')}</span><small>Take any road at a junction — the map follows you</small>`
+    title: free ? `🧭 Explore from <span class="bn">${nm(route.startPlace, 'bn')}</span><small>Take any road at a junction — the map follows you</small>`
       : `<span class="bn">${nm(route.startPlace, 'bn')} → ${nm(route.endPlace, 'bn')}</span><small>${nm(route.startPlace, 'en')} → ${nm(route.endPlace, 'en')} · ${Math.round(route.totalKm)} km via ${refs}</small>`,
-    info: `${free ? '' : `Remaining <b>${left.toFixed(0)} km</b>`}${next ? ` · next stop <b class="bn">${next.bn}</b> (${Math.abs(route.realKm(next.s) - route.realKm(player.s)).toFixed(0)} km)` : ''}`
-      + `<br><span style="color:#3ddc84">●</span> start · <span style="color:#ff8a1c">●</span> destination / your road · <span style="color:#2ecc71">●</span> stops · <span style="color:#7d8a96">━</span> driven`
+    // (Explore: how far you have driven; no passengers, so no stops and no destination)
+    info: (free ? `Driven <b>${(player.odo || 0).toFixed(0)} km</b>`
+      : `Remaining <b>${left.toFixed(0)} km</b>${next ? ` · next stop <b class="bn">${next.bn}</b> (${Math.abs(route.realKm(next.s) - route.realKm(player.s)).toFixed(0)} km)` : ''}`)
+      + (free ? `<br><span style="color:#3ddc84">●</span> start · <span style="color:#ff8a1c">●</span> your road ahead · <span style="color:#7d8a96">━</span> driven`
+        : `<br><span style="color:#3ddc84">●</span> start · <span style="color:#ff8a1c">●</span> destination / your road · <span style="color:#2ecc71">●</span> stops · <span style="color:#7d8a96">━</span> driven`)
       + `${route.ferries.length ? ' · <span style="color:#4fc3f7">┅</span> ferry' : ''}`
       + `<br><span style="color:#4fae5a">━</span> expressway · <span style="color:#b06ad0">━</span> elevated expressway · <span style="color:#5d6b78">━</span> 4-lane · <span style="color:#3d4954">━</span> 2-lane`,
   };
@@ -1482,6 +1485,8 @@ function frame(now) {
 
   if (state === 'drive') {
     player.elapsed += dt;
+    // odometer, in real km (each road counts its own real length, like the route's km)
+    { const c = route.segAt(player.s).chain; player.odo = (player.odo || 0) + Math.abs(ph.v) * dt * (c.km / c.length); }
     player.crashCool -= dt;
     // game clock: 12 minutes per real minute, so a full Dhaka–Chattogram run takes most of a day
     player.clockMin += dt / 5;
@@ -1530,7 +1535,7 @@ function frame(now) {
       const clock = clockText(player.clockMin);
       const st = {
         s: player.s, x: ph.pos.x, z: ph.pos.z, yaw: ph.yaw, kmh, rpm: ph.rpm, gear: ph.gearLabel(),
-        elapsed: player.elapsed, fines: player.fines, crashes: player.crashes, rating: player.rating,
+        elapsed: player.elapsed, odo: player.odo || 0, fines: player.fines, crashes: player.crashes, rating: player.rating,
         place: route.placeAt(player.s), clock, camLabel: rig.label(), indL: player.indL, indR: player.indR, blink,
         lights: player.lights, high: player.high, fog: player.fog, cruise: ph.cruise != null, cruiseKmh: (ph.cruise || 0) * 3.6, traffic: traffic.list,
         side: player.side, heading: player.heading, fuel: player.fuel, tank: TANK_LITRES, costs: player.fuelCost + player.tollCost, mirrorsHud: mirrors.hudOn,
