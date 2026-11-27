@@ -7,6 +7,7 @@ import { ROAD, CHUNK, VIEW_CHUNKS, QUALITY, SPEED_LIMIT, TOLL_FEE, DIESEL_PRICE,
 import { initFacilities } from './world/facilities.js';
 import { Network } from './net.js';
 import { Stream, disposeTree } from './world/stream.js';
+import { initJunctions, junctionChunk } from './world/junction.js';
 import { buildAICams } from './world/aicams.js';
 import { Mirrors } from './mirrors.js';
 import { resolveImpulse, obbOverlap } from './collide.js';
@@ -31,6 +32,7 @@ import { Passengers } from './passengers.js';
 import { Weather } from './world/weather.js';
 import { Police } from './world/police.js';
 import { career, BUS_PRICES, REAL_PRICE, taka, fmtDuration, feedbackURL } from './career.js';
+import { initTripMenu } from './tripmenu.js';
 
 const $ = (id) => document.getElementById(id);
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -76,11 +78,13 @@ const settings = {
   ...SAVED, opId: SAVED.opId,
 };
 settings.op = OPERATORS.find((o) => o.id === settings.opId) || OPERATORS[0];
+// the trip: any zilla to any zilla (older saves only knew Dhaka ⇄ Chattogram)
+if (!settings.trip?.from || !settings.trip?.to) settings.trip = settings.dir === 'dhk' ? { from: 'Chattogram', to: 'Dhaka' } : { from: 'Dhaka', to: 'Chattogram' };
 settings.seats = settings.seats || {};
 settings.type = career.ownedType(settings.type);     // career: only buses the company owns can be driven
 function saveSettings() {
-  const { type, time, traffic, quality, qualityManual, dir, seats } = settings;
-  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, dir, seats, opId: settings.op.id })); } catch { /* private mode */ }
+  const { type, time, traffic, quality, qualityManual, trip, seats } = settings;
+  try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, trip, seats, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;
 let net, stream, corridorRoot;   // the road network, the world streamer, and the per-trip objects (src/world/stream.js)
@@ -187,7 +191,12 @@ function startPoint() {
 function destTerminal() { return route.terminals.find((x) => x.end === 1); }
 
 // the roads of the chosen trip
-function tripPath() { return settings.dir === 'dhk' ? net.path('akkhan', 'sayedabad') : net.path('sayedabad', 'akkhan'); }
+function tripPath() { return net.trip(settings.trip.from, settings.trip.to) || net.trip('Dhaka', 'Chattogram'); }
+// the key the career keeps the fastest time under ('ctg' / 'dhk' for the original N1 trips)
+function tripKey() {
+  const { from, to } = settings.trip;
+  return from === 'Dhaka' && to === 'Chattogram' ? 'ctg' : from === 'Chattogram' && to === 'Dhaka' ? 'dhk' : `${from}>${to}`;
+}
 
 // (Re)build everything that belongs to one trip corridor: the route itself, the world streamer, and the
 // trip's eager objects (cameras, police, counters, HUD). Shared materials survive; trip objects are disposed.
@@ -199,6 +208,7 @@ function buildWorld(path) {
   scene.add(corridorRoot);
   chunks.clear();
   route = new Route(net, path);
+  initJunctions(route, net);
   road = initRoad(route);
   scenery = initScenery(route, scene, { treeDensity: (QUALITY[settings.quality] || QUALITY.high).treeDensity }, road.water);
   facilities = initFacilities(route);
@@ -208,7 +218,7 @@ function buildWorld(path) {
   passengers.onBreak = onRestBreak;
   police = new Police({ route, scene: corridorRoot, chunks, obstacles: facilities.obstacles, counters: passengers.counters, hud, player });
   stream = new Stream({ route, scene, chunks, obstacles: facilities.obstacles, gates: facilities.gates,
-    jobs: [roadChunk, scenery.chunk, facilities.chunk, (r, ctx) => passengers.chunk(r, ctx)] });
+    jobs: [roadChunk, junctionChunk, scenery.chunk, facilities.chunk, (r, ctx) => passengers.chunk(r, ctx)] });
   if (weather) { weather.setRoute(route); weather.hud = hud; }
   if (rig) rig.route = route;
   if (traffic) traffic.setRoute(route, facilities.gates);
@@ -538,7 +548,7 @@ function events(dt) {
   if (player.arriveT > 0.8 || atEnd) {
     state = 'arrived';
     passengers?.finishTrip();          // everyone still aboard gets down at the terminal
-    hud.arrival(player, settings.op.en, route.endPlace, career.finishTrip(player, { dir: settings.dir, km: route.totalKm }));
+    hud.arrival(player, settings.op.en, route.endPlace, career.finishTrip(player, { dir: tripKey(), km: route.totalKm }));
     renderCompany();
     audio.horn(false);
     $('prompt').style.display = 'none';
@@ -681,6 +691,7 @@ function handleKeys() {
   if (input.hit('KeyQ')) { player.indL = !player.indL; player.indR = false; }
   if (input.hit('KeyE')) { player.indR = !player.indR; player.indL = false; }
   if (input.hit('KeyY')) weather?.cycle();
+  if (input.hit('KeyO')) hud.toggleBigMap({ x: player.phys.pos.x, z: player.phys.pos.z, yaw: player.phys.yaw });
   if (input.hit('KeyT')) {
     const k = TIME_ORDER[(TIME_ORDER.indexOf(settings.time) + 1) % TIME_ORDER.length];
     setTime(k);
@@ -779,13 +790,9 @@ function buildMenu() {
     b.onclick = () => { selectSeg(times, b); setTime(k); saveSettings(); };
     times.appendChild(b);
   });
-  const routeSeg = $('route');
-  const routeLabel = () => ($('start-route').textContent = settings.dir === 'dhk' ? 'চট্টগ্রাম → ঢাকা' : 'ঢাকা → চট্টগ্রাম');
-  routeSeg.querySelectorAll('button').forEach((b) => {
-    b.classList.toggle('sel', b.dataset.v === settings.dir);
-    b.onclick = () => { selectSeg(routeSeg, b); settings.dir = b.dataset.v; routeLabel(); saveSettings(); changeTrip(); };
-  });
-  routeLabel();
+  // the trip picker: map of Bangladesh + From / To (rebuilding the world takes a moment, so wait for the clicks to stop)
+  let tripT = 0;
+  initTripMenu({ net, settings, onChange: () => { saveSettings(); clearTimeout(tripT); tripT = setTimeout(changeTrip, 250); } });
   for (const id of ['traffic', 'quality']) {
     const el = $(id);
     el.querySelectorAll('button').forEach((b) => {
@@ -809,8 +816,8 @@ function buildMenu() {
     if (!career.owns(settings.type)) { settings.type = career.ownedType(settings.type); createPlayerBus(); applySeat(); saveSettings(); }
     renderGarage(); renderCompany(); renderStats();
   };
-  const feedback = () => window.open(feedbackURL({ type: BUS_TYPES[settings.type]?.name, dir: settings.dir, opName: settings.op.en,
-    where: state === 'paused' ? `${route.realKm(player.s).toFixed(0)} km from Dhaka` : '' }), '_blank', 'noopener');
+  const feedback = () => window.open(feedbackURL({ type: BUS_TYPES[settings.type]?.name, route: `${settings.trip.from} → ${settings.trip.to}`, opName: settings.op.en,
+    where: state === 'paused' ? `${route.realKm(player.s).toFixed(0)} km from ${settings.trip.from}` : '' }), '_blank', 'noopener');
   $('feedback-menu').onclick = feedback;
   $('feedback-pause').onclick = feedback;
   $('about-open').onclick = () => ($('about').style.display = 'flex');
@@ -862,8 +869,10 @@ function renderStats() {
     row('Total profit', taka(s.profit)),
     row('Best trip profit', s.bestProfit == null ? '—' : taka(s.bestProfit)),
     row('Best passenger rating', s.trips ? `${'★'.repeat(Math.round(s.bestRating))}${'☆'.repeat(5 - Math.round(s.bestRating))}` : '—'),
-    row('Fastest Dhaka → Chattogram', fmtDuration(s.fastest.ctg)),
-    row('Fastest Chattogram → Dhaka', fmtDuration(s.fastest.dhk)),
+    ...Object.entries(s.fastest).filter(([, v]) => v != null).map(([k, v]) => {
+      const [a, b] = k === 'ctg' ? ['Dhaka', 'Chattogram'] : k === 'dhk' ? ['Chattogram', 'Dhaka'] : k.split('>');
+      return row(`Fastest ${a} → ${b}`, fmtDuration(v));
+    }),
     row('Crashes', s.crashes),
     row('Fines & damage paid', taka(s.fines)),
   ].join('');
@@ -1051,6 +1060,7 @@ function frame(now) {
         side: player.side, heading: player.heading, fuel: player.fuel, tank: TANK_LITRES, costs: player.fuelCost + player.tollCost, mirrorsHud: mirrors.hudOn,
       };
       hud.update(st);
+      if (Math.floor(player.elapsed) !== player.mapT) { player.mapT = Math.floor(player.elapsed); hud.drawBigMap(st); }
       if (rig.mode === 'cabin') drawGauges(player.bus, { kmh, rpm: ph.rpm, gear: st.gear, cruise: st.cruise, lights: player.lights, high: player.high, fog: player.fog, indL: player.indL && blink, indR: player.indR && blink, limit: SPEED_LIMIT, odo: route.realKm(player.s), fuel: player.fuel / TANK_LITRES, temp: 0.45 + ph.throttle * 0.1, clock });
     }
   } else if (state === 'menu') {
@@ -1061,7 +1071,7 @@ function frame(now) {
     setBusLights(player.bus, { head: player.lights, high: player.high, fog: player.fog, night });
     beams();
     const c = player.bus.root.position.clone().add(new THREE.Vector3(Math.sin(ph.yaw) * player.bus.spec.center, 0, Math.cos(ph.yaw) * player.bus.spec.center));
-    const a = ph.yaw + 2.4 + Math.sin(menuT * 0.12) * 0.9;
+    const a = ph.yaw - 2.4 - Math.sin(menuT * 0.12) * 0.9;     // from the road side of the bay, not through the terminal building
     camera.position.set(c.x + Math.sin(a) * 17, c.y + 3.2, c.z + Math.cos(a) * 17);
     camera.lookAt(c.x, c.y + 1.6, c.z);
     camera.setViewOffset(innerWidth, innerHeight, -innerWidth * 0.2, 0, innerWidth, innerHeight);

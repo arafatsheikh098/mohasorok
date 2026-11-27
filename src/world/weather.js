@@ -57,9 +57,8 @@ export class Weather {
   // a new trip corridor: find its river-fog stretch again
   setRoute(route) {
     this.route = route;
-    // the low stretch between the Meghna bridge and Daudkandi: river fog
-    const meghna = route.places.find((p) => p.en === 'Meghna Bridge'), daud = route.places.find((p) => p.en === 'Daudkandi');
-    this.zone = meghna && daud ? [Math.min(meghna.s, daud.s) - 700, Math.max(meghna.s, daud.s) + 300] : null;
+    // river fog on the low stretches by the big rivers (Meghna, Padma, Jamuna …)
+    this.zones = route.bridges.filter((b) => b.width >= 200).map((b) => [b.s0 - 700, b.s1 + 900]);
   }
 
   // ------------------------------------------------------------ rain streaks (all motion on the GPU)
@@ -267,8 +266,9 @@ export class Weather {
   _fogAt(s, hour) {
     const dawn = smooth(4.3, 6.0, hour) * (1 - smooth(8.0, 9.8, hour));
     let f = Math.max(this.fog, dawn * (this.season === 'winter' ? 0.8 : this.cloud > 0.3 ? 0.25 : 0.1));
-    if (this.zone) {
-      const z = smooth(this.zone[0] - 300, this.zone[0], s) * (1 - smooth(this.zone[1], this.zone[1] + 300, s));
+    for (const zone of this.zones || []) {
+      const z = smooth(zone[0] - 300, zone[0], s) * (1 - smooth(zone[1], zone[1] + 300, s));
+      if (z <= 0) continue;
       f = f * (1 + 0.7 * z) + z * (this.season === 'winter' ? 0.25 : 0.08) * (dawn > 0.2 || this.fog > 0.2 ? 1 : 0.4);
     }
     return Math.min(1, f);

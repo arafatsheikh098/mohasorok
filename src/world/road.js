@@ -47,7 +47,7 @@ export function ribbon(route, s0, s1, step, cols, vScale) {
 const R = (dy) => (s, h) => h + dy;
 const G = (y) => () => y;
 
-const roadMats = sharedMats(() => ({
+export const roadMats = sharedMats(() => ({
   asphalt: new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 0.93, metalness: 0 }),
   grass: new THREE.MeshStandardMaterial({ map: grassTexture(3), roughness: 1 }),
   median: new THREE.MeshStandardMaterial({ map: grassTexture(5, '#57702f'), roughness: 1 }),

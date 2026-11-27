@@ -31,13 +31,19 @@ export function rushLevel(h) {
   const night = h < 5.5 || h > 23 ? 0.18 : 0;
   return THREE.MathUtils.clamp(0.22 + 0.85 * Math.max(g(9, 1.4), g(18.5, 1.7)) - night, 0, 1);
 }
-// jam zones: Kanchpur–Signboard (Dhaka exit), Cumilla town, and the toll plaza queue (busy all day)
+// jam zones: Kanchpur–Signboard (Dhaka exit), the big towns on the way, and the toll plaza queues (busy all day)
 export function jamZones(route) {
   if (route._jams) return route._jams;
   const z = [];
-  const kp = route.places.find((p) => p.en === 'Kanchpur'), cu = route.places.find((p) => p.en === 'Cumilla');
+  // Kanchpur (the Dhaka exit) and every big city the trip passes through (not the two ends: the bus starts and
+  // stops in their terminals)
+  const kp = route.places.find((p) => p.en === 'Kanchpur');
   if (kp) z.push({ id: 'kanchpur', bn: 'কাঁচপুর', en: 'Kanchpur', s0: Math.max(140, kp.s - 380), s1: kp.s + 260, base: 0 });
-  if (cu) z.push({ id: 'cumilla', bn: 'কুমিল্লা', en: 'Cumilla', s0: cu.s - 450, s1: cu.s + 360, base: 0 });
+  for (const p of route.places) {
+    if (p.kind !== 'city' || p.s < 900 || p.s > route.length - 900) continue;
+    const en = p.en.split(' (')[0];
+    z.push({ id: en.toLowerCase(), bn: p.bn.split(' (')[0], en, s0: p.s - 450, s1: p.s + 360, base: 0 });
+  }
   for (const t of route.tolls) z.push({ id: `toll${Math.round(t.s)}`, bn: 'টোল প্লাজা', en: 'the toll plaza', s0: t.s - 480, s1: t.s + 480, base: 0.45, toll: true });
   route._jams = z;
   return z;

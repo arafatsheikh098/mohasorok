@@ -272,6 +272,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
       if (Math.abs(pr.d) < route.halfAt(pr.s) + ROAD.embank + margin) return false;
       if (nearStation(pr.s, pr.d, 15)) return false;
       if (rivers.length && inWater(x, z, margin)) return false;
+      if (route.nearBranch?.(x, z, margin)) return false;      // side roads at junctions
       return true;
     };
     const tree = (x, z, scale, palm) => {
@@ -372,8 +373,9 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
     let prev = null;
     for (let s = s0; s < s1; s += 45) {
       const d = -(ROAD.toe + 3.5);
-      if (route.bridgeAt(s) || nearStation(s, d, 10) || route.plazaW(s) > 0) { prev = null; continue; }
+      if (route.bridgeAt(s) || nearStation(s, d, 10) || route.plazaW(s) > 0 || route.uturnAt(s)?.junction) { prev = null; continue; }
       route.pointAt(s, d, p);
+      if (route.nearBranch?.(p.x, p.z, 3)) { prev = null; continue; }
       p.y = 0;
       q.setFromAxisAngle(UP, route.yawAt(s) + Math.PI / 2);
       m4.compose(p, q, sc.set(1, 1, 1));
@@ -459,6 +461,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
           const sm = s + w / 2;
           const d = side * (ROAD.toe + 9 + dep / 2 + r() * 3);
           route.pointAt(sm, d, p);
+          if (route.nearBranch?.(p.x, p.z, w / 2 + dep / 2) || route.junctionAt(sm, side * ROAD.half)) { s += w + gap + 6; continue; }   // keep side roads clear
           const [tx, tz] = route.tangentAt(sm);
           const yaw = Math.atan2(-tz, tx) + (side > 0 ? Math.PI : 0); // front faces the road
           m4.compose(p.setY(0.05), q.setFromAxisAngle(UP, yaw), sc.set(1, 1, 1));
@@ -540,6 +543,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
         const side = r() < 0.5 ? -1 : 1;
         const bb = new THREE.Group();
         route.pointAt(s, side * (route.halfAt(s) + ROAD.embank + 12), p);
+        if (route.nearBranch?.(p.x, p.z, 10)) p.set(1e9, 0, 1e9);     // no billboard on a side road
         bb.position.set(p.x, 0, p.z);
         bb.rotation.y = route.yawAt(s) + Math.PI + side * -0.35 + (side > 0 ? 0 : 0);
         const panel = new THREE.Mesh(new THREE.PlaneGeometry(12, 6), mats.billboards[Math.floor(r() * BILLBOARD_COUNT)]);
@@ -665,7 +669,8 @@ function signPlan(route) {
 
 function buildSign(route, ctx, mats, it) {
   const group = new THREE.Group();
-  const tex = it.lines ? directionSignTexture(it.lines) : it.place ? placeSignTexture(it.place.bn.split(' (')[0], it.place.en) : null;
+  const road = route.segAt(it.s).chain;
+  const tex = it.lines ? directionSignTexture(it.lines, road.ref, road.bn) : it.place ? placeSignTexture(it.place.bn.split(' (')[0], it.place.en) : null;
   const mat = it.speed ? mats.speed : new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 });
   const img = tex && tex.image;
   const h = it.h || (img ? it.w * (img.height / img.width) : 1);

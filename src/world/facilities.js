@@ -82,6 +82,7 @@ export function initFacilities(route) {
       yield;
   // ------------------------------------------------------------ pedestrian footbridges (steel truss, red/white or green)
   const clear = (sx) => !route.bridgeAt(sx) && !route.bridgeAt(sx - 60) && !route.bridgeAt(sx + 60) && route.tollDist(sx) > 150 &&
+    !route.junctions.some((j) => Math.abs(sx - j.s) < 120) &&
     !route.uturnAt(sx) && !route.stations.some((st) => Math.abs(sx - st.sc) < 120);
   route.footbridges.forEach((sf, i) => {
     if (!ctx.in(sf) || !clear(sf)) return;
@@ -469,11 +470,11 @@ function findBends(route) {
     else if (cur) { bends.push(cur); cur = null; }
   }
   if (cur) bends.push(cur);
-  return bends;
+  return bends.filter((b) => !route.junctions.some((j) => b.at > j.s - 80 && b.at < j.s + 80));
 }
 // chevrons on the outside of the bend, and a warning sign 200 m before it
 function buildCurveSigns(route, ctx, bend) {
-  const busy = (s) => route.bridgeAt(s) || route.uturnAt(s) || route.tollDist(s) < 150 ||
+  const busy = (s) => route.bridgeAt(s) || route.uturnAt(s) || route.tollDist(s) < 150 || route.junctions.some((j) => Math.abs(s - j.s) < 80) ||
     [...route.stations, ...route.rests].some((st) => s > st.s0 - 30 && s < st.s1 + 30);
   {
     // which side is the inside of the bend: the side whose offset point is closer to a point further along

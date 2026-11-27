@@ -2,7 +2,7 @@
 // (BUS_STOPS pickup), and get down only at the drop points after Cumilla and at the destination terminal,
 // through the front-left door (G). Fares by distance, stop requests, missed stops, counters that fill up again.
 import * as THREE from 'three';
-import { ROAD, BUS_STOPS, FARE_PER_KM, AC_FARE_FACTOR, MIN_FARE, REAL_ROUTE_KM, COUNTER_REFILL, SPEED_LIMIT } from './config.js';
+import { ROAD, FARE_PER_KM, AC_FARE_FACTOR, MIN_FARE, REAL_ROUTE_KM, COUNTER_REFILL, SPEED_LIMIT } from './config.js';
 import { setBusDoor } from './busModel.js';
 import { makeCanvas, canvasTexture, concreteTexture, BN_FONT, EN_FONT } from './textures.js';
 import { ribbon } from './world/road.js';
@@ -98,40 +98,48 @@ export class Passengers {
     return true;
   }
 
-  // Where the counters stand (meshes come later, block by block: chunk()). Each carriageway has its own:
-  // pickups near the start city, drop-offs at the big towns on the way. The trip drives the left carriageway
-  // (side -1); the other one gets the counters of the opposite direction.
+  // Where the counters stand (meshes come later, block by block: chunk()). Long-route coaches pick people up
+  // only at the origin terminal and a couple of counters on the way out of the origin city, and set them down
+  // at every zilla town on the way (and at the turn-off for a zilla just off the road) and at the destination.
+  // The trip drives the left carriageway (side -1); the other carriageway gets the same towns' counters.
   _planCounters() {
-    const R = this.route;
+    const R = this.route, net = R.net;
     const offs = [0, 40, -40, 100, -100, 160, -160, 230, -230, 300, -300];
-    const tripKey = R.startNode === 'akkhan' ? 'dhk' : 'ctg';
-    const other = tripKey === 'ctg' ? 'dhk' : 'ctg';
-    for (const [dirKey, side] of [[tripKey, -1], [other, 1]]) {
-      const dir = side < 0 ? 1 : -1;
-      for (const role of ['pickup', 'drop']) {
-        for (const def of BUS_STOPS[dirKey]?.[role] || []) {
-          const place = def.place ? R.places.find((p) => p.en === def.place) : null;
-          if (def.place && !place) continue;
-          const s0 = place ? place.s : R.sAtRoadKm('n1', def.km);
-          if (s0 === null) continue;
-          let s = null;
-          for (const o of offs) { const c = s0 + o * dir; if (this._clearAt(c) && !this.counters.some((x) => Math.abs(x.s - c) < 70)) { s = c; break; } }
-          if (s === null) { console.warn(`[passengers] no room for the ${def.place || def.en} counter`); continue; }
-          const bn = (place ? place.bn : def.bn).split(' (')[0], en = (place ? place.en : def.en).split(' (')[0];
-          const c = { kind: 'counter', role, place, bn, en, side, dir, s, waiting: [], announced: false, spots: [], refillT: 0 };
-          // standing spots for waiting passengers (on the platform, near the road edge)
-          const top = R.roadHeight(s) + 0.18;
-          for (let i = 0; i < 10; i++) {
-            const ss = s - 5 + (i % 5) * 2.4 + (this.r() - 0.5) * 0.6;
-            const d = side * (ROAD.half + 1.0 + Math.floor(i / 5) * 1.1 + this.r() * 0.3);
-            const q = R.pointAt(ss, d);
-            c.spots.push({ x: q.x, z: q.z, y: top, yaw: R.yawAt(ss) + (side < 0 ? Math.PI / 2 : -Math.PI / 2) });
-          }
-          this.counters.push(c);
-        }
+    const nm = (x, k) => x[k].split(' (')[0];
+    const startZ = R.startPlace.zilla, endZ = R.endPlace.zilla;
+    const plan = [];
+    const pick = R.places.filter((p) => p.town && p.kind !== 'terminal' && p.zilla !== startZ && R.realKm(p.s) > 1 && R.realKm(p.s) < 30).slice(0, 2);
+    for (const p of pick) plan.push({ s0: p.s, side: -1, role: 'pickup', place: p, bn: nm(p, 'bn'), en: nm(p, 'en') });
+    for (const p of R.places) {
+      if (!p.node || !p.term || p.zilla === startZ || p.zilla === endZ || pick.includes(p)) continue;
+      for (const side of [-1, 1]) plan.push({ s0: p.s, side, role: 'drop', place: p, bn: nm(p, 'bn'), en: nm(p, 'en') });
+    }
+    for (const j of R.junctions) {
+      for (const b of j.branches) {
+        const far = net.nodes[b.to];
+        // a zilla town just off the road (up to ~40 km down the side road): its passengers get down at the turn-off
+        if (!far?.term || b.km > 40 || far.zilla === startZ || far.zilla === endZ || R.places.some((p) => p.node === b.to)) continue;
+        for (const side of [-1, 1]) plan.push({ s0: j.s, side, role: 'drop', place: { ...far, s: j.s, turnOff: true }, bn: `${nm(far, 'bn')} মোড়`, en: `${nm(far, 'en')} turn-off` });
       }
     }
-    this.counters.sort((a, b) => a.s - b.s);
+    plan.sort((x, y) => x.s0 - y.s0);
+    for (const def of plan) {
+      const { side } = def, dir = side < 0 ? 1 : -1;
+      let s = null;
+      for (const o of offs) { const c = def.s0 + o * dir; if (this._clearAt(c) && !this.counters.some((x) => Math.abs(x.s - c) < 70)) { s = c; break; } }
+      if (s === null) { console.warn(`[passengers] no room for the ${def.en} counter`); continue; }
+      const c = { kind: 'counter', role: def.role, place: def.place, bn: def.bn, en: def.en, side, dir, s, waiting: [], announced: false, spots: [], refillT: 0 };
+      // standing spots for waiting passengers (on the platform, near the road edge)
+      const top = R.roadHeight(s) + 0.18;
+      for (let i = 0; i < 10; i++) {
+        const ss = s - 5 + (i % 5) * 2.4 + (this.r() - 0.5) * 0.6;
+        const d = side * (ROAD.half + 1.0 + Math.floor(i / 5) * 1.1 + this.r() * 0.3);
+        const q = R.pointAt(ss, d);
+        c.spots.push({ x: q.x, z: q.z, y: top, yaw: R.yawAt(ss) + (side < 0 ? Math.PI / 2 : -Math.PI / 2) });
+      }
+      this.counters.push(c);
+    }
+    this.counters.sort((x, y) => x.s - y.s);
   }
 
   // counter meshes for one block of the world (world/stream.js)

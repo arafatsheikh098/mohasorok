@@ -43,7 +43,7 @@ function flareTexture() {
 export function buildAICams(route, scene, chunks) {
   const spots = [];
   const ok = (s) => s > 150 && s < route.length - 150 && !route.bridgeAt(s) && !route.bridgeAt(s + 40) && !route.bridgeAt(s - 40) &&
-    route.tollDist(s) > 200 && !route.uturnAt(s) && ![...route.stations, ...route.rests].some((st) => Math.abs(s - st.sc) < 140);
+    route.tollDist(s) > 200 && !route.uturnAt(s) && !route.junctions.some((j) => Math.abs(s - j.s) < 150) && ![...route.stations, ...route.rests].some((st) => Math.abs(s - st.sc) < 140);
   // only the big cities get one on each carriageway at their entry; plus one every ~6 km in between,
   // alternating sides (so each direction meets a camera about every 12 km, not every few km)
   for (const p of route.places) {

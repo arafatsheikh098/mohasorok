@@ -4,7 +4,7 @@
 // All roads share one projection (MAP_SCALE, one origin for the whole country), so roads that meet at a node
 // meet in the game world too. A trip is then built from a path of roads by src/route.js.
 import * as THREE from 'three';
-import { MAP_SCALE, UTURN_SPACING, UTURN_GAP } from './config.js';
+import { MAP_SCALE, UTURN_SPACING, UTURN_GAP, ROAD } from './config.js';
 import { NODES, ROADS } from './data/bd_network.js';
 
 export const ORIGIN = { lat: 23.7, lon: 90.35 };
@@ -15,6 +15,7 @@ export const project = (lat, lon) => new THREE.Vector2((lon - ORIGIN.lon) * KX, 
 export const unproject = (x, z) => ({ lat: ORIGIN.lat - z / KZ, lon: ORIGIN.lon + x / KX });
 
 const TERMINAL = { len: 120, depth: 42, exit: 30, gap: 8 };
+const LINK_KM = 4;            // real km of the access road from a zilla's junction to its bus terminal
 
 // Smooth a polyline (Gaussian, radius r samples) with the ends held in place: the signal is mirrored through
 // each end point, so the first and last points (and the direction there) stay where the road meets its node.
@@ -56,11 +57,23 @@ function resample(X, Z, step) {
 // One road: centreline samples every DS metres from its `from` node to its `to` node.
 export class Chain {
   constructor(def, nodes) {
-    Object.assign(this, { id: def.id, ref: def.ref, lanes: def.lanes || 4, en: def.en, bn: def.bn, from: def.from, to: def.to, def });
+    Object.assign(this, { id: def.id, ref: def.ref, lanes: def.lanes || 4, en: def.en, bn: def.bn, from: def.from, to: def.to, def, nodes });
     const A = nodes[def.from], B = nodes[def.to];
     const stops = [{ ...A, node: def.from }, ...(def.via || []), { ...B, node: def.to }];
     const wp = stops.map((w) => project(w.lat, w.lon));
+    this._stops = stops; this._wp = wp;
+    // real km: given, or the straight-line distance through the via points plus ~18 % for the bends
+    let crow = 0;
+    for (let i = 1; i < wp.length; i++) crow += wp[i].distanceTo(wp[i - 1]);
+    this.km = def.km || Math.max(1, (crow / MAP_SCALE / 1000) * 1.18);
+    this.built = false;
+  }
 
+  // the smooth centreline and everything along it (made the first time a trip needs this road)
+  build() {
+    if (this.built) return this;
+    this.built = true;
+    const stops = this._stops, wp = this._wp;
     // gentle real-road-like bends between the via points (zero at each via point)
     const ctrl = [];
     let acc = 0;
@@ -73,7 +86,7 @@ export class Chain {
       for (let k = 0; k < n; k++) {
         const t = k / n;
         const g = acc + seg * t;
-        const wig = (Math.sin(g / 610) * 38 + Math.sin(g / 233 + 1.3) * 12 + Math.sin(g / 1370 + 0.4) * 55) * Math.sin(Math.PI * t);
+        const wig = (Math.sin(g / 610) * 38 + Math.sin(g / 233 + 1.3) * 12 + Math.sin(g / 1370 + 0.4) * 55) * Math.sin(Math.PI * t) * Math.min(1, seg / 2500);
         const p = a.clone().lerp(b, t).addScaledVector(perp, wig);
         ctrl.push(new THREE.Vector3(p.x, 0, p.y));
       }
@@ -89,7 +102,6 @@ export class Chain {
     [this.px, this.pz] = resample(X, Z, DS);
     this.N = this.px.length;
     this.length = (this.N - 1) * DS;
-    this.km = def.km || (this.length / MAP_SCALE / 1000) * 1.2;
 
     // places along the road (the nodes at both ends included)
     this.places = stops.map((w, i) => {
@@ -97,6 +109,7 @@ export class Chain {
       return { ...w, s };
     });
     this._features();
+    return this;
   }
 
   sAtKm(km) { return THREE.MathUtils.clamp((km / this.km) * this.length, 0, this.length); }
@@ -125,15 +138,27 @@ export class Chain {
     this.bridges = [];
     for (const p of this.places) {
       if (!p.river) continue;
-      const sc = THREE.MathUtils.clamp(p.s + (p.river.offset || 0), 600, L - 600);
+      const m = Math.min(300, L / 2);
+      const sc = THREE.MathUtils.clamp(p.s + (p.river.offset || 0), m, L - m);
       const half = p.river.width / 2 + 30;
       this.bridges.push({ ...p.river, sc, s0: sc - half, s1: sc + half });
     }
     // toll plazas
-    this.tolls = this.places.filter((p) => p.toll).map((p) => ({ s: p.s, ...(typeof p.toll === 'object' ? p.toll : {}) }));
+    // (a toll that comes with a bridge stands just past the bridge, on the flat, not on the deck)
+    const offBridge = (x) => !this.bridges.some((b) => x > b.s0 - ROAD.rampLen - 140 && x < b.s1 + ROAD.rampLen + 140);
+    this.tolls = this.places.filter((p) => p.toll).map((p) => {
+      let s = p.s;
+      for (let k = 0; k < 80 && !offBridge(s); k++) s += 40;
+      if (!offBridge(s) || s > L - 250) { s = p.s; for (let k = 0; k < 80 && !offBridge(s); k++) s -= 40; }
+      return { s: THREE.MathUtils.clamp(s, 250, L - 250), ...(typeof p.toll === 'object' ? p.toll : {}) };
+    });
     const tollNear = (s, m) => this.tolls.some((t) => Math.abs(s - t.s) < m);
     // fuel stations: a paved forecourt beside the road at road height
-    this.stations = (def.fuel || []).map((f) => {
+    // fuel stations: given, or one about every 45 km (alternating sides) on longer roads
+    const fuel = def.fuel || (this.km >= 22 ? Array.from({ length: Math.floor((this.km - 12) / 45) + 1 }, (_, i) => ({ km: 16 + i * 45, side: i % 2 ? 1 : -1 })) : []);
+    const fname = ['মেঘনা', 'পদ্মা', 'যমুনা', 'রূপালী', 'সোনালী', 'সবুজ', 'নিউ', 'হাইওয়ে'];
+    this.stations = fuel.filter((f) => f.km < this.km - 3).map((f, i) => {
+      if (!f.bn) { const k = (this.id.length * 7 + i * 3) % fname.length; Object.assign(f, { bn: `${fname[k]} ফিলিং স্টেশন`, en: 'Filling Station' }); }
       let sc = this.sAtKm(f.km);
       while (this.bridgeAt(sc) || this.bridgeAt(sc - 80) || this.bridgeAt(sc + 80) || tollNear(sc, 200)) sc += 120;
       return { ...f, sc, s0: sc - 45, s1: sc + 45, depth: 30 };
@@ -148,14 +173,14 @@ export class Chain {
     // bus terminals at the road's end nodes that have one on this road: a walled yard beside one carriageway
     this.terminals = [];
     for (const [key, atEnd] of [[this.from, false], [this.to, true]]) {
-      const t = NODES[key]?.terminal;
+      const t = this.nodes[key]?.terminal;
       if (!t || t.road !== this.id) continue;
       const s0 = atEnd ? L - TERMINAL.gap - TERMINAL.len : TERMINAL.gap;
       this.terminals.push({ id: key, bn: t.bn, en: t.en, node: key, side: t.side, s0, s1: s0 + TERMINAL.len, depth: TERMINAL.depth });
     }
     // U-turn openings in the median (4-lane roads)
     this.uturns = [];
-    if (this.lanes >= 4) {
+    {     // (every road is still drawn as a divided 4-lane road, so every road gets median openings)
       for (let s = 1500; s < L - 800; s += UTURN_SPACING) {
         let u = s;
         while (this.bridgeAt(u) || this.bridgeAt(u + 200) || this.bridgeAt(u - 200) || tollNear(u, 300)) u += 150;
@@ -169,7 +194,7 @@ export class Chain {
     }
     // pedestrian footbridges: near town centres and every 4.2 km
     this.footbridges = [];
-    for (const p of this.places) if (p.town >= 300 && p.s > 200 && p.s < L - 200) this.footbridges.push(p.s + 40);
+    for (const p of this.places) if (!p.node && p.town >= 300 && p.s > 200 && p.s < L - 200) this.footbridges.push(p.s + 40);
     for (let s = 3000; s < L - 500; s += 4200) this.footbridges.push(s);
     // hills and sea along the road: from the first such place to the last (and on to the end if it is the last place)
     const range = (key, before, after) => {
@@ -180,15 +205,43 @@ export class Chain {
     };
     this.hills = range('hills', 1500, 1500);
     this.sea = range('sea', 2500, 1200);
-    this.police = (def.police || []).map((p) => ({ ...p, s: this.sAtKm(p.km) }));
+    // highway police: given, or one checkpoint on longer 4-lane roads
+    const police = def.police || (this.lanes >= 4 && this.km >= 60 ? [{ km: this.km * 0.45, en: this.en || this.ref }] : []);
+    this.police = police.map((p) => ({ ...p, s: this.sAtKm(p.km) }));
   }
 }
 
 export class Network {
   constructor() {
-    this.nodes = NODES;
+    this.nodes = {};
+    for (const [id, n] of Object.entries(NODES)) this.nodes[id] = { ...n, id };
+    const defs = [...ROADS];
+    // every zilla town (and the big-city terminals) gets its bus terminal at the end of a short access road,
+    // leading away from the highways that meet there. Trips start and end in these yards.
+    for (const [id, n] of Object.entries(NODES)) {
+      if (!n.term) continue;
+      const here = project(n.lat, n.lon);
+      let mx = 0, mz = 0;
+      for (const r of ROADS) {
+        if (r.from !== id && r.to !== id) continue;
+        const via = r.from === id ? [...(r.via || []), NODES[r.to]] : [...(r.via || [])].reverse().concat([NODES[r.from]]);
+        const q = project(via[0].lat, via[0].lon).sub(here);
+        const l = q.length() || 1;
+        mx += q.x / l; mz += q.y / l;
+      }
+      let ml = Math.hypot(mx, mz);
+      if (ml < 0.3) { const t = mx; mx = -mz; mz = t; ml = Math.hypot(mx, mz) || 1; }     // roads straight through: go off to the side
+      const dist = LINK_KM * 1000 * MAP_SCALE / 1.1;
+      const tp = unproject(here.x - (mx / ml) * dist, here.y - (mz / ml) * dist);
+      const nm = (x) => x.split(' (')[0];
+      const [tbn, ten] = Array.isArray(n.term) ? n.term : [`${nm(n.bn)} কেন্দ্রীয় বাস টার্মিনাল`, `${nm(n.en)} Central Bus Terminal`];
+      const tid = `t:${id}`, lid = `L:${id}`;
+      this.nodes[tid] = { id: tid, lat: tp.lat, lon: tp.lon, en: n.en, bn: n.bn, town: 0, kind: 'terminal', terminalOf: id, zilla: n.zilla, div: n.div,
+        hills: n.hills, sea: n.sea, terminal: { en: ten, bn: tbn, road: lid, side: -1 } };
+      defs.push({ id: lid, ref: '', lanes: 4, from: tid, to: id, via: [], km: LINK_KM, link: true, en: ten, bn: tbn });
+    }
     this.roads = new Map();
-    for (const def of ROADS) this.roads.set(def.id, new Chain(def, NODES));
+    for (const def of defs) this.roads.set(def.id, new Chain(def, this.nodes));
     // adjacency: node -> [{ road, rev, to }]
     this.adj = new Map();
     for (const c of this.roads.values()) {
@@ -197,12 +250,31 @@ export class Network {
       this.adj.get(c.from).push({ road: c.id, rev: false, to: c.to });
       this.adj.get(c.to).push({ road: c.id, rev: true, to: c.from });
     }
+    // the zillas a trip can start or end in: name -> { en, bn, div, terminals: [terminal node ids] }
+    this.zillas = new Map();
+    for (const n of Object.values(this.nodes)) {
+      if (n.kind !== 'terminal') continue;
+      const key = n.zilla;
+      if (!this.zillas.has(key)) {
+        const home = Object.values(NODES).find((x) => x.zilla === key && !/\(/.test(x.en)) || this.nodes[n.terminalOf];
+        this.zillas.set(key, { key, en: key, bn: home.bn.split(' (')[0], div: n.div, terminals: [], lat: home.lat, lon: home.lon });
+      }
+      this.zillas.get(key).terminals.push(n.id);
+    }
   }
 
-  road(id) { return this.roads.get(id); }
+  // shortest trip between two zillas (from any of their terminals): [{ road, rev }]
+  trip(fromZilla, toZilla, opts) {
+    const a = this.zillas.get(fromZilla), b = this.zillas.get(toZilla);
+    if (!a || !b || a === b) return null;
+    return this.path(a.terminals, b.terminals, opts);
+  }
+
+  road(id) { return this.roads.get(id)?.build(); }
 
   // Shortest path (by real km) from any of the start nodes to any of the goal nodes: [{ road, rev }]
-  path(starts, goals) {
+  // opts.ferry: allow ferry crossings (default: no)
+  path(starts, goals, opts = {}) {
     starts = [].concat(starts); goals = new Set([].concat(goals));
     const dist = new Map(), prev = new Map(), done = new Set();
     for (const s of starts) dist.set(s, 0);
@@ -218,6 +290,9 @@ export class Network {
       done.add(u);
       for (const e of this.adj.get(u) || []) {
         const c = this.roads.get(e.road);
+        if (c.def.ferry && !opts.ferry) continue;
+        // a terminal access road is only used at the ends of a trip, never as a short cut through a yard
+        if (c.def.link && !starts.includes(e.to) && !goals.has(e.to) && !starts.includes(u) && !goals.has(u)) continue;
         const nd = best + c.km + (c.def.ferry ? 40 : 0);
         if (nd < (dist.get(e.to) ?? Infinity)) { dist.set(e.to, nd); prev.set(e.to, { from: u, step: { road: e.road, rev: e.rev } }); }
       }

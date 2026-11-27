@@ -5,6 +5,7 @@ import { DS } from './net.js';
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const FILLET = 30;           // m of each road trimmed at a junction, replaced by a smooth curve through the node
 const EXIT = 30;             // terminal exit gap (m)
+export const PAD_R = 24;     // radius of the paved junction area where roads meet
 
 // The trip corridor: the roads of a path (src/net.js) joined end to end into one centreline, sampled every DS
 // metres, with everything along it (towns, bridges, toll plazas, fuel stations, rest stops, terminals, U-turns)
@@ -166,7 +167,22 @@ export class Route {
       const c = (t.exitS0 + t.exitS1) / 2;
       this.uturns.push({ s: c, s0: c - UTURN_GAP / 2, s1: c + UTURN_GAP / 2, terminal: true });
     }
+    // junctions: every node the trip passes through. A paved pad where the roads meet, the median opens across
+    // it, and the other roads branch off (their first stretch is built too, see world/junction.js)
+    this.junctions = [];
+    for (let k = 1; k < this.segs.length; k++) {
+      const node = this.segs[k].from, p = this.places.find((x) => x.node === node);
+      if (!p) continue;
+      const used = new Set([this.segs[k - 1].road, this.segs[k].road]);
+      const branches = (this.net.adj.get(node) || []).filter((e) => !used.has(e.road));
+      const n = this.net.nodes[node];
+      const c = this._xz(p.s, 0);
+      this.junctions.push({ s: p.s, node, name: n, x: c[0], z: c[1], R: PAD_R, branches });
+      this.uturns.push({ s: p.s, s0: p.s - PAD_R - 6, s1: p.s + PAD_R + 6, junction: true });
+    }
     this.uturns.sort(byS);
+    // keep U-turn openings out of the junction areas
+    this.uturns = this.uturns.filter((u) => u.junction || !this.junctions.some((j) => Math.abs(u.s - j.s) < PAD_R + 60));
   }
 
   // ---------------------------------------------------------------- real kilometres
@@ -329,12 +345,30 @@ export class Route {
     return h;
   }
 
+  // world x, z of (s, d) (no height: used inside heightAt)
+  _xz(s, d) {
+    const [i, f] = this._interp(s);
+    const x = this.px[i] + (this.px[i + 1] - this.px[i]) * f, z = this.pz[i] + (this.pz[i + 1] - this.pz[i]) * f;
+    const [tx, tz] = this.tangentAt(s);
+    return [x - tz * d, z + tx * d];
+  }
+  // the junction pad (s, d) stands on, or null
+  junctionAt(s, d) {
+    for (const j of this.junctions || []) {
+      if (Math.abs(s - j.s) > j.R + 40) continue;
+      const [x, z] = this._xz(s, d);
+      if (Math.hypot(x - j.x, z - j.z) < j.R + 1) return j;
+    }
+    return null;
+  }
+
   // height of the ground/road surface at (s, d)
   heightAt(s, d) {
     const h = this.roadHeight(s);
     const ad = Math.abs(d);
     const half = this.halfAt(s);
     if (ad <= half) return h;
+    if (this.junctionAt(s, d)) return h;    // the flat junction pad
     if (this.bridgeAt(s)) return h; // off the deck there is nothing, the walls keep you on
     if (this.paved(s, d)) return h; // paved forecourt / rest-stop lot
     const t = (ad - half) / ROAD.embank;
@@ -349,7 +383,8 @@ export class Route {
   }
 
   nextPlace(s) {
-    return this.places.find((p) => p.s > s + 20) || this.places[this.places.length - 1];
+    const last = this.places[this.places.length - 1];
+    return this.places.find((p) => p.s > s + 20 && (p.kind !== 'terminal' || p === last)) || last;
   }
 
   placeAt(s) {

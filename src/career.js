@@ -64,11 +64,12 @@ class Career {
     return [...BUS_ORDER].reverse().find((t) => this.owns(t)) || 'local';
   }
 
-  // Settle a finished trip. p = the player state (fares on p.pax), dir 'ctg' | 'dhk', km = real km driven.
+  // Settle a finished trip. p = the player state (fares on p.pax), dir = the trip key ('ctg', 'dhk' or 'From>To'),
+  // km = real km driven. The crew is paid per km (a full Dhaka–Chattogram trip = WAGES).
   finishTrip(p, { dir, km = 245 } = {}) {
     const fares = Math.round(p.pax?.fares || 0), tips = Math.round(p.pax?.tips || 0);
     const diesel = Math.round(p.fuelCost || 0), tolls = Math.round(p.tollCost || 0), fines = Math.round(p.fines || 0);
-    const wages = Math.round((WAGES.driver + WAGES.helper) * Math.min(1, km / 245));
+    const wages = Math.round((WAGES.driver + WAGES.helper) * (km / 245));
     const income = fares + tips, costs = diesel + tolls + fines + wages, profit = income - costs;
     const before = this.balance;
     this.balance += profit;
@@ -77,7 +78,7 @@ class Career {
     s.income += income; s.profit += profit; s.crashes += p.crashes || 0; s.fines += fines;
     s.bestRating = Math.max(s.bestRating, Math.round((p.rating || 0) * 10) / 10);
     if (s.bestProfit === null || profit > s.bestProfit) s.bestProfit = profit;
-    const prevBest = s.fastest[dir];
+    const prevBest = s.fastest[dir] ?? null;
     const record = p.elapsed > 30 && (prevBest === null || p.elapsed < prevBest);
     if (record) s.fastest[dir] = Math.round(p.elapsed);
     this.save();
@@ -104,7 +105,7 @@ export const fmtDuration = (sec) => {
 };
 
 // a pre-filled "new issue" page on the public repo: game version, bus, route, browser (no personal data)
-export function feedbackURL({ type, dir, opName, where = '' } = {}) {
+export function feedbackURL({ type, route, opName, where = '' } = {}) {
   const ua = navigator.userAgent;
   const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Other';
   const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac OS X/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'Other';
@@ -112,7 +113,7 @@ export function feedbackURL({ type, dir, opName, where = '' } = {}) {
   const body = [
     '**What happened?**', '', '', '**What did you expect?**', '', '', '**Steps to reproduce** (where on the road, what you pressed)', '', '',
     '---', `Game version: ${VERSION}`, `Bus: ${type || '?'} · Operator: ${opName || '?'}`,
-    `Route: ${dir === 'dhk' ? 'Chattogram → Dhaka' : 'Dhaka → Chattogram'}${where ? ` · ${where}` : ''}`,
+    `Route: ${route || '?'}${where ? ` · ${where}` : ''}`,
     `Browser: ${browser} on ${os} (${touch}), screen ${screen.width}×${screen.height}`,
   ].join('\n');
   return `https://github.com/arafatsheikh098/mohasorok/issues/new?title=${encodeURIComponent('[Feedback] ')}&body=${encodeURIComponent(body)}`;

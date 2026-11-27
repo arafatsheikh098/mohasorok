@@ -309,7 +309,8 @@ export function billboardTexture(i) {
 }
 
 // Green direction sign: lines = [[bn, en, km], ...]
-export function directionSignTexture(lines) {
+// green highway sign: lines [bn, en, km, arrow?]; header = the road number and name
+export function directionSignTexture(lines, ref = 'N1', roadBn = 'ঢাকা–চট্টগ্রাম মহাসড়ক') {
   const W = 1024, H = 160 + lines.length * 150;
   const [c, ctx] = makeCanvas(W, H);
   ctx.fillStyle = '#0b6b3a';
@@ -320,13 +321,13 @@ export function directionSignTexture(lines) {
   ctx.fillStyle = '#fff';
   ctx.font = `bold 44px ${EN_FONT}`;
   ctx.textAlign = 'left';
-  ctx.fillText('N1', 48, 90);
+  ctx.fillText(ref || '', 48, 90);
   ctx.fillStyle = '#ffd400';
-  ctx.fillRect(130, 50, 6, 56);
+  ctx.fillRect(ref && ref.length > 3 ? 170 : 130, 50, 6, 56);
   ctx.fillStyle = '#fff';
-  ctx.font = `600 34px ${EN_FONT}`;
-  ctx.fillText('ঢাকা–চট্টগ্রাম মহাসড়ক', 160, 90);
-  lines.forEach(([bn, en, km], k) => {
+  ctx.font = `600 34px ${BN_FONT}`;
+  ctx.fillText(roadBn || '', ref && ref.length > 3 ? 200 : 160, 90, W - 220);
+  lines.forEach(([bn, en, km, arrow], k) => {
     const y = 180 + k * 150;
     ctx.font = `bold 70px ${BN_FONT}`;
     ctx.textAlign = 'left';
@@ -338,6 +339,11 @@ export function directionSignTexture(lines) {
     ctx.fillText(`${km}`, W - 150, y + 44);
     ctx.font = `500 36px ${EN_FONT}`;
     ctx.fillText('km', W - 48, y + 44);
+    if (arrow) {
+      ctx.textAlign = 'center';
+      ctx.font = `bold 96px ${EN_FONT}`;
+      ctx.fillText(arrow, W - 330, y + 50);
+    }
   });
   return canvasTexture(c, { repeat: false });
 }
