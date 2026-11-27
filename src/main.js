@@ -121,6 +121,24 @@ const player = {
   indArmed: false, indCancelT: 0, promptCool: 0, fuelWarn: 0,
 };
 
+// graphics level while driving (I key, the 🖥 button, the GFX button on phones): High → Medium → Low → High.
+// Picking one is the player's choice: the game stops lowering it on its own.
+const GFX_NAME = { high: 'High', medium: 'Medium', low: 'Low' };
+function cycleGraphics() {
+  const order = ['high', 'medium', 'low'];
+  settings.quality = order[(order.indexOf(settings.quality) + 1) % order.length];
+  settings.qualityManual = true;
+  perf.steps = 0; perf.slow = 0;
+  applyQuality();
+  if (perf.mirrorsOff) { mirrors.hudOn = true; perf.mirrorsOff = false; }   // (the automatic drop had turned the screen mirrors off)
+  saveSettings();
+  gfxLabel();
+  // (the menu's Graphics buttons show the same choice)
+  document.querySelectorAll('#quality button').forEach((b) => b.classList.toggle('sel', b.dataset.v === settings.quality));
+  hud?.toast(`🖥 Graphics: <b>${GFX_NAME[settings.quality]}</b> (I) — kept as you set it`, '', 2200);
+}
+function gfxLabel() { const b = document.getElementById('gfx-btn'); if (b) b.textContent = `🖥 ${GFX_NAME[settings.quality] || 'High'}`; }
+
 function applyQuality() {
   const q = QUALITY[settings.quality];
   renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? q.touchPR : q.pixelRatio));
@@ -998,6 +1016,8 @@ function initSeatPanel() {
     el.addEventListener('pointerup', () => el.blur());
   }
   $('seat-btn').onclick = () => toggleSeatPanel();
+  $('gfx-btn').onclick = (e) => { e.currentTarget.blur(); if (state === 'drive') cycleGraphics(); };
+  gfxLabel();
   $('seat-close').onclick = () => toggleSeatPanel(false);
   $('seat-reset').onclick = () => { settings.seats[settings.type] = { x: 0, y: 0, z: 0, fov: 78 }; applySeat(); saveSettings(); };
   document.getElementById('t-seat')?.addEventListener('pointerdown', (e) => { e.preventDefault(); toggleSeatPanel(); });
@@ -1077,6 +1097,7 @@ function handleKeys() {
   // U: upper dipper (high beam); it needs the headlights, so it switches them on too
   if (input.hit('KeyU')) { player.high = !player.high; if (player.high) player.lights = true; }
   if (input.hit('KeyJ')) player.fog = !player.fog;     // J: fog lights
+  if (input.hit('KeyI')) cycleGraphics();               // I: graphics High → Medium → Low
   if (input.hit('KeyV')) {
     const inCab = rig.mode === 'cabin';
     if (inCab) mirrors.hudCabin = !mirrors.hudCabin; else mirrors.hudOn = !mirrors.hudOn;
@@ -1203,7 +1224,7 @@ function buildMenu() {
       b.onclick = () => {
         selectSeg(el, b);
         if (id === 'traffic') settings.traffic = +b.dataset.v;
-        else { settings.quality = b.dataset.v; settings.qualityManual = true; applyQuality(); }
+        else { settings.quality = b.dataset.v; settings.qualityManual = true; applyQuality(); gfxLabel(); }
         saveSettings();
       };
     });
@@ -1413,8 +1434,10 @@ function autoPerf(dt) {
   } else if (sky.sun.shadow.mapSize.x > 1024) {
     sky.sun.shadow.mapSize.set(1024, 1024); sky.sun.shadow.map?.dispose(); sky.sun.shadow.map = null;
   }
-  if (perf.steps === 2) mirrors.hudOn = false;
-  hud.toast(`Graphics lowered for smoother driving (${Math.round(fps)} fps) · pick a Graphics level in the menu to keep yours`, '', 3500);
+  if (perf.steps === 2 && mirrors.hudOn) { mirrors.hudOn = false; perf.mirrorsOff = true; }
+  const gb = document.getElementById('gfx-btn');
+  if (gb) gb.textContent = '🖥 Auto ↓';
+  hud.toast(`Graphics lowered for smoother driving (${Math.round(fps)} fps) · press <b>I</b> (or 🖥) to pick your own`, '', 4000);
 }
 
 // ---------- racing with friends ----------

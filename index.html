@@ -143,6 +143,7 @@
   #place-now small { color: var(--mut); font-size: 12px; }
   #topright { position: absolute; right: 18px; top: 18px; display: flex; gap: 10px; align-items: center; }
   #clock, #cam-label { padding: 8px 12px; font-weight: 700; font-size: 13px; }
+  #gfx-btn { pointer-events: auto; cursor: pointer; padding: 8px 12px; font-weight: 700; font-size: 13px; color: var(--txt); font-family: inherit; }
   #cam-label { color: var(--mut); font-weight: 600; }
   #gpsbox { position: absolute; right: 18px; bottom: 18px; width: 320px; overflow: hidden; pointer-events: auto; cursor: pointer; }
   #gps { display: block; width: 320px; height: 220px; }
@@ -428,12 +429,13 @@
   <div class="tb tray" id="t-fuel">⛽</div>
   <div class="tb tray" id="t-music">🎵</div>
   <div class="tb tray" id="t-cruise">CRUISE</div>
+  <div class="tb tray" id="t-gfx">GFX</div>
 </div>
 <div id="about"><div class="card">
   <h2>About Mohasorok</h2>
   <p><b>মহাসড়ক Mohasorok</b> is a free, fan-made bus driving game set on the highways of Bangladesh: all 64 zillas, from Teknaf to Panchagarh. Everything you see — buses, liveries, roads, towns — is drawn by the game's own code; no images or 3D models from other games or mods are included.</p>
   <p><b>Not affiliated</b> with any bus operator, Hino Motors, or any company. Operator names belong to their owners and are used only to show the buses that run on this road. If you represent an operator and want your name changed or removed, please open an issue on the project page.</p>
-  <p><b>Controls (PC):</b> W/S throttle-brake (hold S to reverse) · A/D steer · H horn · Q/E indicators · L lights · U high beam · J fog lights · X cruise · C or 1–4 camera · V screen mirrors · F refuel · R reset · P pause · M map · Z sound. Gamepad supported. <b>Phone:</b> turn the wheel, hold GAS/BRAKE, drag the view to look around.</p>
+  <p><b>Controls (PC):</b> W/S throttle-brake (hold S to reverse) · A/D steer · H horn · Q/E indicators · L lights · U high beam · J fog lights · X cruise · C or 1–4 camera · V screen mirrors · F refuel · R reset · P pause · M map · Z sound · I graphics. Gamepad supported. <b>Phone:</b> turn the wheel, hold GAS/BRAKE, drag the view to look around.</p>
   <p><b>Credits:</b> 3D engine <a href="https://threejs.org" style="color:var(--acc)">three.js</a> (MIT). Bangla font Noto Sans Bengali (SIL Open Font License). Bus liveries and shapes painted from public photos (Wikimedia Commons, CC BY-SA/CC0) and the community's reference images. Speeds/distances: the road network is compressed 1:12; real kilometres are shown. Road data: towns and highways placed by hand from public maps (approximate).</p>
   <button class="btn" id="about-close">Close</button>
 </div></div>
@@ -545,7 +547,7 @@
     <div class="r">Passengers <b id="trip-rating" class="stars">★★★★★</b></div>
   </div>
   <div id="place" class="card"><div id="place-now"></div></div>
-  <div id="topright"><button id="seat-btn" class="card" title="Adjust the driver's seat">🪑 Seat</button><div id="cam-label" class="card"></div><div id="clock" class="card"></div></div>
+  <div id="topright"><button id="seat-btn" class="card" title="Adjust the driver's seat">🪑 Seat</button><button id="gfx-btn" class="card" title="Graphics: High / Medium / Low (I)">🖥 High</button><div id="cam-label" class="card"></div><div id="clock" class="card"></div></div>
   <div id="seat" class="card">
     <div class="seat-head"><b>Driver's seat</b><button id="seat-close" class="x">✕</button></div>
     <label>Left ⟷ Right <input type="range" id="seat-x" min="-0.45" max="0.45" step="0.01"></label>
@@ -559,7 +561,7 @@
   <div id="help" class="card">
     <kbd>W</kbd> throttle · <kbd>S</kbd> brake/reverse<br><kbd>A</kbd> <kbd>D</kbd> steer · <kbd>Space</kbd> handbrake<br>
     <kbd>H</kbd> horn (traffic ahead moves over)<br><kbd>Q</kbd> <kbd>E</kbd> indicators · <kbd>L</kbd> lights<br><kbd>U</kbd> high beam · <kbd>J</kbd> fog lights<br>
-    <kbd>X</kbd> cruise control · <kbd>C</kbd> camera<br><kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel at a pump<br><kbd>G</kbd> door: stop at a 🚏 counter to pick up / drop passengers<br>Stop at toll gates · U-turn at median gaps<br><kbd>T</kbd> time of day · <kbd>R</kbd> reset<br><kbd>P</kbd> pause · <kbd>M</kbd> map · <kbd>Z</kbd> sound
+    <kbd>X</kbd> cruise control · <kbd>C</kbd> camera<br><kbd>V</kbd> screen mirrors · <kbd>F</kbd> refuel at a pump<br><kbd>G</kbd> door: stop at a 🚏 counter to pick up / drop passengers<br>Stop at toll gates · U-turn at median gaps<br><kbd>T</kbd> time of day · <kbd>R</kbd> reset<br><kbd>P</kbd> pause · <kbd>M</kbd> map · <kbd>Z</kbd> sound<br><kbd>I</kbd> graphics: High / Medium / Low
   </div>
   <div id="dashbox">
     <canvas id="dash" width="300" height="160"></canvas>
