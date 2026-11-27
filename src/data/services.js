@@ -48,5 +48,5 @@ export const SERVICES = [
   ['shohagh', 'Dhaka', 'Manikganj'], ['desh', 'Dhaka', 'Munshiganj'], ['unique', 'Dhaka', 'Narayanganj'],
   // between other towns
   ['soudia', 'Chattogram', 'Rangamati'], ['soudia', 'Chattogram', 'Bandarban'], ['shohagh', 'Khulna', 'Rajshahi'], ['hanif', 'Rajshahi', 'Rangpur'],
-  ['nabil', 'Bogura', 'Rangpur'], ['shyamoli', 'Khulna', 'Benapole'], ['sakura', 'Barishal', 'Kuakata'], ['greenline', 'Sylhet', 'Sunamganj'],
+  ['nabil', 'Bogura', 'Rangpur'], ['shyamoli', 'Khulna', 'Benapole'], ['sakura', 'Barishal', 'Kuakata'], ['sakura', 'Dhaka', 'Bhola'], ['greenline', 'Sylhet', 'Sunamganj'],
 ];

@@ -401,7 +401,7 @@ export function kmPostTexture(km) {
 
 // an undivided 2-lane road, the whole width (u 0 = left edge of the shoulder, 1 = right edge): dashed white
 // centre line (solid yellow where overtaking is not allowed is left out), white edge lines, worn shoulders
-export function asphaltTexture2() {
+export function asphaltTexture2(lines = true) {
   const P = PROFILE[2];
   const W = 512, H = 1024;
   const [c, ctx] = makeCanvas(W, H);
@@ -432,9 +432,11 @@ export function asphaltTexture2() {
     if (!dash) ctx.fillRect(x, 0, w, H);
     else for (let m = 0; m < ASPHALT_TILE; m += 9) ctx.fillRect(x, V(m), w, V(4));
   };
-  line(0, 0.15, '#ecece6', true);            // centre line (dashed)
-  line(-P.edge, 0.18, '#ecece6', false);      // edge lines
-  line(P.edge, 0.18, '#ecece6', false);
+  if (lines) {
+    line(0, 0.15, '#ecece6', true);            // centre line (dashed)
+    line(-P.edge, 0.18, '#ecece6', false);      // edge lines
+    line(P.edge, 0.18, '#ecece6', false);
+  }
   speckle(ctx, W, H, 5000, ['rgba(60,60,60,0.5)', 'rgba(90,90,90,0.4)'], r, 1, 2);
   return canvasTexture(c);
 }

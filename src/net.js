@@ -223,16 +223,25 @@ export class Network {
     for (const [id, n] of Object.entries(NODES)) {
       if (!n.term) continue;
       const here = project(n.lat, n.lon);
-      let mx = 0, mz = 0;
+      // the terminal road goes off into the widest gap between the roads that meet here (straight on at a road end)
+      const angs = [];
       for (const r of ROADS) {
         if (r.from !== id && r.to !== id) continue;
         const via = r.from === id ? [...(r.via || []), NODES[r.to]] : [...(r.via || [])].reverse().concat([NODES[r.from]]);
         const q = project(via[0].lat, via[0].lon).sub(here);
-        const l = q.length() || 1;
-        mx += q.x / l; mz += q.y / l;
+        angs.push(Math.atan2(q.y, q.x));
       }
-      let ml = Math.hypot(mx, mz);
-      if (ml < 0.3) { const t = mx; mx = -mz; mz = t; ml = Math.hypot(mx, mz) || 1; }     // roads straight through: go off to the side
+      angs.sort((a, b) => a - b);
+      let dirA = 0;
+      if (angs.length === 1) dirA = angs[0] + Math.PI;
+      else if (angs.length > 1) {
+        let best = -1;
+        for (let i = 0; i < angs.length; i++) {
+          const a = angs[i], b = i + 1 < angs.length ? angs[i + 1] : angs[0] + Math.PI * 2;
+          if (b - a > best) { best = b - a; dirA = (a + b) / 2; }
+        }
+      }
+      const mx = -Math.cos(dirA), mz = -Math.sin(dirA), ml = 1;
       const dist = LINK_KM * 1000 * MAP_SCALE / 1.1;
       const tp = unproject(here.x - (mx / ml) * dist, here.y - (mz / ml) * dist);
       const nm = (x) => x.split(' (')[0];

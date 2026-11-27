@@ -6,7 +6,7 @@ import { ROAD } from '../config.js';
 import { Route } from '../route.js';
 import { ribbon, roadMats } from './road.js';
 import { sharedMats } from './stream.js';
-import { directionSignTexture, ASPHALT_TILE } from '../textures.js';
+import { directionSignTexture, ASPHALT_TILE, asphaltTexture2 } from '../textures.js';
 
 export const STUB_LEN = 900;        // m of each branch road built at a junction
 
@@ -14,7 +14,7 @@ const jMats = sharedMats(() => {
   const m = roadMats();
   const off = (mat, f) => { const c = mat.clone(); c.polygonOffset = true; c.polygonOffsetFactor = f; c.polygonOffsetUnits = f; return c; };
   return {
-    pad: off(m.asphalt, -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), grass: m.grass, median: m.median, curb: m.curb,
+    pad: off(new THREE.MeshStandardMaterial({ map: asphaltTexture2(false), roughness: 0.93 }), -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), grass: m.grass, median: m.median, curb: m.curb,
     back: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }),
     leg: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }),
   };
@@ -107,7 +107,7 @@ export function* junctionChunk(route, ctx) {
     for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (2 * j.R) / ASPHALT_TILE, uv.getY(i) * (2 * j.R) / ASPHALT_TILE);
     const pad = new THREE.Mesh(padGeo, M.pad);
     pad.rotation.x = -Math.PI / 2;
-    pad.position.set(j.x, h + 0.004, j.z);
+    pad.position.set(j.x, h + 0.03, j.z);        // (the log depth buffer ignores polygon offset: lift it clear of the roads under it)
     pad.receiveShadow = true;
     const skirt = new THREE.Mesh(new THREE.CylinderGeometry(j.R, j.R + ROAD.embank, h, 48, 1, true), M.grass);
     skirt.position.set(j.x, h / 2 - 0.02, j.z);
@@ -115,7 +115,7 @@ export function* junctionChunk(route, ctx) {
     g.add(pad, skirt);
     // the branch roads: carriageways, median, embankments (or one 2-lane strip)
     for (const b of j.branches) {
-      const st = b.stub, a = j.R - 3, e = b.len;
+      const st = b.stub, a = j.R - 4, e = b.len, ab = j.R + 1;     // asphalt starts under the pad, slopes outside it
       if (e - a < 5) continue;
       const P = st.prof(a + 1), Mh = P.median, H = P.half;
       const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); };
@@ -131,8 +131,8 @@ export function* junctionChunk(route, ctx) {
           add(ribbon(st, m0, e, 4, [{ d: Mh - 0.12, y: R(0.27), u: 0 }, { d: Mh, y: R(0.25), u: 0.3 }, { d: Mh, y: R(0), u: 0.6 }], 4), M.curb);
         }
       }
-      add(ribbon(st, a, e, 4, [{ d: -H - ROAD.embank, y: G(0), u: 0 }, { d: -H, y: R(0), u: 2 }], 3), M.grass);
-      add(ribbon(st, a, e, 4, [{ d: H, y: R(0), u: 0 }, { d: H + ROAD.embank, y: G(0), u: 2 }], 3), M.grass);
+      add(ribbon(st, ab, e, 4, [{ d: -H - ROAD.embank, y: G(0), u: 0 }, { d: -H, y: R(0), u: 2 }], 3), M.grass);
+      add(ribbon(st, ab, e, 4, [{ d: H, y: R(0), u: 0 }, { d: H + ROAD.embank, y: G(0), u: 2 }], 3), M.grass);
     }
     ctx.scene.add(g);
     ctx.chunks.register(g, j.s, STUB_LEN + 200);

@@ -34,6 +34,7 @@ import { Weather } from './world/weather.js';
 import { Police } from './world/police.js';
 import { career, BUS_PRICES, REAL_PRICE, taka, fmtDuration, feedbackURL } from './career.js';
 import { initTripMenu } from './tripmenu.js';
+import { BigMap } from './bigmap.js';
 import { SERVICES } from './data/services.js';
 import { setBusRouteBoard } from './busModel.js';
 
@@ -832,9 +833,46 @@ function initSeatPanel() {
   if (IS_TOUCH) $('place')?.addEventListener('pointerdown', () => document.body.classList.toggle('show-trip'));
 }
 
+// ---------- the full map (M) ----------
+const bigmap = new BigMap();
+bigmap.onClose = () => closeMap();
+// phones: tap the minimap for the full map
+document.getElementById('gpsbox')?.addEventListener('pointerdown', (e) => { if (state === 'drive') { e.preventDefault(); openMap(); } });
+let mapPaused = false;
+function mapCtx() {
+  const ph = player.phys, nm = (p, k) => p[k].split(' (')[0];
+  const dir = player.side < 0 ? 1 : -1;
+  const stops = passengers?.counters.filter((c) => c.side === -1) || [];
+  const next = stops.find((c) => (c.s - player.s) * dir > 20);
+  const left = Math.max(0, route.totalKm - route.realKm(player.s));
+  const refs = [...new Set(route.segs.map((g) => g.chain.ref).filter((r) => r && !['DHK', 'CTG'].includes(r)))].join(', ');
+  const free = settings.mode === 'free';
+  return {
+    hud, route, stops, st: { x: ph.pos.x, z: ph.pos.z, yaw: ph.yaw, s: player.s, side: player.side },
+    title: free ? `🧭 Free drive from <span class="bn">${nm(route.startPlace, 'bn')}</span><small>Take any road at a junction — the map follows you</small>`
+      : `<span class="bn">${nm(route.startPlace, 'bn')} → ${nm(route.endPlace, 'bn')}</span><small>${nm(route.startPlace, 'en')} → ${nm(route.endPlace, 'en')} · ${Math.round(route.totalKm)} km via ${refs}</small>`,
+    info: `${free ? '' : `Remaining <b>${left.toFixed(0)} km</b>`}${next ? ` · next stop <b class="bn">${next.bn}</b> (${Math.abs(route.realKm(next.s) - route.realKm(player.s)).toFixed(0)} km)` : ''}`
+      + `<br><span style="color:#3ddc84">●</span> start · <span style="color:#ff8a1c">●</span> destination / your road · <span style="color:#2ecc71">●</span> stops · <span style="color:#7d8a96">━</span> driven`
+      + `${route.ferries.length ? ' · <span style="color:#4fc3f7">┅</span> ferry' : ''}`,
+  };
+}
+function openMap() {
+  if (bigmap.isOpen || !(state === 'drive' || state === 'paused')) return;
+  if (state === 'drive') { state = 'paused'; mapPaused = true; audio.horn(false); audio.ctx?.suspend(); }
+  bigmap.open(mapCtx());
+}
+function closeMap() {
+  if (!bigmap.isOpen) return;
+  bigmap.close();
+  if (mapPaused) { mapPaused = false; state = 'drive'; audio.ctx?.resume(); }
+}
+
 // ---------- keys ----------
 function handleKeys() {
-  if (input.hit('KeyM')) { audio.setMuted(!audio.muted); }
+  // M: the full map (the game waits while it is open); Z: sound on / off
+  if (input.hit('KeyM') || input.hit('KeyO')) { if (bigmap.isOpen) closeMap(); else openMap(); return; }
+  if (bigmap.isOpen) { if (input.hit('Escape')) closeMap(); return; }
+  if (input.hit('KeyZ')) { audio.setMuted(!audio.muted); hud.toast(audio.muted ? '🔇 Sound off (Z)' : '🔊 Sound on (Z)', '', 1500); }
   if (input.hit('KeyK')) hud.toast(voice.toggle() ? '🗣️ Helper & passenger voices on (K)' : '🔇 Helper & passenger voices off (K)', '', 2000);
   if (input.hit('KeyB')) {
     if (!music.tracks.length) hud.toast('🎵 No songs yet: add your own in the menu → Music', '', 3000);
@@ -871,7 +909,6 @@ function handleKeys() {
   if (input.hit('KeyQ')) { player.indL = !player.indL; player.indR = false; }
   if (input.hit('KeyE')) { player.indR = !player.indR; player.indL = false; }
   if (input.hit('KeyY')) weather?.cycle();
-  if (input.hit('KeyO')) hud.toggleBigMap({ x: player.phys.pos.x, z: player.phys.pos.z, yaw: player.phys.yaw });
   if (input.hit('KeyT')) {
     const k = TIME_ORDER[(TIME_ORDER.indexOf(settings.time) + 1) % TIME_ORDER.length];
     setTime(k);
@@ -1245,7 +1282,6 @@ function frame(now) {
         side: player.side, heading: player.heading, fuel: player.fuel, tank: TANK_LITRES, costs: player.fuelCost + player.tollCost, mirrorsHud: mirrors.hudOn,
       };
       hud.update(st);
-      if (Math.floor(player.elapsed) !== player.mapT) { player.mapT = Math.floor(player.elapsed); hud.drawBigMap(st); }
       if (rig.mode === 'cabin') drawGauges(player.bus, { kmh, rpm: ph.rpm, gear: st.gear, cruise: st.cruise, lights: player.lights, high: player.high, fog: player.fog, indL: player.indL && blink, indR: player.indR && blink, limit: SPEED_LIMIT, odo: route.realKm(player.s), fuel: player.fuel / TANK_LITRES, temp: 0.45 + ph.throttle * 0.1, clock });
     }
   } else if (state === 'menu') {

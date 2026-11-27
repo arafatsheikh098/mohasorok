@@ -154,7 +154,10 @@ export function* roadChunk(route, ctx) {
       }
     }
     // embankment except where we are on a bridge deck
-    for (const [a, b] of splitAround([...route.bridges, ...route.ferries], s0, s1)) for (const e of embank) add(ribbon(route, a, b, 4, e, 3), mats.grass);
+    // (none inside a junction pad either: the pad's own skirt runs down to the fields there, so the side roads'
+    // slopes and ours never cut through each other's asphalt)
+    const noBank = [...route.bridges, ...route.ferries, ...(route.junctions || []).map((j) => ({ s0: j.s - j.R - 2, s1: j.s + j.R + 2 }))];
+    for (const [a, b] of splitAround(noBank, s0, s1)) for (const e of embank) add(ribbon(route, a, b, 4, e, 3), mats.grass);
   }
   // end barriers
   for (const s of [0, route.length]) {

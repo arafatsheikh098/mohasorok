@@ -5,7 +5,7 @@ import { DS } from './net.js';
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const FILLET = 30;           // m of each road trimmed at a junction, replaced by a smooth curve through the node
 const EXIT = 30;             // terminal exit gap (m)
-export const PAD_R = 24;     // radius of the paved junction area where roads meet
+export const PAD_R = 32;     // radius of the paved junction area where roads meet
 
 // The trip corridor: the roads of a path (src/net.js) joined end to end into one centreline, sampled every DS
 // metres, with everything along it (towns, bridges, toll plazas, fuel stations, rest stops, terminals, U-turns)

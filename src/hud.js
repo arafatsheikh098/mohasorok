@@ -1,6 +1,6 @@
 import { ROAD, SPEED_LIMIT } from './config.js';
 import { BN_FONT, EN_FONT } from './textures.js';
-import { project, unproject } from './net.js';
+import { project } from './net.js';
 import { taka, fmtDuration } from './career.js';
 
 const $ = (id) => document.getElementById(id);
@@ -241,52 +241,6 @@ export class HUD {
     };
     dial(78, 80, 66, st.kmh, 160, 20, 'km/h', SPEED_LIMIT);
     dial(222, 80, 66, st.rpm, 3000, 500, 'x1000 rpm', 2300);
-  }
-
-  // the big map (O): the whole country, the trip in orange, the bus as an arrow
-  toggleBigMap(st) {
-    let el = $('bigmap');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'bigmap';
-      Object.assign(el.style, { position: 'fixed', inset: '0', display: 'none', alignItems: 'center', justifyContent: 'center', background: 'rgba(5,8,11,.72)', zIndex: 15, pointerEvents: 'none' });
-      el.innerHTML = '<canvas width="920" height="1100" style="height:min(92vh,1100px);background:#0e151c;border:1px solid rgba(255,255,255,.1);border-radius:12px"></canvas>';
-      document.body.appendChild(el);
-    }
-    const on = el.style.display !== 'flex';
-    el.style.display = on ? 'flex' : 'none';
-    if (on) this.drawBigMap(st);
-    return on;
-  }
-  drawBigMap(st) {
-    const el = $('bigmap');
-    if (!el || el.style.display !== 'flex') return;
-    const c = el.querySelector('canvas'), g = c.getContext('2d'), W = c.width, H = c.height;
-    const X = (lon) => 30 + (lon - 87.95) * 0.916 * 177 * 1.12, Y = (lat) => 24 + (26.75 - lat) * 177;
-    g.fillStyle = '#0e151c'; g.fillRect(0, 0, W, H);
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    const line = (ch) => { g.beginPath(); ch._stops.forEach((p, i) => (i ? g.lineTo(X(p.lon), Y(p.lat)) : g.moveTo(X(p.lon), Y(p.lat)))); g.stroke(); };
-    for (const r of this.roads) {
-      g.setLineDash(r.c.def.ferry ? [8, 8] : []);
-      g.strokeStyle = this.onTrip.has(r.c.id) ? '#ff8a1c' : r.c.lanes >= 4 ? '#5d6b78' : '#3d4954';
-      g.lineWidth = this.onTrip.has(r.c.id) ? 7 : r.c.lanes >= 4 ? 4 : 2.5;
-      line(r.c);
-    }
-    g.setLineDash([]);
-    for (const z of this.net.zillas.values()) {
-      const x = X(z.lon), y = Y(z.lat);
-      g.fillStyle = '#e8eef3'; g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill();
-      g.font = `500 17px ${BN_FONT}`; g.fillStyle = '#a9b6c1'; g.textAlign = 'left'; g.textBaseline = 'middle';
-      g.fillText(z.bn, x + 8, y - 1);
-    }
-    // the bus
-    const ll = unproject(st.x, st.z), bx = X(ll.lon), by = Y(ll.lat);
-    g.save(); g.translate(bx, by); g.rotate(Math.PI - st.yaw);
-    g.fillStyle = '#fff'; g.strokeStyle = '#0b1117'; g.lineWidth = 3;
-    g.beginPath(); g.moveTo(0, -18); g.lineTo(12, 14); g.lineTo(0, 7); g.lineTo(-12, 14); g.closePath(); g.fill(); g.stroke();
-    g.restore();
-    g.font = `700 22px ${EN_FONT}`; g.fillStyle = '#9aa6b0'; g.textAlign = 'left';
-    g.fillText('O: close map', 30, H - 24);
   }
 
   // money = the career settlement for this trip (career.finishTrip), shown as a profit breakdown

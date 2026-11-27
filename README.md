@@ -11,7 +11,7 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **highways of Ban
   - **Real lanes:** divided 4-lane highways where the real road is 4-lane (N1, N3, N4, the Padma expressway and others), undivided 2-lane roads elsewhere, where overtaking means pulling into the oncoming lane.
   - **Big bridges:** Padma, Bangabandhu (Jamuna), Meghna, Bhairab, Lalon Shah, Teesta, Rupsha, Payra and more, with their toll plazas.
   - **Ferries:** Paturia–Daulatdia and Laharhat–Veduria (to Bhola). Stop on the pontoon and press **F**.
-  - **O** opens a big map of the country with your bus on it.
+  - **M** opens the full map: your route along the real roads, the stops on the way, the part already driven and your bus. It opens zoomed to the trip; zoom with the wheel or ＋ －, drag to move. On a phone, tap the minimap.
 - **Terminals and stops:** every zilla has its own bus terminal (Sayedabad, Gabtoli and Mohakhali in Dhaka; A.K. Khan and Bahaddarhat in Chattogram; Sonadanga, Shiroil, Kadamtali, Nathullabad and others). Passengers board at the origin terminal and the counters on the way out of the city, and get down at every zilla on the way (or at the turn-off for a zilla just off the road).
 - **Buses on real routes:** the AI buses run fixed services of the real operators (Hanif Dhaka–Rajshahi, Green Line Dhaka–Sylhet, Soudia Chattogram–Cox's Bazar, Sakura Dhaka–Kuakata and about 100 more). Each shows its route on a placard by the door and in the rear window. They stop at their towns' counters, signal and turn off where their route leaves yours, and come out of side roads and terminals to join the highway.
 - **Buses:** four types.
@@ -39,7 +39,8 @@ Drive a Hino AK1J and other Bangladeshi intercity buses on the **highways of Ban
 | Horn | H | HORN |
 | Indicators | Q / E | ◀ ▶ |
 | Camera | C or 1–4 (1 = driver's seat) | 🎥 · drag the view to look around |
-| Map of Bangladesh | O | — |
+| Full map of your route | M | tap the minimap |
+| Sound on / off | Z | — |
 | Lights / cruise / refuel | L / X / F | 💡 / CRUISE / ⛽ |
 | Screen mirrors / reset / pause | V / R / P | 🪞 / ↺ / ⏸ |
 | Music play-pause / next | B / N (Shift+N previous) | 🎵 in ☰, or the on-screen player |

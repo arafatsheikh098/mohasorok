@@ -129,6 +129,7 @@ export const NODES = {
   keranihat: J(22.1450, 92.0500, 'Keranihat', 'কেরানীহাট', { town: 250, hills: true }),
   laharhat: J(22.7400, 90.4700, 'Laharhat Ghat', 'লাহারহাট ঘাট', { town: 150, ghat: true }),
   veduria: J(22.7000, 90.5850, 'Veduria Ghat', 'ভেদুরিয়া ঘাট', { town: 150, ghat: true }),
+  amtali: J(22.2700, 90.2300, 'Amtali', 'আমতলী', { town: 250 }),
 };
 
 // ---------------------------------------------------------------- roads
@@ -242,7 +243,7 @@ export const ROADS = [
   R('n5f', 'N5', 4, 'gobindaganj', 'rangpur', [v(25.400, 89.300, 'Pirganj', 'পীরগঞ্জ', { town: 250 }), v(25.560, 89.280, 'Mithapukur', 'মিঠাপুকুর', { town: 250 })], { en: 'Dhaka–Rangpur Highway', bn: 'ঢাকা–রংপুর মহাসড়ক' }),
   R('gaib', 'R', 2, 'gobindaganj', 'gaibandha', [v(25.240, 89.480, 'Palashbari', 'পলাশবাড়ী', { town: 200 })], { en: 'Gobindaganj–Gaibandha Road', bn: 'গোবিন্দগঞ্জ–গাইবান্ধা সড়ক' }),
   R('kurig', 'R', 2, 'rangpur', 'kurigram', [v(25.790, 89.450, 'Rajarhat', 'রাজারহাট', { town: 200 })], { en: 'Rangpur–Kurigram Road', bn: 'রংপুর–কুড়িগ্রাম সড়ক' }),
-  R('lalmo', 'R', 2, 'rangpur', 'lalmonirhat', [v(25.800, 89.380, 'Teesta Bridge', 'তিস্তা সেতু', { town: 0, ...river('Teesta', 'তিস্তা', 110) })], { en: 'Rangpur–Lalmonirhat Road', bn: 'রংপুর–লালমনিরহাট সড়ক' }),
+  R('lalmo', 'R', 2, 'rangpur', 'lalmonirhat', [v(25.840, 89.270, 'Gangachara', 'গঙ্গাচড়া', { town: 200 }), v(25.880, 89.360, 'Teesta Bridge', 'তিস্তা সেতু', { town: 0, ...river('Teesta', 'তিস্তা', 110) })], { en: 'Rangpur–Lalmonirhat Road', bn: 'রংপুর–লালমনিরহাট সড়ক' }),
   R('n5g', 'N5', 2, 'rangpur', 'saidpur', [v(25.770, 89.060, 'Taraganj', 'তারাগঞ্জ', { town: 200 })], { en: 'Rangpur–Saidpur Road', bn: 'রংপুর–সৈয়দপুর সড়ক' }),
   R('nilph', 'R', 2, 'saidpur', 'nilphamari', [], { en: 'Saidpur–Nilphamari Road', bn: 'সৈয়দপুর–নীলফামারী সড়ক' }),
   R('dinaj', 'N5', 2, 'saidpur', 'dinajpur', [v(25.710, 88.770, 'Dashmile', 'দশমাইল', { town: 200 })], { en: 'Saidpur–Dinajpur Road', bn: 'সৈয়দপুর–দিনাজপুর সড়ক' }),
@@ -275,12 +276,13 @@ export const ROADS = [
   R('narail', 'R', 2, 'jashore', 'narail', [], { en: 'Jashore–Narail Road', bn: 'যশোর–নড়াইল সড়ক' }),
   R('kalna', 'N806', 2, 'narail', 'bhanga', [
     v(23.190, 89.620, 'Kalna Bridge', 'কালনা সেতু', { town: 0, ...river('Madhumati', 'মধুমতি', 90) }),
-    v(23.240, 89.760, 'Kashiani', 'কাশিয়ানী', { town: 200 }),
+    v(23.250, 89.720, 'Kashiani', 'কাশিয়ানী', { town: 200 }),
+    v(23.300, 89.840, 'Bhatiapara', 'ভাটিয়াপাড়া', { town: 200 }),
   ], { en: 'Bhanga–Narail–Jashore Highway', bn: 'ভাঙ্গা–নড়াইল–যশোর মহাসড়ক' }),
   R('rupsha', 'N7', 2, 'khulna', 'fakirhat', [v(22.800, 89.600, 'Rupsha Bridge', 'রূপসা সেতু', { town: 0, ...river('Rupsha', 'রূপসা', 80) })], { en: 'Khulna–Mongla Highway', bn: 'খুলনা–মোংলা মহাসড়ক' }),
   R('bager', 'R', 2, 'fakirhat', 'bagerhat', [], { en: 'Fakirhat–Bagerhat Road', bn: 'ফকিরহাট–বাগেরহাট সড়ক' }),
   R('gopal', 'N805', 2, 'fakirhat', 'gopalganj', [v(22.920, 89.760, 'Mollahat', 'মোল্লাহাট', { town: 200, ...river('Madhumati', 'মধুমতি', 80) })], { en: 'Khulna–Gopalganj Highway', bn: 'খুলনা–গোপালগঞ্জ মহাসড়ক' }),
-  R('gopbh', 'N805', 2, 'gopalganj', 'bhanga', [v(23.200, 89.880, 'Tekerhat', 'টেকেরহাট', { town: 200 })], { en: 'Bhanga–Gopalganj Highway', bn: 'ভাঙ্গা–গোপালগঞ্জ মহাসড়ক' }),
+  R('gopbh', 'N805', 2, 'gopalganj', 'bhanga', [v(23.170, 89.930, 'Tekerhat', 'টেকেরহাট', { town: 200 })], { en: 'Bhanga–Gopalganj Highway', bn: 'ভাঙ্গা–গোপালগঞ্জ মহাসড়ক' }),
   R('fbhan', 'N8', 4, 'faridpur', 'bhanga', [], { en: 'Faridpur–Bhanga Highway', bn: 'ফরিদপুর–ভাঙ্গা মহাসড়ক' }),
   // ---------- N8 Dhaka – Padma Bridge – Barishal – Kuakata, Bhola
   R('n8a', 'N8', 4, 'sayedabad', 'janjira', [
@@ -296,8 +298,9 @@ export const ROADS = [
   R('n8d', 'N8', 2, 'madaripur', 'barishal', [v(22.970, 90.230, 'Gournadi', 'গৌরনদী', { town: 250 })], {
     en: 'Dhaka–Barishal Highway', bn: 'ঢাকা–বরিশাল মহাসড়ক', rest: [{ km: 18, side: -1, bn: 'গৌরনদী হাইওয়ে রেস্তোরাঁ', en: 'Gournadi Highway Restaurant', col: '#4527a0' }] }),
   R('n8e', 'N8', 2, 'barishal', 'patuakhali', [v(22.440, 90.380, 'Payra Bridge', 'পায়রা সেতু', { town: 0, ...river('Payra', 'পায়রা', 120), ...toll(165, 'পায়রা সেতু টোল', 'Payra Bridge Toll') })], { en: 'Barishal–Patuakhali Highway', bn: 'বরিশাল–পটুয়াখালী মহাসড়ক' }),
-  R('kuaka', 'N8', 2, 'patuakhali', 'kuakata', [v(22.030, 90.230, 'Kalapara', 'কলাপাড়া', { town: 250, sea: true })], { en: 'Patuakhali–Kuakata Highway', bn: 'পটুয়াখালী–কুয়াকাটা মহাসড়ক' }),
-  R('bargu', 'R', 2, 'patuakhali', 'barguna', [v(22.270, 90.230, 'Amtali', 'আমতলী', { town: 200 })], { en: 'Patuakhali–Barguna Road', bn: 'পটুয়াখালী–বরগুনা সড়ক' }),
+  R('n8f', 'N8', 2, 'patuakhali', 'amtali', [], { en: 'Patuakhali–Kuakata Highway', bn: 'পটুয়াখালী–কুয়াকাটা মহাসড়ক' }),
+  R('kuaka', 'N8', 2, 'amtali', 'kuakata', [v(22.030, 90.230, 'Kalapara', 'কলাপাড়া', { town: 250, sea: true })], { en: 'Patuakhali–Kuakata Highway', bn: 'পটুয়াখালী–কুয়াকাটা মহাসড়ক' }),
+  R('bargu', 'R', 2, 'amtali', 'barguna', [], { en: 'Amtali–Barguna Road', bn: 'আমতলী–বরগুনা সড়ক' }),
   R('jhalo', 'R', 2, 'barishal', 'jhalokathi', [], { en: 'Barishal–Jhalokathi Road', bn: 'বরিশাল–ঝালকাঠি সড়ক' }),
   R('piroj', 'R', 2, 'jhalokathi', 'pirojpur', [], { en: 'Jhalokathi–Pirojpur Road', bn: 'ঝালকাঠি–পিরোজপুর সড়ক' }),
   R('lahar', 'R', 2, 'barishal', 'laharhat', [], { en: 'Barishal–Laharhat Road', bn: 'বরিশাল–লাহারহাট সড়ক' }),
