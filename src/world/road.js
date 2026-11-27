@@ -76,7 +76,16 @@ export function initRoad(route) {
   }
   const { mat: waterMat, normal } = waterShared;
   waterMat_ = waterMat;
-  const rivers = [...route.bridges, ...route.ferries].map((b) => {
+  const rivers = [...route.bridges, ...route.ferries].map((b) => riverFor(route, b));
+  // the rivers under the bridges of the side roads at the junctions, too
+  for (const { b } of route.branchLines || []) for (const br of b.bridges) rivers.push(riverFor(b.stub, br));
+  return { mats: roadMats(), water: { mat: waterMat, normal, rivers } };
+}
+
+// a meandering river under bridge b of `route`, roughly at right angles to the road (made once per bridge)
+function riverFor(route, b) {
+  if (b.river) return b.river;
+  {
     // a ferry: the river is as wide as the crossing (less the two ghats)
     if (b.ferry) b.width = Math.max(120, b.s1 - b.s0 - 70);
     const centre = route.pointAt(b.sc, 0);
@@ -90,8 +99,7 @@ export function initRoad(route) {
     }
     b.river = { pts, width: b.width, centre };
     return b.river;
-  });
-  return { mats: roadMats(), water: { mat: waterMat, normal, rivers } };
+  }
 }
 
 // one block of road: carriageways, median, toll apron, embankments, and any bridge (+ its river) in the block
@@ -199,7 +207,8 @@ const headGeo = share(new THREE.BoxGeometry(0.9, 0.18, 0.35));
 let waterMat_ = null;
 export const waterMatRef = () => waterMat_;
 
-function buildBridge(route, ctx, mats, b) {
+// regS: where to register it for distance culling (default: the bridge itself, in route's own s)
+export function buildBridge(route, ctx, mats, b, regS = b.sc) {
   const P = route.prof(b.sc), H = P.half;
   const group = new THREE.Group();
   // deck structure: parapets + slab underside
@@ -283,7 +292,7 @@ function buildBridge(route, ctx, mats, b) {
     }
   }
   ctx.scene.add(group);
-  ctx.chunks.register(group, b.sc, 3600);
+  ctx.chunks.register(group, regS, 3600);
 }
 
 // flat ribbon along an arbitrary XZ polyline

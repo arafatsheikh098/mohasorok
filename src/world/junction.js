@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { ROAD } from '../config.js';
 import { Route } from '../route.js';
-import { ribbon, roadMats } from './road.js';
+import { ribbon, roadMats, buildBridge, splitAround } from './road.js';
 import { sharedMats } from './stream.js';
 import { directionSignTexture, ASPHALT_TILE, asphaltTexture2 } from '../textures.js';
 
@@ -36,6 +36,9 @@ export function initJunctions(route, net) {
       if (!st) { st = new Route(net, [{ road: b.road, rev: b.rev }]); net._stubs.set(key, st); }
       b.stub = st;
       b.len = Math.max(40, Math.min(STUB_LEN, st.length - 20));
+      // a bridge close to the junction: build the side road on over it and its ramps (never stop half way up)
+      b.bridges = st.bridges.filter((x) => x.s0 - ROAD.rampLen < b.len);
+      for (const x of b.bridges) b.len = Math.min(st.length - 20, Math.max(b.len, x.s1 + ROAD.rampLen + 80));
       b.pts = [];
       for (let s = 0; s <= b.len; s += 10) b.pts.push(st._xz(s, 0));
       const far = net.nodes[b.to];
@@ -131,8 +134,12 @@ export function* junctionChunk(route, ctx) {
           add(ribbon(st, m0, e, 4, [{ d: Mh - 0.12, y: R(0.27), u: 0 }, { d: Mh, y: R(0.25), u: 0.3 }, { d: Mh, y: R(0), u: 0.6 }], 4), M.curb);
         }
       }
-      add(ribbon(st, ab, e, 4, [{ d: -H - ROAD.embank, y: G(0), u: 0 }, { d: -H, y: R(0), u: 2 }], 3), M.grass);
-      add(ribbon(st, ab, e, 4, [{ d: H, y: R(0), u: 0 }, { d: H + ROAD.embank, y: G(0), u: 2 }], 3), M.grass);
+      // embankments, except under a bridge deck; the bridge itself (deck sides, piers, lamps, the river below)
+      for (const [p0, p1] of splitAround(b.bridges, ab, e)) {
+        add(ribbon(st, p0, p1, 4, [{ d: -H - ROAD.embank, y: G(0), u: 0 }, { d: -H, y: R(0), u: 2 }], 3), M.grass);
+        add(ribbon(st, p0, p1, 4, [{ d: H, y: R(0), u: 0 }, { d: H + ROAD.embank, y: G(0), u: 2 }], 3), M.grass);
+      }
+      for (const x of b.bridges) buildBridge(st, ctx, roadMats(), x, j.s);
     }
     ctx.scene.add(g);
     ctx.chunks.register(g, j.s, STUB_LEN + 200);
