@@ -180,7 +180,7 @@ export class Chain {
     }
     // U-turn openings in the median (4-lane roads)
     this.uturns = [];
-    {     // (every road is still drawn as a divided 4-lane road, so every road gets median openings)
+    if (this.lanes >= 4) {      // (a 2-lane road has no median: turn round anywhere)
       for (let s = 1500; s < L - 800; s += UTURN_SPACING) {
         let u = s;
         while (this.bridgeAt(u) || this.bridgeAt(u + 200) || this.bridgeAt(u - 200) || tollNear(u, 300)) u += 150;

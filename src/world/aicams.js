@@ -71,10 +71,11 @@ export function buildAICams(route, scene, chunks) {
     g.position.set(p.x, h, p.z);
     // local frame: +z faces the traffic that approaches this camera, +x points away from the road edge
     g.rotation.y = route.yawAt(c.s) + (c.side < 0 ? Math.PI : 0);
-    const sideX = -(ROAD.half + 1.4);          // after the rotation the camera's carriageway is at negative x
+    const P = route.prof(c.s);
+    const sideX = -(P.half + 1.4);          // after the rotation the camera's carriageway is at negative x
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 7, 10), steel);
     pole.position.set(sideX, 3.5, 0);
-    const armLen = ROAD.half - ROAD.median - 2.2;
+    const armLen = P.half - P.median - 2.2;
     const arm = new THREE.Mesh(new THREE.BoxGeometry(armLen, 0.14, 0.14), steel);
     arm.position.set(sideX + armLen / 2, 6.8, 0);
     g.add(pole, arm);
@@ -110,7 +111,7 @@ export function buildAICams(route, scene, chunks) {
     // warning sign 150 m before the camera, on the same side
     const signS = c.s - c.side * -150;   // traffic towards Chattogram (side -1) meets it at lower s
     const sg = new THREE.Group();
-    const sp = route.pointAt(signS, c.side * (ROAD.half + 1.6));
+    const sp = route.pointAt(signS, c.side * (route.prof(signS).half + 1.6));
     sg.position.set(sp.x, route.roadHeight(signS), sp.z);
     sg.rotation.y = route.yawAt(signS) + (c.side < 0 ? Math.PI : 0);
     const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), signMat);

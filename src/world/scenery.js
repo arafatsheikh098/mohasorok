@@ -292,7 +292,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
     for (const side of [-1, 1]) {
       for (let s = s0; s < s1; s += 8 + r() * 7) {
         if (town(s) || route.bridgeAt(s) || r() > 0.78 * dens) continue;
-        const d = side * (ROAD.toe + 5 + r() * 6);
+        const d = side * (route.prof(s).toe + 5 + r() * 6);
         route.pointAt(s, d, p);
         if (!validAt(s, d, p.x, p.z, 2)) continue;
         tree(p.x, p.z, 0.8 + r() * 0.6, r() < 0.2);
@@ -360,8 +360,9 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
       m4.compose(p.setY(0), q, sc.set(40 + r() * 70, 14 + r() * 10, 25 + r() * 30));
       I.blob.push(m4, col.setHSL(0.26, 0.3, 0.35 + r() * 0.15));
     }
-    // median shrubs
+    // median shrubs (divided roads only)
     for (let s = s0 + 3; s < s1; s += 7) {
+      if (route.prof(s).two) continue;
       if ((route.bridgeAt(s) && r() < 0.8) || route.uturnAt(s) || route.tollDist(s) < 30) continue;
       route.pointAt(s, (r() - 0.5) * 0.6, p);
       q.identity();
@@ -374,7 +375,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
     const wirePts = [];
     let prev = null;
     for (let s = s0; s < s1; s += 45) {
-      const d = -(ROAD.toe + 3.5);
+      const d = -(route.prof(s).toe + 3.5);
       if (route.bridgeAt(s) || nearStation(s, d, 10) || route.plazaW(s) > 0 || route.uturnAt(s)?.junction) { prev = null; continue; }
       route.pointAt(s, d, p);
       if (route.nearBranch?.(p.x, p.z, 3)) { prev = null; continue; }
@@ -461,9 +462,9 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
           const dep = 10 + r() * 8;
           const gap = r() < 0.15 ? 6 + r() * 10 : 0.3;
           const sm = s + w / 2;
-          const d = side * (ROAD.toe + 9 + dep / 2 + r() * 3);
+          const d = side * (route.prof(s).toe + 9 + dep / 2 + r() * 3);
           route.pointAt(sm, d, p);
-          if (route.nearBranch?.(p.x, p.z, w / 2 + dep / 2) || route.junctionAt(sm, side * ROAD.half)) { s += w + gap + 6; continue; }   // keep side roads clear
+          if (route.nearBranch?.(p.x, p.z, w / 2 + dep / 2) || route.junctionAt(sm, side * route.prof(sm).half)) { s += w + gap + 6; continue; }   // keep side roads clear
           const [tx, tz] = route.tangentAt(sm);
           const yaw = Math.atan2(-tz, tx) + (side > 0 ? Math.PI : 0); // front faces the road
           m4.compose(p.setY(0.05), q.setFromAxisAngle(UP, yaw), sc.set(1, 1, 1));
@@ -486,7 +487,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
         // mosque behind the front row
         if (r() < 0.8 && pl.town >= 300 && side === (pl.index % 2 ? 1 : -1)) {
           const sm = (a + b) / 2;
-          route.pointAt(sm, side * (ROAD.toe + 48), p);
+          route.pointAt(sm, side * (route.prof(sm).toe + 48), p);
           if (validAt(sm, 0, p.x, p.z, 10)) {
             const mq = new THREE.Group();
             mq.position.set(p.x, 0, p.z);
@@ -504,8 +505,9 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
           }
         }
       }
-      // median street lights
+      // median street lights (on a 2-lane road: none in the middle of the road)
       for (let s = a; s < b; s += 36) {
+        if (route.prof(s).two) continue;
         if (route.uturnAt(s) || route.uturnAt(s + 3) || route.uturnAt(s - 3) || route.tollDist(s) < 12) continue;
         route.pointAt(s, 0, p);
         const h0 = route.roadHeight(s) + 0.27;
@@ -529,7 +531,7 @@ function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
     for (let k = Math.ceil(route.realKm(s0) / 5) * 5; ; k += 5) {
       const s = route.sAtKm(k);
       if (s >= s1 || k > total) break;
-      if (route.bridgeAt(s) || s < 30 || route.terminalAt(s, -(ROAD.half + 1))) continue;
+      if (route.bridgeAt(s) || s < 30 || route.terminalAt(s, -(route.prof(s).half + 1))) continue;
       const km = Math.round(total - k);
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.9, 0.16), new THREE.MeshStandardMaterial({ map: kmPostTexture(km), roughness: 0.7 }));
       route.pointAt(s, -(route.halfAt(s) + 0.6), post.position);
@@ -652,19 +654,21 @@ function signPlan(route) {
     const ahead = majors.filter((p) => p.s > s + 200).slice(0, 2);
     const lines = ahead.map((p) => [...nm(p), kmTo(s, p)]);
     if (!lines.length || lines[lines.length - 1][1] !== nm(end)[1]) lines.push([...nm(end), kmTo(s, end)]);
-    items.push({ s, d: -(ROAD.median + ROAD.lane), lines: lines.slice(-3), w: 6.2, flip: false, gantry: true });
+    const P = route.prof(s);
+    // a gantry over a divided highway; a tall roadside board on a 2-lane road
+    items.push({ s, d: P.two ? -(P.half + 2.5) : -(P.median + P.lane), lines: lines.slice(-3), w: P.two ? 4.6 : 6.2, flip: false, gantry: !P.two });
     const behind = majors.filter((p) => p.s < s - 200).slice(-1);
     const bl = behind.map((p) => [...nm(p), kmBack(s, p)]);
     if (!bl.length || bl[0][1] !== nm(start)[1]) bl.push([...nm(start), kmBack(s, start)]);
-    items.push({ s: s + 60, d: ROAD.median + ROAD.lane, lines: bl, w: 6.2, flip: true, gantry: true, side: 1 });
+    items.push({ s: s + 60, d: P.two ? P.half + 2.5 : P.median + P.lane, lines: bl, w: P.two ? 4.6 : 6.2, flip: true, gantry: !P.two, side: 1 });
   }
   for (const p of places) {
     if (!p.town) continue;
     const sIn = p.s - p.town / 2 - 40;
-    if (sIn > 50) items.push({ s: sIn, d: -(ROAD.half + 2.0), place: p, w: 4, flip: false, small: true });
+    if (sIn > 50) items.push({ s: sIn, d: -(route.prof(sIn).half + 2.0), place: p, w: 4, flip: false, small: true });
     const sOut = p.s + p.town / 2 + 60;
-    if (sOut < L - 50) items.push({ s: sOut, d: -(ROAD.half + 1.5), speed: true, w: 1.2, h: 1.2, flip: false, small: true });
-    if (sOut < L - 50) items.push({ s: sOut + 10, d: ROAD.half + 2.0, place: p, w: 4, flip: true, small: true });
+    if (sOut < L - 50) items.push({ s: sOut, d: -(route.prof(sOut).half + 1.5), speed: true, w: 1.2, h: 1.2, flip: false, small: true });
+    if (sOut < L - 50) items.push({ s: sOut + 10, d: route.prof(sOut).half + 2.0, place: p, w: 4, flip: true, small: true });
   }
   return items;
 }

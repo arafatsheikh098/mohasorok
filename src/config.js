@@ -41,6 +41,19 @@ ROAD.toe = ROAD.half + ROAD.embank;                 // bottom of embankment
 // lane centre offsets for traffic heading TO Chattogram (forward). Oncoming = positive mirror.
 ROAD.laneCenters = [-(ROAD.median + ROAD.lane * 1.5), -(ROAD.median + ROAD.lane * 0.5)]; // [slow(left), fast(right)]
 
+// Lane profiles: a divided 4-lane highway (ROAD above) and an undivided 2-lane road, one lane each way
+// (most Bangladeshi highways outside N1/N3/N4/N8). route.prof(s) gives the one in use at s.
+const mkProf = (median, lane, lanes, shoulder) => {
+  const P = { ...ROAD, median, lane, lanes, shoulder, edge: median + lane * lanes, two: lanes === 1 };
+  P.half = P.edge + shoulder;
+  P.toe = P.half + ROAD.embank;
+  // lane centres for traffic driving towards larger s: [slow (left), fast]; on a 2-lane road the "fast" lane is
+  // the oncoming one (overtaking means pulling out into it)
+  P.laneCenters = P.two ? [-lane / 2, lane / 2] : [-(median + lane * 1.5), -(median + lane * 0.5)];
+  return P;
+};
+export const PROFILE = { 4: mkProf(ROAD.median, ROAD.lane, 2, ROAD.shoulder), 2: mkProf(0, 3.65, 1, 1.7) };
+
 // Toll plaza: the road fans out to a wide concrete apron with a row of booths for ~200 m
 // (40 m full width either side of the booths, 60 m tapers), so queues spread over many lanes.
 export const PLAZA = { booths: 5, laneW: 3.6, islandW: 1.4, flat: 40, taper: 60, apron: 1.0, islandLen: 22 };

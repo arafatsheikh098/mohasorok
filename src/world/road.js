@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ROAD, CHUNK, PLAZA } from '../config.js';
 import { share, sharedMats } from './stream.js';
 import {
-  asphaltTexture, grassTexture, curbTexture, concreteTexture, waterNormalTexture, ASPHALT_TILE,
+  asphaltTexture, asphaltTexture2, grassTexture, curbTexture, concreteTexture, waterNormalTexture, ASPHALT_TILE,
   makeCanvas, canvasTexture, BN_FONT, EN_FONT,
 } from '../textures.js';
 
@@ -49,6 +49,7 @@ const G = (y) => () => y;
 
 export const roadMats = sharedMats(() => ({
   asphalt: new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 0.93, metalness: 0 }),
+  asphalt2: new THREE.MeshStandardMaterial({ map: asphaltTexture2(), roughness: 0.93, metalness: 0 }),
   grass: new THREE.MeshStandardMaterial({ map: grassTexture(3), roughness: 1 }),
   median: new THREE.MeshStandardMaterial({ map: grassTexture(5, '#57702f'), roughness: 1 }),
   curb: new THREE.MeshStandardMaterial({ map: curbTexture(), roughness: 0.8 }),
@@ -94,28 +95,14 @@ export function initRoad(route) {
 // one block of road: carriageways, median, toll apron, embankments, and any bridge (+ its river) in the block
 export function* roadChunk(route, ctx) {
   const mats = roadMats();
-  const M = ROAD.median, H = ROAD.half;
-  const asphaltCols = (side) => side < 0
-    ? [{ d: -H, y: R(0), u: 1 }, { d: -M, y: R(0), u: 0 }]
-    : [{ d: M, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }];
-  const medianTop = [
-    { d: -M + 0.12, y: R(0.27), u: 0 }, { d: M - 0.12, y: R(0.27), u: (2 * M) / 3 },
-  ];
-  const curbCols = [
-    [{ d: -M, y: R(0), u: 0 }, { d: -M, y: R(0.25), u: 0.3 }, { d: -M + 0.12, y: R(0.27), u: 0.6 }],
-    [{ d: M - 0.12, y: R(0.27), u: 0 }, { d: M, y: R(0.25), u: 0.3 }, { d: M, y: R(0), u: 0.6 }],
-  ];
   const embank = [
     [{ d: (s) => -route.halfAt(s) - ROAD.embank, y: G(0), u: 0 }, { d: (s) => -route.halfAt(s), y: R(0), u: 2 }],
     [{ d: (s) => route.halfAt(s), y: R(0), u: 0 }, { d: (s) => route.halfAt(s) + ROAD.embank, y: G(0), u: 2 }],
   ];
   // toll plaza aprons: concrete, as wide as the plaza needs (route.halfAt)
   const plaza = route.tolls.map((t) => ({ s0: t.s - PLAZA.reach, s1: t.s + PLAZA.reach }));
-  const plazaCols = (side) => side < 0
-    ? [{ d: (s) => -route.halfAt(s), y: R(0), u: 0 }, { d: -M, y: R(0), u: 3 }]
-    : [{ d: M, y: R(0), u: 0 }, { d: (s) => route.halfAt(s), y: R(0), u: 3 }];
 
-  const s0 = ctx.s0, s1 = Math.min(route.length, ctx.s1);
+  const S0 = ctx.s0, S1 = Math.min(route.length, ctx.s1);
   const group = new THREE.Group();
   const add = (geo, mat, shadow = false) => {
     const m = new THREE.Mesh(geo, mat);
@@ -123,25 +110,54 @@ export function* roadChunk(route, ctx) {
     m.castShadow = shadow;
     group.add(m);
   };
-  for (const [a, b] of splitAround(plaza, s0, s1)) for (const side of [-1, 1]) add(ribbon(route, a, b, 4, asphaltCols(side), ASPHALT_TILE), mats.asphalt);
-  for (const pz of plaza) {
-    if (pz.s1 <= s0 || pz.s0 >= s1) continue;
-    for (const side of [-1, 1]) add(ribbon(route, Math.max(s0, pz.s0), Math.min(s1, pz.s1), 2, plazaCols(side), 6), mats.plaza);
+  // pieces of constant lane profile (it changes at junctions)
+  const cuts = [S0, ...route.profBreaks(S0, S1), S1];
+  for (let k = 0; k < cuts.length - 1; k++) {
+    const s0 = cuts[k], s1 = cuts[k + 1];
+    const P = route.prof((s0 + s1) / 2), M = P.median, H = P.half;
+    const plazaCols = (side) => side < 0
+      ? [{ d: (s) => -route.halfAt(s), y: R(0), u: 0 }, { d: -M, y: R(0), u: 3 }]
+      : [{ d: M, y: R(0), u: 0 }, { d: (s) => route.halfAt(s), y: R(0), u: 3 }];
+    if (P.two) {
+      // undivided 2-lane road: one strip of asphalt, centre line and edge lines in the texture
+      for (const [a, b] of splitAround(plaza, s0, s1)) add(ribbon(route, a, b, 4, [{ d: -H, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), mats.asphalt2);
+      for (const pz of plaza) {
+        if (pz.s1 <= s0 || pz.s0 >= s1) continue;
+        const a = Math.max(s0, pz.s0), b = Math.min(s1, pz.s1);
+        for (const side of [-1, 1]) add(ribbon(route, a, b, 2, plazaCols(side), 6), mats.plaza);
+        add(ribbon(route, a, b, 2, [{ d: -M - 0.01, y: R(0.004), u: 0 }, { d: M + 0.01, y: R(0.004), u: 0.2 }], 6), mats.plaza);
+      }
+    } else {
+      const asphaltCols = (side) => side < 0
+        ? [{ d: -H, y: R(0), u: 1 }, { d: -M, y: R(0), u: 0 }]
+        : [{ d: M, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }];
+      const medianTop = [{ d: -M + 0.12, y: R(0.27), u: 0 }, { d: M - 0.12, y: R(0.27), u: (2 * M) / 3 }];
+      const curbCols = [
+        [{ d: -M, y: R(0), u: 0 }, { d: -M, y: R(0.25), u: 0.3 }, { d: -M + 0.12, y: R(0.27), u: 0.6 }],
+        [{ d: M - 0.12, y: R(0.27), u: 0 }, { d: M, y: R(0.25), u: 0.3 }, { d: M, y: R(0), u: 0.6 }],
+      ];
+      for (const [a, b] of splitAround(plaza, s0, s1)) for (const side of [-1, 1]) add(ribbon(route, a, b, 4, asphaltCols(side), ASPHALT_TILE), mats.asphalt);
+      for (const pz of plaza) {
+        if (pz.s1 <= s0 || pz.s0 >= s1) continue;
+        for (const side of [-1, 1]) add(ribbon(route, Math.max(s0, pz.s0), Math.min(s1, pz.s1), 2, plazaCols(side), 6), mats.plaza);
+      }
+      // median (with openings for U-turns and junctions, paved inside the gap)
+      for (const [a, b] of splitAround(route.uturns, s0, s1)) {
+        add(ribbon(route, a, b, 4, medianTop, 3), mats.median);
+        for (const cc of curbCols) add(ribbon(route, a, b, 4, cc, 4), mats.curb);
+      }
+      for (const u of route.uturns) {
+        if (u.s1 <= s0 || u.s0 >= s1) continue;
+        add(ribbon(route, Math.max(s0, u.s0), Math.min(s1, u.s1), 2, [{ d: -M - 0.01, y: R(0.005), u: 0.12 }, { d: M + 0.01, y: R(0.005), u: 0.3 }], ASPHALT_TILE), mats.asphalt);
+      }
+    }
+    // embankment except where we are on a bridge deck
+    for (const [a, b] of splitAround(route.bridges, s0, s1)) for (const e of embank) add(ribbon(route, a, b, 4, e, 3), mats.grass);
   }
-  // median (with openings for U-turns, paved inside the gap)
-  for (const [a, b] of splitAround(route.uturns, s0, s1)) {
-    add(ribbon(route, a, b, 4, medianTop, 3), mats.median);
-    for (const cc of curbCols) add(ribbon(route, a, b, 4, cc, 4), mats.curb);
-  }
-  for (const u of route.uturns) {
-    if (u.s1 <= s0 || u.s0 >= s1) continue;
-    add(ribbon(route, Math.max(s0, u.s0), Math.min(s1, u.s1), 2, [{ d: -M - 0.01, y: R(0.005), u: 0.12 }, { d: M + 0.01, y: R(0.005), u: 0.3 }], ASPHALT_TILE), mats.asphalt);
-  }
-  // embankment except where we are on a bridge deck
-  for (const [a, b] of splitAround(route.bridges, s0, s1)) for (const e of embank) add(ribbon(route, a, b, 4, e, 3), mats.grass);
   // end barriers
   for (const s of [0, route.length]) {
     if (!ctx.in(s)) continue;
+    const H = route.prof(s).half;
     const b = new THREE.Mesh(new THREE.BoxGeometry(2 * H + 2, 1.2, 0.6), mats.curb);
     route.pointAt(s, 0, b.position);
     b.position.y += 0.6;
@@ -149,7 +165,7 @@ export function* roadChunk(route, ctx) {
     group.add(b);
   }
   ctx.scene.add(group);
-  ctx.chunks.register(group, (s0 + s1) / 2, CHUNK / 2);
+  ctx.chunks.register(group, (S0 + S1) / 2, CHUNK / 2);
   yield;
   for (const b of route.bridges) {
     if (!ctx.in(b.sc)) continue;
@@ -178,7 +194,7 @@ const headGeo = share(new THREE.BoxGeometry(0.9, 0.18, 0.35));
 let waterMatRef = null;
 
 function buildBridge(route, ctx, mats, b) {
-  const H = ROAD.half;
+  const P = route.prof(b.sc), H = P.half;
   const group = new THREE.Group();
   // deck structure: parapets + slab underside
   const parapetL = [
@@ -210,7 +226,7 @@ function buildBridge(route, ctx, mats, b) {
     const h = route.roadHeight(s);
     const yaw = route.yawAt(s);
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-    for (const d of [-7, -3, 3, 7]) {
+    for (const d of P.two ? [-3, 0, 3, 0] : [-7, -3, 3, 7]) {
       route.pointAt(s, d, p);
       p.y = (h - 1.3) / 2 - 1;
       sc.set(1, h - 1.3 + 2, 1);
@@ -225,15 +241,17 @@ function buildBridge(route, ctx, mats, b) {
   pm.castShadow = cm.castShadow = true;
   group.add(pm, cm);
 
-  // bridge lamps
-  for (let s = b.s0 + 10; s < b.s1; s += 40) {
-    route.pointAt(s, 0, p);
+  // bridge lamps: on the median, or (2-lane bridges) on alternate parapets
+  let li = 0;
+  for (let s = b.s0 + 10; s < b.s1; s += 40, li++) {
+    const ld = P.two ? (li % 2 ? 1 : -1) * (H - 0.2) : 0;
+    route.pointAt(s, ld, p);
     const pole = new THREE.Mesh(lampGeo, mats.lamp);
-    pole.position.set(p.x, route.roadHeight(s) + 0.27 + 4.5, p.z);
+    pole.position.set(p.x, route.roadHeight(s) + (P.two ? 1.05 : 0.27) + 4.5, p.z);
     group.add(pole);
-    for (const sx of [-1, 1]) {
+    for (const sx of P.two ? [-Math.sign(ld)] : [-1, 1]) {
       const hd = new THREE.Mesh(headGeo, streetGlowMat);
-      route.pointAt(s, sx * 0.8, hd.position);
+      route.pointAt(s, ld + sx * 0.8, hd.position);
       hd.position.y = route.roadHeight(s) + 9;
       hd.rotation.y = route.yawAt(s) + Math.PI / 2;
       group.add(hd);

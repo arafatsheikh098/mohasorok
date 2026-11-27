@@ -80,7 +80,7 @@ export class Passengers {
     this.mood = MOOD.start;
     this._buildFigures(scene);
     this._planCounters();
-    hud.addMarkers?.(this.counters.map((c) => ({ p: route.pointAt(c.s, c.side * (ROAD.half + 3)), icon: '🚏', col: '#2ecc71' })));
+    hud.addMarkers?.(this.counters.map((c) => ({ p: route.pointAt(c.s, c.side * (route.prof(c.s).half + 3)), icon: '🚏', col: '#2ecc71' })));
     if (import.meta.env?.DEV) window.__pax = this;
   }
 
@@ -135,7 +135,7 @@ export class Passengers {
       const top = R.roadHeight(s) + 0.18;
       for (let i = 0; i < 10; i++) {
         const ss = s - 5 + (i % 5) * 2.4 + (this.r() - 0.5) * 0.6;
-        const d = side * (ROAD.half + 1.0 + Math.floor(i / 5) * 1.1 + this.r() * 0.3);
+        const d = side * (R.prof(s).half + 1.0 + Math.floor(i / 5) * 1.1 + this.r() * 0.3);
         const q = R.pointAt(ss, d);
         c.spots.push({ x: q.x, z: q.z, y: top, yaw: R.yawAt(ss) + (side < 0 ? Math.PI / 2 : -Math.PI / 2) });
       }
@@ -170,7 +170,7 @@ export class Passengers {
       this.mood = Math.max(0, this.mood - 6 * Math.min(3, moved));
       this.hud.toast(`😠 ${moved} passenger${moved > 1 ? 's' : ''} wanted a town that is not on the new road — they will get down at the next stop`, 'bad', 4000);
     }
-    this.hud.addMarkers?.(this.counters.map((c) => ({ p: route.pointAt(c.s, c.side * (ROAD.half + 3)), icon: '🚏', col: '#2ecc71' })));
+    this.hud.addMarkers?.(this.counters.map((c) => ({ p: route.pointAt(c.s, c.side * (route.prof(c.s).half + 3)), icon: '🚏', col: '#2ecc71' })));
     this._ui(true);
   }
 
@@ -181,6 +181,7 @@ export class Passengers {
 
   _buildCounterMesh(c, mats, scene, chunks) {
     const R = this.route, sd = c.side, h = R.roadHeight(c.s);
+    const ROAD = R.prof(c.s);              // this road's lane profile (4-lane or 2-lane)
     const grp = new THREE.Group();
     // painted lay-by on the shoulder: yellow hatching
     const cols = sd < 0
@@ -317,7 +318,7 @@ export class Passengers {
     const sp = c.spots.find((x) => !taken.has(x)) || c.spots[Math.floor(this.r() * c.spots.length)];
     pax.spot = sp;
     if (walkIn) {
-      const q = this.route.pointAt(c.s + (this.r() - 0.5) * 10, c.side * (ROAD.half + 9));
+      const q = this.route.pointAt(c.s + (this.r() - 0.5) * 10, c.side * (this.route.prof(c.s).half + 9));
       pax.fig = this._fig(q.x, sp.y, q.z, 0);
       if (pax.fig) { pax.fig.tx = sp.x; pax.fig.tz = sp.z; pax.fig.ty = sp.y; }
     } else pax.fig = this._fig(sp.x, sp.y, sp.z, sp.yaw + (this.r() - 0.5) * 0.8);
@@ -380,7 +381,8 @@ export class Passengers {
     const p = this.player;
     for (const c of this.counters) {
       if (c.side !== p.side || Math.sign(p.d) !== c.side) continue;
-      if (Math.abs(p.s - c.s) < ZONE && Math.abs(p.d) > ROAD.median + ROAD.lane) return c;
+      const P = this.route.prof(c.s);
+      if (Math.abs(p.s - c.s) < ZONE && Math.abs(p.d) > (P.two ? 1.0 : P.median + P.lane)) return c;
     }
     return null;
   }
@@ -548,7 +550,7 @@ export class Passengers {
     return true;
   }
   _restSpot(rest) {
-    const s = rest.sc + (this.r() - 0.5) * 18, d = rest.side * (ROAD.half + 29.5 + this.r() * 2);
+    const s = rest.sc + (this.r() - 0.5) * 18, d = rest.side * (rest.dIn + 29.5 + this.r() * 2);
     const q = this.route.pointAt(s, d);
     return { x: q.x, z: q.z, y: this.route.roadHeight(rest.sc) };
   }

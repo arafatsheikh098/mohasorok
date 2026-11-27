@@ -8,7 +8,7 @@ import { TOLL } from './world/facilities.js';
 import { obbOverlap } from './collide.js';
 import { addLampGlow, updateLampGlow, facingCamera } from './aiLights.js';
 
-const LANES = { fwd: [-(ROAD.median + ROAD.lane * 1.5), -(ROAD.median + ROAD.lane * 0.5)] }; // [slow, fast]
+// lane centres come from the lane profile at the vehicle's s (route.prof: divided 4-lane or undivided 2-lane)
 // agg: how pushy the drivers of this kind are (buses and cars push hardest on the N1)
 // lat: top sideways speed in a lane change (m/s); a bus takes ~4–5 s to cross a lane
 const KINDS = [
@@ -149,7 +149,7 @@ export class Traffic {
   _startTurn(v, ex) {
     if (v.rest?.slot) v.rest.slot.v = null;
     v.rest = null; v.plan = null;
-    v.turn = { j: ex.j, b: ex.b, ts: 0, s0: v.s, d0: v.d, dir: v.dir, laneD: -(ROAD.median + ROAD.lane * 1.5), right: ex.right };
+    v.turn = { j: ex.j, b: ex.b, ts: 0, s0: v.s, d0: v.d, dir: v.dir, laneD: ex.b.stub.prof(40).laneCenters[0], right: ex.right };
     v.exit = null;
   }
   // a bus joining from a side road at a junction 300–1300 m ahead of the player, out of sight down the side road
@@ -161,9 +161,9 @@ export class Traffic {
     const b = j.branches[Math.floor(r() * j.branches.length)];
     if (!b.stub || b.len < 200) return false;
     if (this.list.some((o) => o.merge?.b === b)) return false;
-    v.merge = { j, b, ts: Math.min(b.len - 40, 320), dir: r() < 0.5 ? 1 : -1, inD: ROAD.median + ROAD.lane * 1.5 };
+    v.merge = { j, b, ts: Math.min(b.len - 40, 320), dir: r() < 0.5 ? 1 : -1, inD: -b.stub.prof(40).laneCenters[0] };
     v.dir = v.merge.dir;
-    v.d = v.targetD = v.fromD = this.laneD(v.dir, false);
+    v.d = v.targetD = v.fromD = this.laneD(v.dir, false, j.s);
     v.s = 1e7; v.prevS = v.s;
     v.v = 7 + r() * 3; v.v0 = v.K.v[0] + r() * (v.K.v[1] - v.K.v[0]);
     v.agg = v.K.agg[0] + r() * (v.K.agg[1] - v.K.agg[0]);
@@ -202,7 +202,7 @@ export class Traffic {
       // wait at the mouth of the side road for a gap in the lane it turns into
       let vT = 9;
       if (M.ts < gate + 60) {
-        const lane = this.laneD(M.dir, false);
+        const lane = this.laneD(M.dir, false, j.s);
         const clear = this.list.every((o) => o === v || o.turn || o.merge || o.dir !== M.dir || Math.abs(o.d - lane) > 2.6 ||
           (j.s - o.s) * M.dir > 90 || (o.s - j.s) * M.dir > 30) &&
           !(player.box && Math.abs(player.s - j.s) < 70 && (player.side < 0) === (M.dir > 0));
@@ -215,7 +215,7 @@ export class Traffic {
       const w = M.ts < gate ? sm(1 - M.ts / gate) : 0;
       const cs = j.s + M.dir * (gate - Math.min(M.ts, gate)) * 0.5;
       M.b.stub.pointAt(M.ts, M.inD, A);
-      R.pointAt(cs, this.laneD(M.dir, false), B);
+      R.pointAt(cs, this.laneD(M.dir, false, cs), B);
       x = A.x + (B.x - A.x) * w; z = A.z + (B.z - A.z) * w;
       y = M.b.stub.roadHeight(M.ts) * (1 - w) + R.roadHeight(cs) * w;
       v.prevS = v.s;
@@ -224,7 +224,7 @@ export class Traffic {
       if (M.ts <= 0) {
         // on the highway: from here it is an ordinary vehicle
         v.merge = null;
-        v.s = cs; v.prevS = cs; v.dir = M.dir; v.d = v.targetD = v.fromD = this.laneD(M.dir, false);
+        v.s = cs; v.prevS = cs; v.dir = M.dir; v.d = v.targetD = v.fromD = this.laneD(M.dir, false, cs);
         this._assignService(v);
         v.cool = 3; v.sig = 0;
       }
@@ -265,8 +265,28 @@ export class Traffic {
   }
 
   // lane centre d for a vehicle: forward lanes are negative d, oncoming positive
-  laneD(dir, fast) { const d = LANES.fwd[fast ? 1 : 0]; return dir > 0 ? d : -d; }
-  isFast(d) { return Math.abs(d) < ROAD.median + ROAD.lane; }
+  // lane centre d for a vehicle at s (default: the vehicle being updated). On a 2-lane road the "fast" lane is
+  // the oncoming one: overtaking means pulling out into it.
+  laneD(dir, fast, s = this._cv?.s ?? 0) { const d = this.route.prof(s).laneCenters[fast ? 1 : 0]; return dir > 0 ? d : -d; }
+  isFast(d, v = this._cv) {
+    const P = this.route.prof(v?.s ?? 0);
+    if (P.two) return v ? Math.sign(d) !== Math.sign(this.laneD(v.dir, false, v.s)) : false;
+    return Math.abs(d) < P.median + P.lane;
+  }
+  // 2-lane road: is the oncoming lane clear far enough ahead to overtake? (closing speed × time to pass)
+  oncomingClear(v, player) {
+    if (!this.route.prof(v.s).two) return true;
+    const need = 120 + (v.v + 22) * (6 + (1 - (v.agg ?? 0.5)) * 4);
+    const lane = this.laneD(v.dir, true, v.s);
+    for (const o of this.list) {
+      if (o === v || o.dir === v.dir || o.turn || o.merge) continue;
+      const ds = (o.s - v.s) * v.dir;
+      if (ds > -10 && ds < need && Math.abs(o.d - lane) < 3) return false;
+    }
+    const pds = (player.s - v.s) * v.dir;
+    if (player.box && pds > -10 && pds < need && Math.abs(player.d - lane) < 3.2 && (player.side < 0) !== (v.dir > 0)) return false;
+    return true;
+  }
 
   spawn(v, playerS, initial) {
     const r = this.r;
@@ -294,6 +314,8 @@ export class Traffic {
       if (this.list.every((o) => o === v || o.dir !== v.dir || Math.abs(o.d - v.d) > 2 || Math.abs(o.s - s) > 30)) { v.s = s; break; }
       v.s = s;
     }
+    // the lanes where it ended up (a 2-lane road has one each way: start in your own)
+    v.d = v.targetD = v.fromD = this.laneD(v.dir, fast && !this.route.prof(v.s).two, v.s);
     this._afterSpawn(v);
   }
 
@@ -317,7 +339,8 @@ export class Traffic {
         // the odd truck has broken down in the slow lane, half on the shoulder, hazards blinking
         if (v.K.kind === 'truck' && !this.brokenOut && !z.toll && r() < 0.35 && Math.abs(s - mid) < (z.s1 - z.s0) * 0.3) {
           v.broken = true; this.brokenOut = true;
-          v.d = v.targetD = v.fromD = Math.sign(this.laneD(v.dir, false)) * (ROAD.median + ROAD.lane * 1.5 + 1.1);
+          const P = this.route.prof(s);
+          v.d = v.targetD = v.fromD = Math.sign(this.laneD(v.dir, false, s)) * (P.edge - P.lane / 2 + 1.1);
           v.v = 0;
         }
         void mid;
@@ -353,8 +376,14 @@ export class Traffic {
       if (ds > 0) { if (gap < g.ahead) { g.ahead = gap; g.aheadV = sp; g.aheadP = isP; g.aheadO = o; } }
       else if (gap < g.behind) { g.behind = gap; g.behindV = sp; }
     };
+    const two = this.route.prof(v.s).two;
     for (const o of this.list) {
-      if (o === v || o.dir !== v.dir) continue;
+      if (o === v || o.turn || o.merge) continue;
+      if (o.dir !== v.dir) {
+        // 2-lane road: something coming the other way in this lane is a (very fast closing) obstacle
+        if (two && Math.abs(o.d - d) < 2.4 && (o.s - v.s) * v.dir > 0) look(o.s, o.len, -o.v, false, o);
+        continue;
+      }
       if (Math.abs(o.d - d) < 2.4 || Math.abs(o.targetD - d) < 1.0) look(o.s, o.len, o.v, false, o);
     }
     if (player.box && Math.abs(player.d - d) < 2.6) look(player.s, player.len, (player.vs ?? player.v) * v.dir, true);
@@ -387,6 +416,7 @@ export class Traffic {
     const crashes = [];
     this.t = (this.t || 0) + dt;
     for (const v of this.list) {
+      this._cv = v;
       // turning off into a side road / coming in from one: driven along the side road, not the corridor
       if (v.turn || v.merge) { this._sideDrive(v, dt, player, dim, crashes); continue; }
       // recycle
@@ -429,7 +459,7 @@ export class Traffic {
       // let the player in when they signal into our lane
       v.yieldT = Math.max(0, v.yieldT - dt);
       if (v.dir > 0 && (player.indL || player.indR) && player.side < 0) {
-        const tgt = this.laneD(1, player.indR);
+        const tgt = this.laneD(1, player.indR, player.s);
         const behind = player.s - v.s;
         if (Math.abs(v.d - tgt) < 1.8 && behind > 0 && behind < 70) v.yieldT = 3;
       }
@@ -534,7 +564,7 @@ export class Traffic {
         if (!inFast) {
           // stuck behind something slower: signal right and pull out to overtake
           // (even a CNG or a truck pulls out when it is stuck behind something that has stopped dead)
-          if (slowAhead && (v.K.fast > 0 || (own.aheadO?.broken && gap < 25)) && this.roomIn(v, fastD, player, 1.2)) {
+          if (slowAhead && (v.K.fast > 0 || (own.aheadO?.broken && gap < 25)) && this.roomIn(v, fastD, player, 1.2) && this.oncomingClear(v, player)) {
             this.plan(v, fastD, 2.3 - v.agg * 1.4);
             if ((v.agg > 0.55 || dim) && gap < 40) this.flash(v);    // "I'm coming past"
           }
@@ -546,9 +576,19 @@ export class Traffic {
           v.keepT = clear ? v.keepT + dt : 0;
           // someone faster sitting on our tail: get out of the way sooner
           const pushed = own.behind < 25 && own.behindV > v.v + 1;
-          const linger = pushed ? 0.6 : 1.2 + v.agg * 5 + (v.isBus ? 1.5 : 0);
+          // (on a 2-lane road the "fast" lane is the oncoming one: get back in as soon as there is room)
+          const linger = this.route.prof(v.s).two ? 0.2 : pushed ? 0.6 : 1.2 + v.agg * 5 + (v.isBus ? 1.5 : 0);
           if (v.keepT > linger) { this.plan(v, slowD, 1.6 - v.agg * 0.8); v.keepT = 0; }
         }
+      }
+      // 2-lane road, out in the oncoming lane and something is coming: abort and duck back in now
+      if (inFast && this.route.prof(v.s).two) {
+        const lane = v.targetD;
+        const danger = this.list.some((o) => o !== v && o.dir !== v.dir && !o.turn && !o.merge && Math.abs(o.d - lane) < 3 &&
+          (o.s - v.s) * v.dir > 0 && (o.s - v.s) * v.dir < (v.v + o.v) * 3.5 + 25) ||
+          (player.box && (player.s - v.s) * v.dir > 0 && (player.s - v.s) * v.dir < (v.v + Math.abs(player.v)) * 3.5 + 25 &&
+            Math.abs(player.d - lane) < 3 && (player.side < 0) !== (v.dir > 0));
+        if (danger) { v.plan = null; v.fromD = v.targetD; v.targetD = this.laneD(v.dir, false); v.cool = 2.5; if (v.v > 12) this.flash(v); }
       }
       // in the fast lane behind a slowcoach (often the player): flash the high beam and lean on the horn
       if (inFast && !changing && gap < 32 && lv < v.v0 - 2.5 && v.v > 6) {
@@ -649,9 +689,9 @@ export class Traffic {
   _slots(r) {
     if (!r.slots) {
       r.slots = r.kind === 'fuel'
-        ? [12.5, 17.5].map((o) => ({ s: r.sc, d: r.side * (ROAD.half + o), v: null }))
-        : r.kind === 'counter' ? [{ s: r.sc, d: r.side * (ROAD.edge + 1.25), v: null }]
-          : [-22.5, -7.5, 7.5, 22.5].map((o) => ({ s: r.sc + o, d: r.side * (ROAD.half + 18.25), v: null }));
+        ? [12.5, 17.5].map((o) => ({ s: r.sc, d: r.side * (r.dIn + o), v: null }))
+        : r.kind === 'counter' ? [{ s: r.sc, d: r.side * (this.route.prof(r.sc).edge + 1.25), v: null }]
+          : [-22.5, -7.5, 7.5, 22.5].map((o) => ({ s: r.sc + o, d: r.side * (r.dIn + 18.25), v: null }));
     }
     return r.slots;
   }

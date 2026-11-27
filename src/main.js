@@ -313,7 +313,7 @@ function junctionLogic() {
     for (const b of j.branches) {
       const pr = b.stub.project(cx, cz, b.hint ?? -1);
       b.hint = pr.index;
-      if (pr.s < j.R + 10 || pr.s > b.len - 30 || Math.abs(pr.d) > ROAD.half + 1.5) continue;
+      if (pr.s < j.R + 10 || pr.s > b.len - 30 || Math.abs(pr.d) > b.stub.prof(pr.s).half + 1.5) continue;
       if (Math.abs(pr.d) > Math.abs(player.d)) continue;           // still nearer the trip's own road
       const prefix = route.path.slice(0, j.k);        // the roads up to this junction stay as they are
       const step = { road: b.road, rev: b.rev };
@@ -421,7 +421,7 @@ function voiceLogic(dt) {
   const near = (inner, back, ahead) => traffic.list.some((v) => Math.sign(v.d) === player.side &&
     (inner ? Math.abs(v.d) < ad - 1.5 : Math.abs(v.d) > ad + 1.5) && (v.s - player.s) * player.heading > -back && (v.s - player.s) * player.heading < ahead);
   if (player.indR && !vstate.indR && kmh > 25 && near(true, 25, 8)) voice.say('helper.overtake_wait');
-  if (player.indL && !vstate.indL && kmh > 25 && ad < ROAD.median + ROAD.lane && !near(false, 14, 14) && Math.random() < 0.5) voice.say('helper.left_clear');
+  if (player.indL && !vstate.indL && kmh > 25 && ad < route.prof(player.s).median + route.prof(player.s).lane && !near(false, 14, 14) && Math.random() < 0.5) voice.say('helper.left_clear');
   vstate.indL = player.indL; vstate.indR = player.indR;
 }
 
@@ -439,13 +439,15 @@ function constrain(dt) {
   // the bus is angled: its half-extent across / along the road
   const halfAcross = Math.abs(Math.sin(rel)) * spec.L / 2 + Math.abs(Math.cos(rel)) * spec.W / 2;
   const halfAlong = Math.abs(Math.cos(rel)) * spec.L / 2 + Math.abs(Math.sin(rel)) * spec.W / 2;
-  // carriageway: free to cross only inside a U-turn opening
-  if (gap) player.side = d > 0 ? 1 : -1;
+  // carriageway: free to cross only inside a U-turn opening (a 2-lane road has no median: cross anywhere)
+  const P = route.prof(s);
+  const open = gap || P.two;
+  if (open) player.side = d > 0 ? 1 : -1;
   const sd = player.side;
-  const inner = ROAD.median + 0.1 + halfAcross;
-  const outer = bridge ? ROAD.half - 0.1 - Math.min(halfAcross, 2) : ROAD.toe + 45;
+  const inner = P.median + 0.1 + halfAcross;
+  const outer = bridge ? P.half - 0.1 - Math.min(halfAcross, 2) : P.toe + 45;
   let lo, hi;
-  if (gap) { lo = -outer; hi = outer; } else if (sd < 0) { lo = -outer; hi = -inner; } else { lo = inner; hi = outer; }
+  if (open) { lo = -outer; hi = outer; } else if (sd < 0) { lo = -outer; hi = -inner; } else { lo = inner; hi = outer; }
   let push = 0;
   if (d > hi) push = hi - d; else if (d < lo) push = lo - d;
   if (push !== 0) {
@@ -683,6 +685,7 @@ function handleCrashes(crashes) {
   const ph = player.phys, sp = player.bus.spec;
   for (const c of crashes) {
     const v = c.v, n = c.n;
+    if (import.meta.env?.DEV) (window.__crashes ||= []).push({ kind: v.K.kind, dir: v.dir, s: Math.round(v.s), d: +v.d.toFixed(2), targetD: +v.targetD.toFixed(2), v: +v.v.toFixed(1), ps: Math.round(player.s), pd: +player.d.toFixed(2), pv: +player.phys.v.toFixed(1), side: !!c.side, turn: !!v.turn, merge: !!v.merge, rest: v.rest?.phase || null });
     if (c.side) {
       // a bus turning off / coming in at a junction (off the corridor): push apart, both stop
       ph.pos.x += n.nx * n.depth; ph.pos.z += n.nz * n.depth;
@@ -829,7 +832,8 @@ function handleKeys() {
     else ph.cruise = null;
   }
   if (input.hit('KeyR')) {
-    resetPlayer(player.s, player.side > 0 ? -ROAD.laneCenters[0] : ROAD.laneCenters[0]);
+    const lc = route.prof(player.s).laneCenters[0];
+    resetPlayer(player.s, player.side > 0 ? -lc : lc);
     if (player.fuel <= 0) { player.fuel = 40; player.fuelCost += 40 * DIESEL_PRICE * 1.5; hud.toast('Supervisor brought 40 L of diesel in a jerrycan (৳ extra)'); }
     hud.toast('Bus reset to the road');
   }

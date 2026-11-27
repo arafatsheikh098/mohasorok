@@ -60,6 +60,7 @@ export class Police {
     if (s < 400 || s > R.length - 400) return false;
     if (R.bridgeAt(s) || R.bridgeAt(s - 220) || R.bridgeAt(s + 220)) return false;       // ramps too
     if (R.tollDist(s) < 500) return false;
+    if (R.prof(s).two || R.prof(s - 300).two || R.prof(s + 300).two) return false;     // checkpoints close a lane: divided roads only
     if (R.uturns.some((u) => s > u.s0 - m && s < u.s1 + m)) return false;
     if (R.stations.some((x) => s > x.s0 - m && s < x.s1 + m)) return false;
     if (R.rests.some((x) => s > x.s0 - m && s < x.s1 + m)) return false;

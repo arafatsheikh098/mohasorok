@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ROAD } from './config.js';
+import { ROAD, PROFILE } from './config.js';
 
 export const BN_FONT = "'Noto Sans Bengali','Kohinoor Bangla','Bangla Sangam MN','Nirmala UI','Vrinda',sans-serif";
 export const EN_FONT = "'Helvetica Neue',Arial,sans-serif";
@@ -397,6 +397,46 @@ export function kmPostTexture(km) {
   ctx.font = `bold 34px ${BN_FONT}`;
   ctx.fillText('চট্টগ্রাম', W / 2, H * 0.86);
   return canvasTexture(c, { repeat: false });
+}
+
+// an undivided 2-lane road, the whole width (u 0 = left edge of the shoulder, 1 = right edge): dashed white
+// centre line (solid yellow where overtaking is not allowed is left out), white edge lines, worn shoulders
+export function asphaltTexture2() {
+  const P = PROFILE[2];
+  const W = 512, H = 1024;
+  const [c, ctx] = makeCanvas(W, H);
+  const r = rng(8);
+  const U = (d) => ((d + P.half) / (2 * P.half)) * W;
+  const V = (m) => (m / ASPHALT_TILE) * H;
+  ctx.fillStyle = '#58585a';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#69655e';
+  ctx.fillRect(0, 0, U(-P.edge), H);
+  ctx.fillRect(U(P.edge), 0, W, H);
+  speckle(ctx, W, H, 26000, ['#4b4c4f', '#616265', '#6b6b6d', '#444547', '#5c5a57'], r, 1, 3);
+  for (let i = 0; i < 22; i++) {
+    ctx.fillStyle = r() < 0.5 ? 'rgba(40,40,42,0.25)' : 'rgba(110,108,104,0.2)';
+    ctx.fillRect(r() * W, r() * H, 20 + r() * 120, 20 + r() * 160);
+  }
+  for (const lc of [-P.lane / 2, P.lane / 2]) {
+    for (const o of [-0.9, 0.9]) {
+      const g = ctx.createLinearGradient(U(lc + o - 0.45), 0, U(lc + o + 0.45), 0);
+      g.addColorStop(0, 'rgba(30,30,32,0)'); g.addColorStop(0.5, 'rgba(30,30,32,0.3)'); g.addColorStop(1, 'rgba(30,30,32,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(U(lc + o - 0.45), 0, U(lc + o + 0.45) - U(lc + o - 0.45), H);
+    }
+  }
+  const line = (d, wM, color, dash) => {
+    ctx.fillStyle = color;
+    const x = U(d - wM / 2), w = U(d + wM / 2) - x;
+    if (!dash) ctx.fillRect(x, 0, w, H);
+    else for (let m = 0; m < ASPHALT_TILE; m += 9) ctx.fillRect(x, V(m), w, V(4));
+  };
+  line(0, 0.15, '#ecece6', true);            // centre line (dashed)
+  line(-P.edge, 0.18, '#ecece6', false);      // edge lines
+  line(P.edge, 0.18, '#ecece6', false);
+  speckle(ctx, W, H, 5000, ['rgba(60,60,60,0.5)', 'rgba(90,90,90,0.4)'], r, 1, 2);
+  return canvasTexture(c);
 }
 
 export function curbTexture() {

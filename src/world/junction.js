@@ -14,7 +14,7 @@ const jMats = sharedMats(() => {
   const m = roadMats();
   const off = (mat, f) => { const c = mat.clone(); c.polygonOffset = true; c.polygonOffsetFactor = f; c.polygonOffsetUnits = f; return c; };
   return {
-    pad: off(m.asphalt, -2), stub: off(m.asphalt, -1), grass: m.grass, median: m.median, curb: m.curb,
+    pad: off(m.asphalt, -2), stub: off(m.asphalt, -1), stub2: off(m.asphalt2, -1), grass: m.grass, median: m.median, curb: m.curb,
     back: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }),
     leg: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }),
   };
@@ -45,9 +45,9 @@ export function initJunctions(route, net) {
     }
   }
   // is (x, z) on (or within `margin` of the embankment of) a branch road?
-  const lim = ROAD.half + ROAD.embank;
   route.nearBranch = (x, z, margin = 0) => {
     for (const { j, b } of route.branchLines) {
+      const lim = b.stub.prof(10).half + ROAD.embank;
       if (Math.hypot(x - j.x, z - j.z) > b.len + lim + margin + 20) continue;
       const L = lim + margin;
       for (let i = 0; i < b.pts.length - 1; i++) {
@@ -113,20 +113,23 @@ export function* junctionChunk(route, ctx) {
     skirt.position.set(j.x, h / 2 - 0.02, j.z);
     skirt.receiveShadow = true;
     g.add(pad, skirt);
-    // the branch roads: carriageways, median, embankments
-    const Mh = ROAD.median, H = ROAD.half;
+    // the branch roads: carriageways, median, embankments (or one 2-lane strip)
     for (const b of j.branches) {
       const st = b.stub, a = j.R - 3, e = b.len;
       if (e - a < 5) continue;
+      const P = st.prof(a + 1), Mh = P.median, H = P.half;
       const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); };
-      add(ribbon(st, a, e, 4, [{ d: -H, y: R(0), u: 1 }, { d: -Mh, y: R(0), u: 0 }], ASPHALT_TILE), M.stub);
-      add(ribbon(st, a, e, 4, [{ d: Mh, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), M.stub);
-      add(ribbon(st, a, e, 4, [{ d: -Mh, y: R(0.002), u: 0 }, { d: Mh, y: R(0.002), u: 0.4 }], ASPHALT_TILE), M.stub);
-      const m0 = j.R + 8;
-      if (e > m0 + 4) {
-        add(ribbon(st, m0, e, 4, [{ d: -Mh + 0.12, y: R(0.27), u: 0 }, { d: Mh - 0.12, y: R(0.27), u: (2 * Mh) / 3 }], 3), M.median);
-        add(ribbon(st, m0, e, 4, [{ d: -Mh, y: R(0), u: 0 }, { d: -Mh, y: R(0.25), u: 0.3 }, { d: -Mh + 0.12, y: R(0.27), u: 0.6 }], 4), M.curb);
-        add(ribbon(st, m0, e, 4, [{ d: Mh - 0.12, y: R(0.27), u: 0 }, { d: Mh, y: R(0.25), u: 0.3 }, { d: Mh, y: R(0), u: 0.6 }], 4), M.curb);
+      if (P.two) add(ribbon(st, a, e, 4, [{ d: -H, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), M.stub2);
+      else {
+        add(ribbon(st, a, e, 4, [{ d: -H, y: R(0), u: 1 }, { d: -Mh, y: R(0), u: 0 }], ASPHALT_TILE), M.stub);
+        add(ribbon(st, a, e, 4, [{ d: Mh, y: R(0), u: 0 }, { d: H, y: R(0), u: 1 }], ASPHALT_TILE), M.stub);
+        add(ribbon(st, a, e, 4, [{ d: -Mh, y: R(0.002), u: 0 }, { d: Mh, y: R(0.002), u: 0.4 }], ASPHALT_TILE), M.stub);
+        const m0 = j.R + 8;
+        if (e > m0 + 4) {
+          add(ribbon(st, m0, e, 4, [{ d: -Mh + 0.12, y: R(0.27), u: 0 }, { d: Mh - 0.12, y: R(0.27), u: (2 * Mh) / 3 }], 3), M.median);
+          add(ribbon(st, m0, e, 4, [{ d: -Mh, y: R(0), u: 0 }, { d: -Mh, y: R(0.25), u: 0.3 }, { d: -Mh + 0.12, y: R(0.27), u: 0.6 }], 4), M.curb);
+          add(ribbon(st, m0, e, 4, [{ d: Mh - 0.12, y: R(0.27), u: 0 }, { d: Mh, y: R(0.25), u: 0.3 }, { d: Mh, y: R(0), u: 0.6 }], 4), M.curb);
+        }
       }
       add(ribbon(st, a, e, 4, [{ d: -H - ROAD.embank, y: G(0), u: 0 }, { d: -H, y: R(0), u: 2 }], 3), M.grass);
       add(ribbon(st, a, e, 4, [{ d: H, y: R(0), u: 0 }, { d: H + ROAD.embank, y: G(0), u: 2 }], 3), M.grass);
@@ -146,7 +149,7 @@ export function* junctionChunk(route, ctx) {
       if (ahead) lines.push([nm(ahead, 'bn'), nm(ahead, 'en'), Math.max(1, Math.round(Math.abs(route.realKm(ahead.s) - route.realKm(j.s)))), '↑']);
       const road = route.segAt(j.s + side * 40).chain;
       const tex = directionSignTexture(lines.slice(0, 4), road.ref, road.bn);
-      const g = board(route, s, side * (ROAD.half + 2.2), side, tex, 5.2, M);
+      const g = board(route, s, side * (route.prof(s).half + 2.2), side, tex, 5.2, M);
       ctx.scene.add(g);
       ctx.chunks.register(g, s, 60);
     }

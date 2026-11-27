@@ -91,7 +91,8 @@ export function initFacilities(route) {
     const paint = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.4 });
     const white = new THREE.MeshStandardMaterial({ color: 0xe9e9e4, roughness: 0.6, metalness: 0.2 });
     const conc = mats.concrete;
-    const h = route.roadHeight(sf), half = ROAD.toe + 2, deckY = 5.6;
+    const PF = route.prof(sf);
+    const h = route.roadHeight(sf), half = PF.toe + 2, deckY = 5.6;
     const grp = new THREE.Group();
     const p = route.pointAt(sf, 0);
     grp.position.set(p.x, h, p.z);
@@ -115,7 +116,7 @@ export function initFacilities(route) {
       box(wht, half * 2, 0.06, 0.06, 0, deckY + 1.1, zz);   // hand rail
     }
     // columns: both road edges and the median
-    for (const x of [-half + 0.4, half - 0.4, 0]) box(grey, 0.5, deckY, 0.5, x, deckY / 2 - (x === 0 ? 0 : 0.6), 0);
+    for (const x of PF.two ? [-half + 0.4, half - 0.4] : [-half + 0.4, half - 0.4, 0]) box(grey, 0.5, deckY, 0.5, x, deckY / 2 - (x === 0 ? 0 : 0.6), 0);
     // stairs at both ends running along the road
     for (const sx of [-1, 1]) {
       const sx0 = sx * (half + 1.4);
@@ -149,7 +150,7 @@ export function initFacilities(route) {
   for (const p of route.places) {
     if (!p.town) continue;
     const a = Math.max(20, p.s - p.town / 2, ctx.s0), b = Math.min(route.length - 20, p.s + p.town / 2, ctx.s1);
-    if (b <= a) continue;
+    if (b <= a || route.prof((a + b) / 2).two) continue;      // (no median to fence on a 2-lane road)
     const geos = [];
     const q = new THREE.Vector3();
     for (let sx = a; sx < b; sx += 2.5) {
@@ -322,7 +323,7 @@ function buildToll(route, ctx, mats, T) {
     scene.add(grp);
     chunks.register(grp, sT, 60);
     // advance warning signs
-    for (const [s, d, flip] of [[sT - 350, -(ROAD.half + 2), false], [sT + 350, ROAD.half + 2, true]]) {
+    for (const [s, d, flip] of [[sT - 350, -(route.prof(sT - 350).half + 2), false], [sT + 350, route.prof(sT + 350).half + 2, true]]) {
       addSign(scene, chunks, route, s, d, flip, textPanel(1024, 512, '#1f5fa8', (x, w, hh) => {
         x.strokeStyle = '#fff'; x.lineWidth = 14; x.strokeRect(16, 16, w - 32, hh - 32);
         x.fillStyle = '#fff'; x.font = `bold 120px ${BN_FONT}`; x.fillText('টোল প্লাজা', w / 2, 170);
@@ -335,6 +336,7 @@ function buildToll(route, ctx, mats, T) {
 
 function buildStation(route, ctx, mats, st) {
   const obstacles = ctx.obstacles, scene = ctx.scene, chunks = ctx.chunks;
+  const ROAD = route.prof(st.sc);          // this road's lane profile (4-lane or 2-lane)
   {
     const sd = st.side, h = route.roadHeight(st.sc);
     const cols = sd < 0
@@ -475,6 +477,7 @@ function findBends(route) {
 }
 // chevrons on the outside of the bend, and a warning sign 200 m before it
 function buildCurveSigns(route, ctx, bend) {
+  const ROAD = route.prof(bend.at);        // this road's lane profile (4-lane or 2-lane)
   const busy = (s) => route.bridgeAt(s) || route.uturnAt(s) || route.tollDist(s) < 150 || route.junctions.some((j) => Math.abs(s - j.s) < 80) ||
     [...route.stations, ...route.rests].some((st) => s > st.s0 - 30 && s < st.s1 + 30);
   {
@@ -486,7 +489,8 @@ function buildCurveSigns(route, ctx, bend) {
       const dirS = c < 0 ? 1 : -1;
       // +d is the driver's right on side -1, his left on side +1
       const arrow = inside * (c < 0 ? 1 : -1);
-      const outerD = inside === c ? c * (ROAD.median - 0.45) : c * (ROAD.half + 1.2);   // outside edge of this carriageway
+      // outside edge of this carriageway (an undivided road: the outer road edge, for both directions)
+      const outerD = ROAD.two ? -inside * (ROAD.half + 1.2) : inside === c ? c * (ROAD.median - 0.45) : c * (ROAD.half + 1.2);
       const n = Math.min(8, Math.max(3, Math.round((bend.b - bend.a) / 35)));
       for (let k = 0; k < n; k++) {
         const s = bend.a + ((bend.b - bend.a) * (k + 0.5)) / n;
@@ -519,6 +523,7 @@ function restFacade(col) {
 }
 
 function buildRestStop(route, scene, chunks, obstacles, mats, r, ri) {
+  const ROAD = route.prof(r.sc);           // this road's lane profile (4-lane or 2-lane)
   const sd = r.side, h = route.roadHeight(r.sc);
   const grp = new THREE.Group();
   const lot = sd < 0

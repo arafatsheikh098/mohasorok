@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ROAD, UTURN_GAP, PLAZA } from './config.js';
+import { ROAD, UTURN_GAP, PLAZA, PROFILE } from './config.js';
 import { DS } from './net.js';
 
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
@@ -80,7 +80,23 @@ export class Route {
       this.kmTab.push([Math.min(this.length, g.o + g.u1 - g.u0), km]);
     });
     this.totalKm = km;
+    // lane profile per road: it changes at the junctions (in the middle of the junction pad)
+    this.profTab = this.segs.map((g, k) => {
+      const p = this.segs[k - 1];
+      const at = k === 0 ? -1e9 : (p.o + p.u1 - p.u0 + g.o) / 2;
+      return [at, PROFILE[g.chain.lanes >= 4 ? 4 : 2]];
+    });
   }
+
+  // the lane profile (PROFILE in config.js) at s
+  prof(s) {
+    const T = this.profTab;
+    let P = T[0][1];
+    for (let i = 1; i < T.length; i++) { if (s >= T[i][0]) P = T[i][1]; else break; }
+    return P;
+  }
+  // where the profile changes, inside [a, b]
+  profBreaks(a, b) { return this.profTab.slice(1).map((x) => x[0]).filter((x) => x > a && x < b); }
 
   // corridor s of road s (in the road's own from → to frame) on segment g, or null when that part was trimmed
   _s(g, s, slack = 0) {
@@ -113,13 +129,15 @@ export class Route {
         const sc = this._s(g, st.sc);
         if (sc === null) continue;
         const [s0, s1] = pair(g, st.s0, st.s1);
-        this.stations.push({ ...st, sc, s0, s1, side: sd(g, st.side), dIn: ROAD.half, dOut: ROAD.half + st.depth });
+        const H = PROFILE[c.lanes >= 4 ? 4 : 2].half;
+        this.stations.push({ ...st, sc, s0, s1, side: sd(g, st.side), dIn: H, dOut: H + st.depth });
       }
       for (const r of c.rests) {
         const sc = this._s(g, r.sc);
         if (sc === null) continue;
         const [s0, s1] = pair(g, r.s0, r.s1);
-        this.rests.push({ ...r, sc, s0, s1, side: sd(g, r.side), dIn: ROAD.half, dOut: ROAD.half + r.depth });
+        const H = PROFILE[c.lanes >= 4 ? 4 : 2].half;
+        this.rests.push({ ...r, sc, s0, s1, side: sd(g, r.side), dIn: H, dOut: H + r.depth });
       }
       for (const t of c.terminals) {
         if (this._s(g, t.s0) === null || this._s(g, t.s1) === null) continue;
@@ -296,21 +314,21 @@ export class Route {
 
   stationAt(s, d) {
     for (const st of this.stations) {
-      if (s > st.s0 && s < st.s1 && Math.sign(d) === Math.sign(st.side) && Math.abs(d) > ROAD.half - 1 && Math.abs(d) < st.dOut) return st;
+      if (s > st.s0 && s < st.s1 && Math.sign(d) === Math.sign(st.side) && Math.abs(d) > st.dIn - 1 && Math.abs(d) < st.dOut) return st;
     }
     return null;
   }
 
   restAt(s, d) {
     for (const r of this.rests) {
-      if (s > r.s0 && s < r.s1 && Math.sign(d) === Math.sign(r.side) && Math.abs(d) > ROAD.half - 1 && Math.abs(d) < r.dOut) return r;
+      if (s > r.s0 && s < r.s1 && Math.sign(d) === Math.sign(r.side) && Math.abs(d) > r.dIn - 1 && Math.abs(d) < r.dOut) return r;
     }
     return null;
   }
   // the bus terminal yard (s, d) is inside, or null
   terminalAt(s, d) {
     for (const t of this.terminals) {
-      if (s > t.s0 && s < t.s1 && Math.sign(d) === Math.sign(t.side) && Math.abs(d) > ROAD.half - 1 && Math.abs(d) < t.dOut) return t;
+      if (s > t.s0 && s < t.s1 && Math.sign(d) === Math.sign(t.side) && Math.abs(d) > t.dIn - 1 && Math.abs(d) < t.dOut) return t;
     }
     return null;
   }
@@ -328,8 +346,8 @@ export class Route {
     const x = this.tollDist(s);
     return x <= PLAZA.flat ? 1 : x >= PLAZA.reach ? 0 : smooth(1 - (x - PLAZA.flat) / PLAZA.taper);
   }
-  // paved half-width of the carriageway pair at s (wider at a toll plaza)
-  halfAt(s) { return ROAD.half + (PLAZA.half - ROAD.half) * this.plazaW(s); }
+  // paved half-width of the road at s (wider at a toll plaza)
+  halfAt(s) { const h = this.prof(s).half; return h + (PLAZA.half - h) * this.plazaW(s); }
 
   // road surface height (centreline, with bridge ramps)
   roadHeight(s) {
