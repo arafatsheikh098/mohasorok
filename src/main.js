@@ -33,6 +33,8 @@ import { Weather } from './world/weather.js';
 import { Police } from './world/police.js';
 import { career, BUS_PRICES, REAL_PRICE, taka, fmtDuration, feedbackURL } from './career.js';
 import { initTripMenu } from './tripmenu.js';
+import { SERVICES } from './data/services.js';
+import { setBusRouteBoard } from './busModel.js';
 
 const $ = (id) => document.getElementById(id);
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -169,6 +171,7 @@ function createPlayerBus() {
   player.len = bus.spec.L;
   player.wid = bus.spec.W;
   if (mirrors) mirrors.attach(bus);
+  playerBoard();
   resetPlayer(...startPoint());
 }
 
@@ -235,7 +238,19 @@ function buildWorld(path) {
     jobs: [roadChunk, junctionChunk, scenery.chunk, facilities.chunk, (r, ctx) => passengers.chunk(r, ctx)] });
   if (weather) { weather.setRoute(route); weather.hud = hud; }
   if (rig) rig.route = route;
-  if (traffic) traffic.setRoute(route, facilities.gates);
+  if (traffic) { traffic.setRoute(route, facilities.gates); linkTraffic(); }
+}
+// what the AI traffic needs to know about the trip: the bus services and the counters they stop at
+function linkTraffic() {
+  traffic.svc = net.services(SERVICES);
+  traffic.counters = passengers.counters;
+  traffic.places = null;
+}
+// the player's own route placard
+function playerBoard() {
+  if (!player.bus) return;
+  const A = net.zillas.get(settings.trip.from), B = net.zillas.get(settings.trip.to);
+  setBusRouteBoard(player.bus, settings.mode === 'free' || !A || !B ? null : { bn: `${A.bn} ⇄ ${B.bn}`, en: `${A.en} – ${B.en}` });
 }
 // the trip's AI cameras and police checkpoints (made again whenever the corridor changes)
 let tripRoot = null;
@@ -275,6 +290,7 @@ function reroute(path, fromS, msg) {
   buildTripObjects();
   weather.setRoute(route); rig.route = route;
   traffic.setRoute(route, facilities.gates);
+  linkTraffic();
   traffic.rebase(fromS, keepS);
   player.hint = -1;
   player.termHint = false;
@@ -328,6 +344,7 @@ function restartTrip() {
   Object.assign(player, { elapsed: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false,
     fuel: TANK_LITRES * START_FUEL, fuelCost: 0, tollCost: 0, refuelling: false, fuelWarn: 0 });
   for (const g of facilities.gates) { g.holdPlayer = false; g.openT = 0; }
+  playerBoard();
   traffic.init(player.s);
   setTime(settings.time);                       // clock back to the chosen start time
   Object.assign(player, { sinceBreak: 0, breaks: 0, breakWarned: false, resting: 0, restPrompt: false, termHint: false, arriveT: 0, inTerminal: route.terminalAt(player.s, player.d) });
@@ -666,6 +683,21 @@ function handleCrashes(crashes) {
   const ph = player.phys, sp = player.bus.spec;
   for (const c of crashes) {
     const v = c.v, n = c.n;
+    if (c.side) {
+      // a bus turning off / coming in at a junction (off the corridor): push apart, both stop
+      ph.pos.x += n.nx * n.depth; ph.pos.z += n.nz * n.depth;
+      const kmh = Math.abs(ph.v) * 3.6;
+      ph.v *= 0.3; v.v = 0;
+      if (player.crashCool <= 0 && kmh > 8) {
+        const dmg = Math.round(Math.min(25000, 300 * kmh) / 100) * 100;
+        player.crashes++; player.crashCool = 1.5; player.fines += dmg;
+        player.rating = Math.max(1, player.rating - Math.min(1.2, kmh / 40));
+        audio.crash(kmh / 3.6); rig.shake = Math.min(1, kmh / 30);
+        hud.toast(`Collision with a ${KIND_NAME[v.K.kind]} at ${Math.round(kmh)} km/h! Damage ৳ ${dmg.toLocaleString('en-IN')}`, 'bad');
+        crashVoice();
+      }
+      continue;
+    }
     const mA = sp.mass, mB = AI_MASS[v.K.kind] || 2000;
     const wa = (1 / mA) / (1 / mA + 1 / mB), wb = 1 - wa;
     // separate the boxes
@@ -1044,6 +1076,7 @@ function startDrive() {
     for (const v of traffic.list) scene.remove(v.wrap);
     traffic = new Traffic(route, scene, settings.traffic, settings.op.id, audio, facilities.gates); traffic.camera = camera;
     traffic.opCount = OPERATORS.length;
+    linkTraffic();
   }
   restartTrip();
   camera.clearViewOffset();
@@ -1217,6 +1250,7 @@ async function boot() {
   await music.load();
   await msg('Tracing the roads from real coordinates…');
   net = new Network();
+  net.services(SERVICES);
   chunks = new Chunks();
   applyQualityBase();
   await msg('Lighting the sky…');
@@ -1234,6 +1268,7 @@ async function boot() {
   createPlayerBus();
   traffic = new Traffic(route, scene, settings.traffic, settings.op.id, audio, facilities.gates); traffic.camera = camera;
   traffic.opCount = OPERATORS.length;
+  linkTraffic();
   traffic.init(player.s);
   await msg('Paving the road, planting paddy, palms and villages…');
   stream.buildNow(player.s, 1);

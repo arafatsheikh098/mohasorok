@@ -298,6 +298,34 @@ export class Network {
     return out;
   }
 
+  // The bus services (src/data/services.js) on their roads, both ways. byRoad: 'road:rev' -> [service]
+  services(list) {
+    if (this._svc) return this._svc;
+    const all = [], byRoad = new Map();
+    for (const [op, a, b] of list) {
+      for (const [from, to] of [[a, b], [b, a]]) {
+        const path = this.trip(from, to);
+        if (!path) continue;
+        const A = this.zillas.get(from), B = this.zillas.get(to);
+        const idx = new Map(), stops = new Set();
+        path.forEach((st, i) => {
+          idx.set(st.road, { i, rev: st.rev });
+          const n = this.nodes[st.rev ? this.roads.get(st.road).from : this.roads.get(st.road).to];
+          if (n?.term) stops.add(n.zilla);
+        });
+        const svc = { op, from, to, bn: `${A.bn} ⇄ ${B.bn}`, en: `${from} – ${to}`, path, idx, stops };
+        all.push(svc);
+        for (const st of path) {
+          const k = `${st.road}:${st.rev ? 1 : 0}`;
+          if (!byRoad.has(k)) byRoad.set(k, []);
+          byRoad.get(k).push(svc);
+        }
+      }
+    }
+    this._svc = { all, byRoad };
+    return this._svc;
+  }
+
   // shortest trip between two zillas (from any of their terminals): [{ road, rev }]
   trip(fromZilla, toZilla, opts) {
     const a = this.zillas.get(fromZilla), b = this.zillas.get(toZilla);

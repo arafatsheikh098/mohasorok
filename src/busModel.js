@@ -1349,3 +1349,35 @@ export function setWipers(bus, t) {
   if (!bus.wipers) { bus.wipers = []; bus.exterior.traverse((o) => { if (o.userData.wiper) bus.wipers.push(o); }); }
   for (const w of bus.wipers) w.rotation.z = w.userData.wiper.ang + t * 1.15;
 }
+
+// Route placard (e.g. "ঢাকা ⇄ রাজশাহী"), the way BD coaches show where they go: a board in the front-left side
+// window behind the door, and one in the rear window. Never on the windshield (that stays clean).
+// text = { bn, en } or null to hide it. One small canvas per bus, redrawn only when the text changes.
+const boardGeo = new THREE.PlaneGeometry(1.05, 0.34);
+export function setBusRouteBoard(bus, text) {
+  if (!bus.routeBoard) {
+    const [c, x] = makeCanvas(512, 166);
+    const tex = canvasTexture(c, { repeat: false });
+    const mat = new THREE.MeshBasicMaterial({ map: tex });
+    const s = bus.spec;
+    const side = new THREE.Mesh(boardGeo, mat);
+    side.position.set(s.W / 2 + 0.02, (s.winBot + s.winTop) / 2 + 0.05, s.front - 2.75);
+    side.rotation.y = Math.PI / 2;
+    const back = new THREE.Mesh(boardGeo, mat);
+    back.position.set(0, s.winTop - 0.38, s.rear - 0.03);
+    back.rotation.y = Math.PI;
+    bus.body.add(side, back);
+    bus.routeBoard = { c, x, tex, meshes: [side, back], key: null };
+  }
+  const rb = bus.routeBoard, key = text ? `${text.bn}|${text.en}` : '';
+  for (const m of rb.meshes) m.visible = !!text;
+  if (!text || rb.key === key) return;
+  rb.key = key;
+  const { x } = rb, W = 512, H = 166;
+  x.fillStyle = '#fbfaf4'; x.fillRect(0, 0, W, H);
+  x.strokeStyle = '#c62828'; x.lineWidth = 10; x.strokeRect(5, 5, W - 10, H - 10);
+  x.fillStyle = '#b71c1c'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = `bold 64px ${BN_FONT}`; x.fillText(text.bn, W / 2, 66, W - 30);
+  x.fillStyle = '#222'; x.font = `600 30px ${EN_FONT}`; x.fillText(text.en.toUpperCase(), W / 2, 130, W - 30);
+  rb.tex.needsUpdate = true;
+}

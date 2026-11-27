@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { ROAD } from '../config.js';
 import { makeCanvas, canvasTexture, concreteTexture, grassTexture, BN_FONT, EN_FONT } from '../textures.js';
 import { ribbon, streetGlowMat } from './road.js';
-import { buildBus } from '../busModel.js';
+import { buildBus, setBusRouteBoard } from '../busModel.js';
 import { OPERATORS } from '../operators.js';
 import { sharedMats } from './stream.js';
 
@@ -185,9 +185,14 @@ export function* terminalChunk(route, ctx) {
 
     // ---- parked buses in the second row, noses towards the exit
     const kinds = ['ak1j', 'local', 'coach', 'ak1j', 'local'];
+    // the buses waiting in the bays run this terminal's services; their placards say where to
+    const zilla = route.net?.nodes[t.node]?.zilla;
+    const svcs = (route.net?._svc?.all || []).filter((x) => x.from === zilla);
     for (const [k, kind] of kinds.entries()) {
-      const op = ops[(ti * 5 + k * 3 + 1) % ops.length];
+      const svc = svcs.length ? svcs[(ti * 3 + k * 7) % svcs.length] : null;
+      const op = (svc && ops.find((o) => o.id === svc.op)) || ops[(ti * 5 + k * 3 + 1) % ops.length];
       const b = buildBus(kind, op, { texScale: 0.5, seed: 500 + ti * 11 + k });
+      if (svc) setBusRouteBoard(b, { bn: svc.bn, en: svc.en });
       const s = S(18 + k * 16), d = sd * (H + 24);
       put(b.root, s, d, 0, dir > 0 ? 0 : Math.PI);
       b.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });

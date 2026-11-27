@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ROAD, PLAZA } from './config.js';
-import { buildBus, BUS_TYPES, setBusLights } from './busModel.js';
+import { buildBus, BUS_TYPES, setBusLights, setBusRouteBoard } from './busModel.js';
 import { buildTruck, buildCar, buildMicrobus, buildCNG, setVehicleLights } from './trafficModels.js';
 import { OPERATORS } from './operators.js';
 import { rng } from './textures.js';
@@ -103,7 +103,155 @@ export class Traffic {
     this.route = route;
     this.gates = gates;
     this.places = null;
-    for (const v of this.list) { v.rest = null; v.restSeen = null; v.booth = null; v.plan = null; }
+    for (const v of this.list) { v.rest = null; v.restSeen = null; v.booth = null; v.plan = null; v.turn = null; v.merge = null; v.exit = null; }
+  }
+
+  // ------------------------------------------------------------ bus services (fixed routes)
+  // A bus on the road runs one of the real-ish services that use this road in its direction (its own operator's
+  // if it has one here); its placard shows the route. Without one it is a local bus between the nearest towns.
+  _assignService(v) {
+    v.svc = null;
+    if (!v.isBus) return;
+    const R = this.route, g = R.segAt(v.s), rev = v.dir > 0 ? g.rev : !g.rev;
+    const list = this.svc?.byRoad.get(`${g.road}:${rev ? 1 : 0}`) || [];
+    const mine = list.filter((x) => x.op === v.model.op?.id);
+    const pool = mine.length ? mine : this.r() < 0.5 ? list : [];
+    v.svc = pool.length ? pool[Math.floor(this.r() * pool.length)] : null;
+    if (v.svc) { setBusRouteBoard(v.model, { bn: v.svc.bn, en: v.svc.en }); return; }
+    // local: the towns behind and ahead
+    const towns = R.places.filter((p) => p.term && p.node);
+    const ahead = v.dir > 0 ? towns.find((p) => p.s > v.s + 300) : [...towns].reverse().find((p) => p.s < v.s - 300);
+    const back = v.dir > 0 ? [...towns].reverse().find((p) => p.s < v.s - 300) : towns.find((p) => p.s > v.s + 300);
+    const nm = (p, k) => p[k].split(' (')[0];
+    setBusRouteBoard(v.model, ahead && back && ahead !== back ? { bn: `${nm(back, 'bn')} ⇄ ${nm(ahead, 'bn')}`, en: `${nm(back, 'en')} – ${nm(ahead, 'en')}` } : null);
+  }
+  // does the bus's route leave the corridor at the next junction ahead? -> { j, b, right }
+  _exitPlan(v) {
+    if (!v.svc) return null;
+    if (v.exit) return v.exit;
+    const R = this.route;
+    const j = v.dir > 0 ? R.junctions.find((x) => x.s > v.s + 20 && x.s < v.s + 450) : [...R.junctions].reverse().find((x) => x.s < v.s - 20 && x.s > v.s - 450);
+    if (!j || v.exitSeen === j) return null;
+    v.exitSeen = j;
+    const cur = R.segs[v.dir > 0 ? j.k - 1 : j.k]?.road, next = R.segs[v.dir > 0 ? j.k : j.k - 1]?.road;
+    const e = v.svc.idx.get(cur);
+    if (!e || e.i >= v.svc.path.length - 1) return null;
+    const nx = v.svc.path[e.i + 1];
+    if (nx.road === next) return null;
+    const b = j.branches.find((x) => x.road === nx.road);
+    if (!b || !b.pts?.length) return null;
+    // which way: is the branch to the right of the driving direction?
+    const [tx, tz] = R.tangentAt(j.s), hx = tx * v.dir, hz = tz * v.dir;
+    const k = Math.min(6, b.pts.length - 1), dx = b.pts[k][0] - j.x, dz = b.pts[k][1] - j.z;
+    v.exit = { j, b, right: dx * -hz + dz * hx > 0 };
+    return v.exit;
+  }
+  _startTurn(v, ex) {
+    if (v.rest?.slot) v.rest.slot.v = null;
+    v.rest = null; v.plan = null;
+    v.turn = { j: ex.j, b: ex.b, ts: 0, s0: v.s, d0: v.d, dir: v.dir, laneD: -(ROAD.median + ROAD.lane * 1.5), right: ex.right };
+    v.exit = null;
+  }
+  // a bus joining from a side road at a junction 300–1300 m ahead of the player, out of sight down the side road
+  _spawnMerge(v, ps) {
+    const R = this.route, r = this.r;
+    const js = R.junctions.filter((j) => j.branches.length && Math.abs(j.s - ps) > 280 && Math.abs(j.s - ps) < 1300);
+    if (!js.length) return false;
+    const j = js[Math.floor(r() * js.length)];
+    const b = j.branches[Math.floor(r() * j.branches.length)];
+    if (!b.stub || b.len < 200) return false;
+    if (this.list.some((o) => o.merge?.b === b)) return false;
+    v.merge = { j, b, ts: Math.min(b.len - 40, 320), dir: r() < 0.5 ? 1 : -1, inD: ROAD.median + ROAD.lane * 1.5 };
+    v.dir = v.merge.dir;
+    v.d = v.targetD = v.fromD = this.laneD(v.dir, false);
+    v.s = 1e7; v.prevS = v.s;
+    v.v = 7 + r() * 3; v.v0 = v.K.v[0] + r() * (v.K.v[1] - v.K.v[0]);
+    v.agg = v.K.agg[0] + r() * (v.K.agg[1] - v.K.agg[0]);
+    if (v.rest?.slot) v.rest.slot.v = null;
+    v.rest = null; v.plan = null; v.svc = null; v.turn = null; v.exit = null; v.exitSeen = null; v.broken = false; v.shoulder = false;
+    v.cool = 3; v.lv = 0; v.sig = 0; v.flashT = -1; v.tollPaid = false; v.tollWait = 0; v.yieldT = 0; v.booth = null;
+    // its placard: a service on that side road heading for the highway
+    const list = this.svc?.byRoad.get(`${b.road}:${b.rev ? 0 : 1}`) || [];
+    const svc = list[Math.floor(r() * list.length)];
+    setBusRouteBoard(v.model, svc ? { bn: svc.bn, en: svc.en } : null);
+    return true;
+  }
+  // the side-road part of a turn or a merge: placed in world space, blending between the side road and the
+  // corridor over the junction
+  _sideDrive(v, dt, player, dim, crashes) {
+    const R = this.route, sm = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+    const A = this._tA || (this._tA = new THREE.Vector3()), B = this._tB || (this._tB = new THREE.Vector3());
+    let x, z, y, done = false;
+    if (v.turn) {
+      const T = v.turn;
+      const vT = T.ts < 35 ? 6.5 : v.v0;
+      v.v = Math.max(0, v.v + THREE.MathUtils.clamp((vT - v.v) * 0.8, -3, 1.2) * dt);
+      T.ts += v.v * dt;
+      const w = sm(T.ts / 48);
+      R.pointAt(T.s0 + T.dir * (T.ts + 4), T.d0, A);
+      T.b.stub.pointAt(T.ts, T.laneD, B);
+      x = A.x + (B.x - A.x) * w; z = A.z + (B.z - A.z) * w;
+      y = R.roadHeight(T.s0 + T.dir * (T.ts + 4)) * (1 - w) + T.b.stub.roadHeight(T.ts) * w;
+      v.prevS = v.s;
+      v.s = w < 0.5 ? T.s0 + T.dir * (T.ts + 4) : 1e7;      // still in the corridor's lanes for the first half
+      v.sig = T.ts < 30 ? (T.right ? 1 : -1) : 0;
+      const far = Math.hypot(x - player.phys.pos.x, z - player.phys.pos.z);
+      if (T.ts > Math.min(T.b.len - 30, 520) || (T.ts > 120 && far > 700)) done = true;
+    } else {
+      const M = v.merge, j = M.j, gate = j.R + 14;
+      // wait at the mouth of the side road for a gap in the lane it turns into
+      let vT = 9;
+      if (M.ts < gate + 60) {
+        const lane = this.laneD(M.dir, false);
+        const clear = this.list.every((o) => o === v || o.turn || o.merge || o.dir !== M.dir || Math.abs(o.d - lane) > 2.6 ||
+          (j.s - o.s) * M.dir > 90 || (o.s - j.s) * M.dir > 30) &&
+          !(player.box && Math.abs(player.s - j.s) < 70 && (player.side < 0) === (M.dir > 0));
+        if (!clear && M.ts <= gate + 2) vT = 0;
+        else if (M.ts > gate) vT = Math.min(9, 2 + (M.ts - gate) * 0.2);
+        else vT = 6;
+      }
+      v.v = Math.max(0, v.v + THREE.MathUtils.clamp((vT - v.v) * 0.9, -4, 1.4) * dt);
+      M.ts = Math.max(0, M.ts - v.v * dt);
+      const w = M.ts < gate ? sm(1 - M.ts / gate) : 0;
+      const cs = j.s + M.dir * (gate - Math.min(M.ts, gate)) * 0.5;
+      M.b.stub.pointAt(M.ts, M.inD, A);
+      R.pointAt(cs, this.laneD(M.dir, false), B);
+      x = A.x + (B.x - A.x) * w; z = A.z + (B.z - A.z) * w;
+      y = M.b.stub.roadHeight(M.ts) * (1 - w) + R.roadHeight(cs) * w;
+      v.prevS = v.s;
+      v.s = w > 0.5 ? cs : 1e7;
+      v.sig = M.ts < gate + 40 ? 1 : 0;
+      if (M.ts <= 0) {
+        // on the highway: from here it is an ordinary vehicle
+        v.merge = null;
+        v.s = cs; v.prevS = cs; v.dir = M.dir; v.d = v.targetD = v.fromD = this.laneD(M.dir, false);
+        this._assignService(v);
+        v.cool = 3; v.sig = 0;
+      }
+      const far = Math.hypot(x - player.phys.pos.x, z - player.phys.pos.z);
+      if (far > 2200) done = true;
+    }
+    const ox = v.wrap.position.x, oz = v.wrap.position.z;
+    v.wrap.position.set(x, y, z);
+    if (Math.hypot(x - ox, z - oz) > 0.01) v.wrap.rotation.y = Math.atan2(x - ox, z - oz);
+    v.spin += (v.v / v.wheelR) * dt;
+    for (const w of v.wheels) w.rotation.x = v.spin;
+    v.blinkT += dt;
+    const blinkOn = v.sig !== 0 && (v.blinkT % v.blinkP) < v.blinkP * 0.5;
+    const beam = dim ? 1 : 0;
+    if (v.isBus) setBusLights(v.model, { head: beam > 0, high: false, brake: v.v < 3, indL: blinkOn && v.sig < 0, indR: blinkOn && v.sig > 0, night: dim });
+    else setVehicleLights(v.model, { head: beam > 0, high: false, brake: v.v < 3, indL: blinkOn && v.sig < 0, indR: blinkOn && v.sig > 0 });
+    if (this.camera) {
+      const fc = facingCamera(v.wrap, this.camera);
+      updateLampGlow(v.glow, { beam, night: dim, indL: blinkOn && v.sig < 0, indR: blinkOn && v.sig > 0, facing: fc.facing, dist: fc.dist });
+    }
+    // the player can still hit it
+    if (player.box && Math.hypot(x - player.box.x, z - player.box.z) < (v.len + player.len) / 2 + 3) {
+      const box = { x, z, yaw: v.wrap.rotation.y, hw: v.wid / 2 - 0.04, hl: v.len / 2 - 0.06 };
+      const n = obbOverlap(player.box, box);
+      if (n) crashes.push({ v, n, box, side: true });
+    }
+    if (done) { v.turn = null; v.merge = null; this.spawn(v, player.s, false); }
   }
 
   // the corridor changed after fromS (the bus turned): vehicles on the old road beyond it go somewhere else
@@ -122,6 +270,8 @@ export class Traffic {
 
   spawn(v, playerS, initial) {
     const r = this.r;
+    // now and then a bus comes out of a side road (or a terminal) at a junction ahead and joins the highway
+    if (!initial && v.isBus && r() < 0.3 && this._spawnMerge(v, playerS)) return;
     v.dir = r() < 0.58 ? 1 : -1;
     const fast = r() < v.K.fast;
     v.d = v.targetD = v.fromD = this.laneD(v.dir, fast);
@@ -179,6 +329,8 @@ export class Traffic {
 
   _afterSpawn(v) {
     const r = this.r;
+    v.turn = null; v.merge = null; v.exit = null; v.exitSeen = null;
+    this._assignService(v);
     v.cool = 2 + r() * 3;
     v.lv = 0;
     v.plan = null;        // pending lane change: { to, t, sig } — indicator on, waiting for a gap
@@ -235,9 +387,12 @@ export class Traffic {
     const crashes = [];
     this.t = (this.t || 0) + dt;
     for (const v of this.list) {
+      // turning off into a side road / coming in from one: driven along the side road, not the corridor
+      if (v.turn || v.merge) { this._sideDrive(v, dt, player, dim, crashes); continue; }
       // recycle
       const rel = (v.s - ps);
       if (rel > 1800 || rel < -1100 || v.s <= 5 || v.s >= route.length - 5) this.spawn(v, ps, false);
+      if (v.merge) continue;
 
       // leader: in our lane, or in the lane we are moving into
       const own = this.gaps(v, v.d, player);
@@ -283,6 +438,15 @@ export class Traffic {
       // pushy drivers wind it up a little while passing
       let v0 = v.v0 + (overtaking ? v.agg * 1.5 : 0);
       if (v.yieldT > 0) v0 = Math.min(v0, Math.max(4, (player.vs ?? player.v) * 0.85));
+      // a bus whose route leaves ours at the next junction: get in lane, signal, slow down and turn off
+      const ex = this._exitPlan(v);
+      if (ex) {
+        const to = (ex.j.s - v.s) * v.dir;
+        if (to < 170) v0 = Math.min(v0, 5.5 + Math.max(0, to - 10) * 0.07);
+        const lane = this.laneD(v.dir, ex.right);
+        if (to < 260 && !v.plan && Math.abs(v.targetD - lane) > 0.5 && !v.rest) this.plan(v, lane, 0.8);
+        if (to < 12) { this._startTurn(v, ex); continue; }
+      }
       if (rest?.phase === 'approach') {
         const slowD = this.laneD(v.dir, false), toLot = rest.ahead;
         v0 = Math.min(v0, 7 + Math.max(0, toLot) * 0.06);          // slow down for the turn in
@@ -402,7 +566,8 @@ export class Traffic {
         v.targetD = v.fromD; v.cool = 3;
       }
       // indicator: on while waiting for the gap and during the move, off once settled in the lane
-      if (rest?.phase === 'approach' && rest.ahead < 90 && !v.plan) v.sig = Math.sign((rest.slot.d - v.d) * v.dir);
+      if (v.exit && (v.exit.j.s - v.s) * v.dir < 170 && !v.plan) v.sig = v.exit.right ? 1 : -1;
+      else if (rest?.phase === 'approach' && rest.ahead < 90 && !v.plan) v.sig = Math.sign((rest.slot.d - v.d) * v.dir);
       else if (!v.plan && !v.rest) {
         const dd = (v.targetD - v.d) * v.dir;
         v.sig = Math.abs(dd) > 0.3 ? Math.sign(dd) : 0;
@@ -485,7 +650,8 @@ export class Traffic {
     if (!r.slots) {
       r.slots = r.kind === 'fuel'
         ? [12.5, 17.5].map((o) => ({ s: r.sc, d: r.side * (ROAD.half + o), v: null }))
-        : [-22.5, -7.5, 7.5, 22.5].map((o) => ({ s: r.sc + o, d: r.side * (ROAD.half + 18.25), v: null }));
+        : r.kind === 'counter' ? [{ s: r.sc, d: r.side * (ROAD.edge + 1.25), v: null }]
+          : [-22.5, -7.5, 7.5, 22.5].map((o) => ({ s: r.sc + o, d: r.side * (ROAD.half + 18.25), v: null }));
     }
     return r.slots;
   }
@@ -493,7 +659,9 @@ export class Traffic {
     if (!this.places) {
       for (const r of this.route.rests) r.kind = 'rest';
       for (const st of this.route.stations) st.kind = 'fuel';
-      this.places = [...this.route.rests, ...this.route.stations];
+      // bus counters: buses on a service that calls at that town pull onto the shoulder lay-by
+      const counters = (this.counters || []).map((c) => ({ kind: 'counter', c, zilla: c.place?.zilla, sc: c.s, s0: c.s - 22, s1: c.s + 22, side: c.side }));
+      this.places = [...this.route.rests, ...this.route.stations, ...counters];
     }
     return this.places;
   }
@@ -510,7 +678,8 @@ export class Traffic {
       const ahead = ((v.dir > 0 ? r.s0 : r.s1) - v.s) * v.dir;
       if (ahead < 140 || ahead > 450) continue;
       v.restSeen = r;
-      const chance = r.kind === 'rest' ? (v.isBus ? 0.45 : 0) : (v.isBus ? 0.25 : 0.3);
+      const chance = r.kind === 'counter' ? (!v.svc ? 0 : v.svc.stops.has(r.zilla) ? 0.85 : r.c.role === 'pickup' ? 0.5 : 0)
+        : r.kind === 'rest' ? (v.isBus ? 0.45 : 0) : (v.isBus ? 0.25 : 0.3);
       if (this.r() > chance) continue;                // most drive on by
       // a free bay / pump the player is not standing in
       const free = this._slots(r).filter((sl) => !sl.v && !(Math.abs(player.s - sl.s) < 16 && Math.sign(player.d) === r.side && Math.abs(Math.abs(player.d) - Math.abs(sl.d)) < 4));
@@ -560,7 +729,8 @@ export class Traffic {
     if (left <= 0.25) {
       if (R.phase === 'enter') {
         v.v = 0; v.lv = 0; R.phase = 'park';
-        R.t = R.r.kind === 'fuel' ? 15 + this.r() * 20 : 35 + this.r() * 45;     // fill up 15–35 s · meal break 35–80 s
+        // fill up 15–35 s · meal break 35–80 s · passengers on and off at a counter 6–14 s
+        R.t = R.r.kind === 'fuel' ? 15 + this.r() * 20 : R.r.kind === 'counter' ? 6 + this.r() * 8 : 35 + this.r() * 45;
       } else {
         // back on the highway
         R.slot.v = null; v.rest = null;
