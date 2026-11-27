@@ -7,6 +7,7 @@ import { setBusDoor } from './busModel.js';
 import { makeCanvas, canvasTexture, concreteTexture, BN_FONT, EN_FONT } from './textures.js';
 import { ribbon } from './world/road.js';
 import { voice } from './voice.js';
+import { sharedMats } from './world/stream.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX_FIG = 260;
@@ -48,6 +49,16 @@ function hatchTexture() {
   return canvasTexture(c);
 }
 
+const counterMats = sharedMats(() => ({
+  conc: new THREE.MeshStandardMaterial({ map: concreteTexture(10, '#b3b0a8'), roughness: 0.9 }),
+  post: new THREE.MeshStandardMaterial({ color: 0x5f6a70, metalness: 0.5, roughness: 0.5 }),
+  tin: new THREE.MeshStandardMaterial({ color: 0x2f7d4a, metalness: 0.3, roughness: 0.6, side: THREE.DoubleSide }),
+  booth: new THREE.MeshStandardMaterial({ color: 0xeeeae0, roughness: 0.6 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x24343d, roughness: 0.1, metalness: 0.4 }),
+  bench: new THREE.MeshStandardMaterial({ color: 0x8a5a36, roughness: 0.8 }),
+  hatch: new THREE.MeshStandardMaterial({ map: hatchTexture(), transparent: true, alphaTest: 0.3, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -3 }),
+}));
+
 export class Passengers {
   constructor({ route, scene, chunks, hud, player }) {
     this.route = route; this.scene = scene; this.hud = hud; this.player = player;
@@ -59,14 +70,15 @@ export class Passengers {
     this.stop = null;          // the stop being served while the door is open
     this.door = false;
     this.cool = 0; this.uiT = 0; this.promptKey = '';
+    // the two ends of the trip: the corridor always runs from the origin (s = 0) to the destination
     this.ends = [
-      { kind: 'end', end: 0, s: 0, side: 1, bn: 'ঢাকা (সায়েদাবাদ)', en: 'Dhaka (Sayedabad)' },
-      { kind: 'end', end: 1, s: route.length, side: -1, bn: 'চট্টগ্রাম (এ.কে. খান)', en: 'Chattogram (A.K. Khan)' },
+      { kind: 'end', end: 0, s: 0, side: 1, bn: route.startPlace.bn, en: route.startPlace.en },
+      { kind: 'end', end: 1, s: route.length, side: -1, bn: route.endPlace.bn, en: route.endPlace.en },
     ];
     this.stats = { aboard: 0, capacity: 36, fares: 0, tips: 0, mood: MOOD.start, carried: 0, boarded: 0, missed: 0 };
     this.mood = MOOD.start;
     this._buildFigures(scene);
-    this._buildCounters(scene, chunks);
+    this._planCounters();
     hud.addMarkers?.(this.counters.map((c) => ({ p: route.pointAt(c.s, c.side * (ROAD.half + 3)), icon: '🚏', col: '#2ecc71' })));
     if (import.meta.env?.DEV) window.__pax = this;
   }
@@ -76,48 +88,55 @@ export class Passengers {
     const R = this.route;
     if (s < 250 || s > R.length - 250) return false;
     if (R.bridgeAt(s) || R.bridgeAt(s - 60) || R.bridgeAt(s + 60)) return false;
-    if (Math.abs(s - R.tollS) < 260) return false;
+    if (R.tollDist(s) < 260) return false;
     if (R.uturns.some((u) => s > u.s0 - 45 && s < u.s1 + 45)) return false;
     if (R.stations.some((st) => s > st.s0 - 60 && s < st.s1 + 60)) return false;
     if (R.rests.some((r) => s > r.s0 - 60 && s < r.s1 + 60)) return false;
     if ((R.terminals || []).some((t) => s > t.s0 - 80 && s < t.s1 + 80)) return false;
     // footbridges stand near town centres and every 4.2 km
-    for (const p of R.places) if (p.town >= 300 && Math.abs(s - (p.s + 40)) < 35) return false;
-    for (let f = 3000; f < R.length - 500; f += 4200) if (Math.abs(s - f) < 35) return false;
+    for (const f of R.footbridges) if (Math.abs(s - f) < 35) return false;
     return true;
   }
 
-  _buildCounters(scene, chunks) {
+  // Where the counters stand (meshes come later, block by block: chunk()). Each carriageway has its own:
+  // pickups near the start city, drop-offs at the big towns on the way. The trip drives the left carriageway
+  // (side -1); the other one gets the counters of the opposite direction.
+  _planCounters() {
     const R = this.route;
-    const mats = {
-      conc: new THREE.MeshStandardMaterial({ map: concreteTexture(10, '#b3b0a8'), roughness: 0.9 }),
-      post: new THREE.MeshStandardMaterial({ color: 0x5f6a70, metalness: 0.5, roughness: 0.5 }),
-      tin: new THREE.MeshStandardMaterial({ color: 0x2f7d4a, metalness: 0.3, roughness: 0.6, side: THREE.DoubleSide }),
-      booth: new THREE.MeshStandardMaterial({ color: 0xeeeae0, roughness: 0.6 }),
-      glass: new THREE.MeshStandardMaterial({ color: 0x24343d, roughness: 0.1, metalness: 0.4 }),
-      bench: new THREE.MeshStandardMaterial({ color: 0x8a5a36, roughness: 0.8 }),
-      hatch: new THREE.MeshStandardMaterial({ map: hatchTexture(), transparent: true, alphaTest: 0.3, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -3 }),
-    };
     const offs = [0, 40, -40, 100, -100, 160, -160, 230, -230, 300, -300];
-    // each direction has its own counters on its own carriageway: pickups near the start city, drops after Cumilla
-    for (const [dirKey, side] of [['ctg', -1], ['dhk', 1]]) {
+    const tripKey = R.startNode === 'akkhan' ? 'dhk' : 'ctg';
+    const other = tripKey === 'ctg' ? 'dhk' : 'ctg';
+    for (const [dirKey, side] of [[tripKey, -1], [other, 1]]) {
       const dir = side < 0 ? 1 : -1;
       for (const role of ['pickup', 'drop']) {
         for (const def of BUS_STOPS[dirKey]?.[role] || []) {
           const place = def.place ? R.places.find((p) => p.en === def.place) : null;
           if (def.place && !place) continue;
-          const s0 = place ? place.s : (def.km / REAL_ROUTE_KM) * R.length;
+          const s0 = place ? place.s : R.sAtRoadKm('n1', def.km);
+          if (s0 === null) continue;
           let s = null;
           for (const o of offs) { const c = s0 + o * dir; if (this._clearAt(c) && !this.counters.some((x) => Math.abs(x.s - c) < 70)) { s = c; break; } }
           if (s === null) { console.warn(`[passengers] no room for the ${def.place || def.en} counter`); continue; }
           const bn = (place ? place.bn : def.bn).split(' (')[0], en = (place ? place.en : def.en).split(' (')[0];
           const c = { kind: 'counter', role, place, bn, en, side, dir, s, waiting: [], announced: false, spots: [], refillT: 0 };
-          this._buildCounterMesh(c, mats, scene, chunks);
+          // standing spots for waiting passengers (on the platform, near the road edge)
+          const top = R.roadHeight(s) + 0.18;
+          for (let i = 0; i < 10; i++) {
+            const ss = s - 5 + (i % 5) * 2.4 + (this.r() - 0.5) * 0.6;
+            const d = side * (ROAD.half + 1.0 + Math.floor(i / 5) * 1.1 + this.r() * 0.3);
+            const q = R.pointAt(ss, d);
+            c.spots.push({ x: q.x, z: q.z, y: top, yaw: R.yawAt(ss) + (side < 0 ? Math.PI / 2 : -Math.PI / 2) });
+          }
           this.counters.push(c);
         }
       }
     }
     this.counters.sort((a, b) => a.s - b.s);
+  }
+
+  // counter meshes for one block of the world (world/stream.js)
+  *chunk(route, ctx) {
+    for (const c of this.counters) if (ctx.in(c.s)) { this._buildCounterMesh(c, counterMats(), ctx.scene, ctx.chunks); yield; }
   }
 
   _buildCounterMesh(c, mats, scene, chunks) {
@@ -179,13 +198,6 @@ export class Passengers {
     grp.add(local);
     scene.add(grp);
     chunks.register(grp, c.s, 40);
-    // standing spots for waiting passengers (on the platform, near the road edge)
-    for (let i = 0; i < 10; i++) {
-      const s = c.s - 5 + (i % 5) * 2.4 + (this.r() - 0.5) * 0.6;
-      const d = sd * (ROAD.half + 1.0 + Math.floor(i / 5) * 1.1 + this.r() * 0.3);
-      const q = R.pointAt(s, d);
-      c.spots.push({ x: q.x, z: q.z, y: top, yaw: R.yawAt(s) + (sd < 0 ? Math.PI / 2 : -Math.PI / 2) });
-    }
   }
 
   _buildFigures(scene) {
@@ -286,9 +298,9 @@ export class Passengers {
 
   reset(dirKey = 'ctg') {
     for (const f of [...this.figs]) this._drop(f);
-    this.toCtg = dirKey !== 'dhk';
-    this.originEnd = this.toCtg ? 0 : 1;
-    this.tripSide = this.toCtg ? -1 : 1;
+    void dirKey;
+    this.originEnd = 0;          // the trip corridor always starts at the origin and drives the left carriageway
+    this.tripSide = -1;
     this.aboard = [];
     this.stop = null; this.door = false; this.cool = 0; this.leaveWarn = 0; this.promptKey = '';
     this.finished = false; this.doorT = 0; this.brk = null;

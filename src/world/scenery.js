@@ -8,6 +8,7 @@ import {
 } from '../textures.js';
 import { ribbon, polyRibbon, streetGlowMat } from './road.js';
 import { OPERATORS } from '../operators.js';
+import { share } from './stream.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const N_FACADES = 10;
@@ -129,7 +130,10 @@ class Inst {
   }
 }
 
-export function buildScenery(route, scene, chunks, quality, water) {
+// shared geometry and materials for every block (made once)
+let SH = null;
+function sceneryShared(water) {
+  if (SH) return SH;
   const G = makeGeometries();
   const leafTex = grassTexture(41, '#3f6a2a');
   const mats = {
@@ -154,8 +158,16 @@ export function buildScenery(route, scene, chunks, quality, water) {
     brick: new THREE.MeshStandardMaterial({ color: 0x8a3b26, roughness: 1 }),
     mosque: new THREE.MeshStandardMaterial({ color: 0xf3f1ea, roughness: 0.7 }),
     dome: new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.4, metalness: 0.3 }),
+    signBack: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }),
+    signLeg: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }),
+    steel: new THREE.MeshStandardMaterial({ color: 0x8e9398, roughness: 0.45, metalness: 0.7 }),
+    hills: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: false }),
+    flats: new THREE.MeshStandardMaterial({ color: 0x8f8a72, roughness: 1 }),
     pond: water.mat,
   };
+  const sea = water.mat.clone();
+  sea.color.setHex(0x5f7b84);
+  mats.sea = sea;
   const counterMats = OPERATORS.map((op) => {
     const [c, ctx] = makeCanvas(1024, 256);
     ctx.fillStyle = op.base === '#ffffff' || op.base.startsWith('#f') ? op.c1 : op.base;
@@ -169,17 +181,59 @@ export function buildScenery(route, scene, chunks, quality, water) {
     ctx.fillText('টিকেট কাউন্টার', 512, 200);
     return new THREE.MeshStandardMaterial({ map: canvasTexture(c, { repeat: false }), roughness: 0.6 });
   });
+  const smokeMat = new THREE.SpriteMaterial({ map: smokeTexture(), transparent: true, depthWrite: false, fog: true });
+  const geo = { mosqueHall: new THREE.BoxGeometry(16, 7, 16), dome: new THREE.SphereGeometry(5, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    minaret: new THREE.CylinderGeometry(0.9, 1.1, 24, 10), minDome: new THREE.ConeGeometry(1.2, 2.6, 10),
+    kilnBase: new THREE.BoxGeometry(36, 3.5, 20), chimney: new THREE.CylinderGeometry(1.1, 2.4, 34, 10), bricks: new THREE.BoxGeometry(5, 1.6, 2.5),
+    bbPanel: new THREE.PlaneGeometry(12, 6), bbBack: new THREE.BoxGeometry(12.3, 6.3, 0.3), bbLeg: new THREE.BoxGeometry(0.35, 6, 0.35), kmPost: new THREE.BoxGeometry(0.4, 0.9, 0.16) };
+  SH = share({ G, mats, counterMats, smokeMat, geo });
+  return SH;
+}
 
-  // ---------- ground ----------
-  const paddy = paddyTexture();
-  const GROUND = 14000;
-  paddy.repeat.set(GROUND / PADDY_TILE, GROUND / PADDY_TILE);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND, GROUND), new THREE.MeshStandardMaterial({ map: paddy, roughness: 1 }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
+let groundMesh = null;
+// The countryside along the road: the ground plane (follows the bus), and a generator that builds one
+// block of trees, villages, towns, poles and wires, kilns, signs, hills and sea (see world/stream.js).
+export function initScenery(route, scene, quality, water) {
+  const { mats } = sceneryShared(water);
+  // ---------- ground: one big paddy plane that follows the bus (made once) ----------
+  if (!groundMesh) {
+    const paddy = paddyTexture();
+    const GROUND = 14000;
+    paddy.repeat.set(GROUND / PADDY_TILE, GROUND / PADDY_TILE);
+    groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(GROUND, GROUND), new THREE.MeshStandardMaterial({ map: paddy, roughness: 1 }));
+    groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
+  }
+  const ground = groundMesh;
+  const smokes = new Set();
+  const signItems = signPlan(route);
+  void mats;
+  let t = 0;
+  return {
+    ground,
+    chunk: (r, ctx) => sceneryChunk(route, ctx, quality, water, smokes, signItems),
+    update(dt, focus) {
+      t += dt;
+      ground.position.set(Math.round(focus.x / PADDY_TILE) * PADDY_TILE, 0, Math.round(focus.z / PADDY_TILE) * PADDY_TILE);
+      water.normal.offset.set(t * 0.004, t * 0.006);
+      for (const sp of smokes) {
+        if (!sp.parent.visible) continue;
+        const ph = (sp.userData.phase + t * 0.03) % 1;
+        const sz = 6 + ph * 30;
+        sp.position.set(sp.userData.x + ph * 40, 34 + ph * 70, sp.userData.z + ph * 15);
+        sp.scale.set(sz, sz, 1);
+        sp.material.opacity = 1;
+      }
+    },
+  };
+}
 
-  const rivers = water.rivers;
+function* sceneryChunk(route, ctx, quality, water, smokes, signItems) {
+  const { G, mats, counterMats, smokeMat, geo } = sceneryShared(water);
+  // only the rivers that come near this block
+  const cp = route.pointAt((ctx.s0 + ctx.s1) / 2, 0);
+  const rivers = water.rivers.filter((rv) => Math.hypot(rv.centre.x - cp.x, rv.centre.z - cp.z) < 6000);
   const inWater = (x, z, margin) => {
     for (const rv of rivers) {
       if (Math.abs(x - rv.centre.x) > 3700 && Math.abs(z - rv.centre.z) > 3700) continue;
@@ -195,18 +249,15 @@ export function buildScenery(route, scene, chunks, quality, water) {
     return false;
   };
 
-  const smokes = [];
-  const smokeMat = new THREE.SpriteMaterial({ map: smokeTexture(), transparent: true, depthWrite: false, fog: true });
   const town = (s) => route.places.find((p) => p.town && Math.abs(s - p.s) < p.town / 2);
   const nearStation = (s, d, m = 0) => [...route.stations, ...route.rests, ...route.terminals].some((st) => s > st.s0 - m - 20 && s < st.s1 + m + 20 && Math.sign(d) === st.side && Math.abs(d) < st.dOut + m + 8);
   const p = new THREE.Vector3();
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), col = new THREE.Color();
-  const n = Math.ceil(route.length / CHUNK);
   const dens = quality.treeDensity;
-
-  for (let c = 0; c < n; c++) {
+  const c = ctx.c;
+  {
     const r = rng(1000 + c * 7);
-    const s0 = c * CHUNK, s1 = Math.min(route.length, (c + 1) * CHUNK);
+    const s0 = ctx.s0, s1 = Math.min(route.length, ctx.s1);
     const group = new THREE.Group();
     const far = new THREE.Group();
     const I = {
@@ -244,6 +295,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
         tree(p.x, p.z, 0.8 + r() * 0.6, r() < 0.2);
       }
     }
+    yield;
     // villages
     const nv = 2 + Math.floor(r() * 3);
     for (let v = 0; v < nv; v++) {
@@ -288,6 +340,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
         }
       }
     }
+    yield;
     // scattered field trees
     for (let k = 0; k < 40 * dens; k++) {
       const s = s0 + r() * (s1 - s0), d = (r() < 0.5 ? -1 : 1) * (30 + r() * 600);
@@ -306,7 +359,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
     }
     // median shrubs
     for (let s = s0 + 3; s < s1; s += 7) {
-      if ((route.bridgeAt(s) && r() < 0.8) || route.uturnAt(s) || Math.abs(s - route.tollS) < 30) continue;
+      if ((route.bridgeAt(s) && r() < 0.8) || route.uturnAt(s) || route.tollDist(s) < 30) continue;
       route.pointAt(s, (r() - 0.5) * 0.6, p);
       q.identity();
       const pink = r() < 0.12;
@@ -372,11 +425,13 @@ export function buildScenery(route, scene, chunks, quality, water) {
           const sp = new THREE.Sprite(smokeMat);
           sp.userData = { x: p.x, z: p.z, phase: k / 7 };
           group.add(sp);
-          smokes.push(sp);
+          smokes.add(sp);
+          ctx.onDispose(() => smokes.delete(sp));
         }
       }
     }
 
+    yield;
     // ---------- towns ----------
     const tp = route.places.filter((pl) => pl.town && pl.s + pl.town / 2 > s0 && pl.s - pl.town / 2 < s1);
     for (const pl of tp) {
@@ -446,7 +501,7 @@ export function buildScenery(route, scene, chunks, quality, water) {
       }
       // median street lights
       for (let s = a; s < b; s += 36) {
-        if (route.uturnAt(s) || route.uturnAt(s + 3) || route.uturnAt(s - 3) || Math.abs(s - route.tollS) < 12) continue;
+        if (route.uturnAt(s) || route.uturnAt(s + 3) || route.uturnAt(s - 3) || route.tollDist(s) < 12) continue;
         route.pointAt(s, 0, p);
         const h0 = route.roadHeight(s) + 0.27;
         B.add('metal', new THREE.CylinderGeometry(0.08, 0.12, 9, 6).translate(p.x, h0 + 4.5, p.z));
@@ -462,12 +517,15 @@ export function buildScenery(route, scene, chunks, quality, water) {
       }
     }
 
+    yield;
     // ---------- road furniture ----------
     // km posts every 5 real km
-    const kmStep = (5 / route.realKm(route.length)) * route.length;
-    for (let s = Math.ceil(s0 / kmStep) * kmStep; s < s1; s += kmStep) {
+    const total = route.realKm(route.length);
+    for (let k = Math.ceil(route.realKm(s0) / 5) * 5; ; k += 5) {
+      const s = route.sAtKm(k);
+      if (s >= s1 || k > total) break;
       if (route.bridgeAt(s) || s < 30 || route.terminalAt(s, -(ROAD.half + 1))) continue;
-      const km = Math.round(route.realKm(route.length) - route.realKm(s));
+      const km = Math.round(total - k);
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.9, 0.16), new THREE.MeshStandardMaterial({ map: kmPostTexture(km), roughness: 0.7 }));
       route.pointAt(s, -(route.halfAt(s) + 0.6), post.position);
       post.position.y = route.roadHeight(s) + 0.2;
@@ -511,45 +569,32 @@ export function buildScenery(route, scene, chunks, quality, water) {
       if (key === 'glow') return streetGlowMat;
       return mats.concrete;
     });
-    scene.add(group, far);
-    chunks.register(group, (s0 + s1) / 2, CHUNK / 2);
-    chunks.register(far, (s0 + s1) / 2, CHUNK / 2 + 2200);
+    ctx.scene.add(group, far);
+    ctx.chunks.register(group, (s0 + s1) / 2, CHUNK / 2);
+    ctx.chunks.register(far, (s0 + s1) / 2, CHUNK / 2 + 2200);
+    yield;
   }
-
-  buildSigns(route, scene, chunks, mats);
-  buildHillsAndSea(route, scene, chunks, water);
-
-  let t = 0;
-  return {
-    ground,
-    update(dt, focus) {
-      t += dt;
-      ground.position.set(Math.round(focus.x / PADDY_TILE) * PADDY_TILE, 0, Math.round(focus.z / PADDY_TILE) * PADDY_TILE);
-      water.normal.offset.set(t * 0.004, t * 0.006);
-      for (const sp of smokes) {
-        if (!sp.parent.visible) continue;
-        const ph = (sp.userData.phase + t * 0.03) % 1;
-        const sz = 6 + ph * 30;
-        sp.position.set(sp.userData.x + ph * 40, 34 + ph * 70, sp.userData.z + ph * 15);
-        sp.scale.set(sz, sz, 1);
-        sp.material.opacity = 1;
-      }
-    },
-  };
+  // signs whose post stands in this block
+  for (const it of signItems) {
+    if (!ctx.in(it.s)) continue;
+    buildSign(route, ctx, mats, it);
+  }
+  yield;
+  yield* hillsAndSeaChunk(route, ctx, mats);
 }
 
-function signPost(group, mat, w, h, s, d, route, yawFlip, heightAboveRoad = 2.4) {
+function signPost(group, mat, w, h, s, d, route, yawFlip, heightAboveRoad = 2.4, mats) {
   const g = new THREE.Group();
   const p = route.pointAt(s, d);
   g.position.set(p.x, route.roadHeight(s), p.z);
   g.rotation.y = route.yawAt(s) + (yawFlip ? 0 : Math.PI);
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
   panel.position.y = heightAboveRoad + h / 2;
-  const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, h + 0.1, 0.08), new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }));
+  const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, h + 0.1, 0.08), mats.signBack);
   back.position.set(0, panel.position.y, -0.06);
   g.add(panel, back);
   for (const x of w > 3 ? [-w / 3, w / 3] : [0]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, heightAboveRoad + h, 8), new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }));
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, heightAboveRoad + h, 8), mats.signLeg);
     leg.position.set(x, (heightAboveRoad + h) / 2 - 0.5, -0.1);
     g.add(leg);
   }
@@ -558,13 +603,13 @@ function signPost(group, mat, w, h, s, d, route, yawFlip, heightAboveRoad = 2.4)
 }
 
 // steel portal over the carriageway towards Chattogram with the green sign above the lanes
-function gantry(group, mat, w, h, s, route, side = -1) {
+function gantry(group, mat, w, h, s, route, side = -1, mats) {
   const g = new THREE.Group();
   const p = route.pointAt(s, 0);
   g.position.set(p.x, route.roadHeight(s), p.z);
   // Chattogram-bound side: turn to face traffic coming up the left; Dhaka-bound side faces the other way
   g.rotation.y = route.yawAt(s) + (side < 0 ? Math.PI : 0);
-  const steel = new THREE.MeshStandardMaterial({ color: 0x8e9398, roughness: 0.45, metalness: 0.7 });
+  const steel = mats.steel;
   // after the PI turn local +x points along +d (right), so our carriageway is at negative x
   const legs = [-(ROAD.median + 0.4), -(ROAD.half + 0.8)];
   for (const d of legs) {
@@ -585,46 +630,49 @@ function gantry(group, mat, w, h, s, route, side = -1) {
   group.add(g);
 }
 
-function buildSigns(route, scene, chunks, mats) {
-  const L = route.length, total = route.realKm(L);
+// where the road signs go (built later, block by block): direction gantries every ~1.9 km, town name boards
+// and the speed limit after each town
+function signPlan(route) {
+  const L = route.length;
   const places = route.places;
   const majors = places.filter((p) => p.kind === 'city' || p.town >= 350);
   const kmTo = (s, target) => Math.max(1, Math.round(route.realKm(target.s) - route.realKm(s)));
   const kmBack = (s, target) => Math.max(1, Math.round(route.realKm(s) - route.realKm(target.s)));
   const end = places[places.length - 1], start = places[0];
+  const nm = (p) => [p.bn.split(' (')[0], p.en.split(' (')[0]];
   const items = [];
-  // direction signs every ~3 km game distance
   for (let s = 400; s < L - 300; s += 1900) {
-    if (route.bridgeAt(s) || route.bridgeAt(s + 20) || Math.abs(s - route.tollS) < PLAZA.reach + 70) s += 300;
+    if (route.bridgeAt(s) || route.bridgeAt(s + 20) || route.tollDist(s) < PLAZA.reach + 70) s += 300;
     const ahead = majors.filter((p) => p.s > s + 200).slice(0, 2);
-    const lines = ahead.map((p) => [p.bn.split(' (')[0], p.en.split(' (')[0], kmTo(s, p)]);
-    if (!lines.length || lines[lines.length - 1][1] !== end.en.split(' (')[0]) lines.push([end.bn.split(' (')[0], end.en.split(' (')[0], kmTo(s, end)]);
-    items.push({ s, d: -(ROAD.median + ROAD.lane), tex: directionSignTexture(lines.slice(-3)), w: 6.2, flip: false, gantry: true });
+    const lines = ahead.map((p) => [...nm(p), kmTo(s, p)]);
+    if (!lines.length || lines[lines.length - 1][1] !== nm(end)[1]) lines.push([...nm(end), kmTo(s, end)]);
+    items.push({ s, d: -(ROAD.median + ROAD.lane), lines: lines.slice(-3), w: 6.2, flip: false, gantry: true });
     const behind = majors.filter((p) => p.s < s - 200).slice(-1);
-    const bl = behind.map((p) => [p.bn.split(' (')[0], p.en.split(' (')[0], kmBack(s, p)]);
-    if (!bl.length || bl[0][1] !== start.en.split(' (')[0]) bl.push([start.bn.split(' (')[0], 'Dhaka', kmBack(s, start)]);
-    items.push({ s: s + 60, d: ROAD.median + ROAD.lane, tex: directionSignTexture(bl), w: 6.2, flip: true, gantry: true, side: 1 });
+    const bl = behind.map((p) => [...nm(p), kmBack(s, p)]);
+    if (!bl.length || bl[0][1] !== nm(start)[1]) bl.push([...nm(start), kmBack(s, start)]);
+    items.push({ s: s + 60, d: ROAD.median + ROAD.lane, lines: bl, w: 6.2, flip: true, gantry: true, side: 1 });
   }
-  // town entry signs + speed limit after each town
   for (const p of places) {
     if (!p.town) continue;
     const sIn = p.s - p.town / 2 - 40;
-    if (sIn > 50) items.push({ s: sIn, d: -(ROAD.half + 2.0), tex: placeSignTexture(p.bn.split(' (')[0], p.en), w: 4, flip: false, small: true });
+    if (sIn > 50) items.push({ s: sIn, d: -(ROAD.half + 2.0), place: p, w: 4, flip: false, small: true });
     const sOut = p.s + p.town / 2 + 60;
-    if (sOut < L - 50) items.push({ s: sOut, d: -(ROAD.half + 1.5), mat: mats.speed, w: 1.2, h: 1.2, flip: false, small: true });
-    if (sOut < L - 50) items.push({ s: sOut + 10, d: ROAD.half + 2.0, tex: placeSignTexture(p.bn.split(' (')[0], p.en), w: 4, flip: true, small: true });
+    if (sOut < L - 50) items.push({ s: sOut, d: -(ROAD.half + 1.5), speed: true, w: 1.2, h: 1.2, flip: false, small: true });
+    if (sOut < L - 50) items.push({ s: sOut + 10, d: ROAD.half + 2.0, place: p, w: 4, flip: true, small: true });
   }
-  for (const it of items) {
-    const c = Math.floor(it.s / CHUNK);
-    const group = new THREE.Group();
-    const mat = it.mat || new THREE.MeshStandardMaterial({ map: it.tex, roughness: 0.5 });
-    const img = it.tex && it.tex.image;
-    const h = it.h || (img ? it.w * (img.height / img.width) : 1);
-    if (it.gantry) gantry(group, mat, it.w, h, it.s, route, it.side || -1);
-    else signPost(group, mat, it.w, h, it.s, it.d, route, it.flip, it.small ? 1.8 : 2.6);
-    scene.add(group);
-    chunks.register(group, it.s, 60);
-  }
+  return items;
+}
+
+function buildSign(route, ctx, mats, it) {
+  const group = new THREE.Group();
+  const tex = it.lines ? directionSignTexture(it.lines) : it.place ? placeSignTexture(it.place.bn.split(' (')[0], it.place.en) : null;
+  const mat = it.speed ? mats.speed : new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 });
+  const img = tex && tex.image;
+  const h = it.h || (img ? it.w * (img.height / img.width) : 1);
+  if (it.gantry) gantry(group, mat, it.w, h, it.s, route, it.side || -1, mats);
+  else signPost(group, mat, it.w, h, it.s, it.d, route, it.flip, it.small ? 1.8 : 2.6, mats);
+  ctx.scene.add(group);
+  ctx.chunks.register(group, it.s, 60);
 }
 
 // smooth 2D value noise via sines (cheap, deterministic)
@@ -632,25 +680,30 @@ function hn(x, y) {
   return (Math.sin(x * 1.7 + Math.sin(y * 0.9)) + Math.sin(y * 1.3 + Math.sin(x * 1.1 + 2)) * 0.8 + Math.sin((x + y) * 2.9) * 0.3 + Math.sin(x * 5.1 - y * 4.3) * 0.12) / 2.2;
 }
 
-function buildHillsAndSea(route, scene, chunks, water) {
-  if (route.hillS0 < route.length) {
-    const s0 = route.hillS0, s1 = route.length;
-    const east = route.eastSide((s0 + s1) / 2) > 0 ? 1 : -1; // +1: east is on the right of travel
+// hills (east of the road) and the sea (west), for the part of each range inside this block
+function* hillsAndSeaChunk(route, ctx, mats) {
+  const S0 = ctx.s0, S1 = Math.min(route.length, ctx.s1);
+  for (const H of route.hills) {
+    const s0 = Math.max(S0, H.s0), s1 = Math.min(S1, H.s1);
+    if (s1 - s0 < 1) continue;
     const ex = 1; // world +x is east
-    const rows = Math.ceil((s1 - s0) / 40) + 1, cols = 46;
+    const ss = [];
+    for (let s = s0; s < s1; s += 40) ss.push(s);
+    ss.push(s1);
+    const rows = ss.length, cols = 46;
     const pos = new Float32Array(rows * cols * 3), colr = new Float32Array(rows * cols * 3);
     const c = new THREE.Color();
     const p = new THREE.Vector3();
     for (let i = 0; i < rows; i++) {
-      const s = Math.min(s1, s0 + i * 40);
+      const s = ss[i];
       route.pointAt(s, 0, p);
-      const fadeIn = THREE.MathUtils.smoothstep(s, s0, s0 + 2000);
+      const fade = (H.openA ? THREE.MathUtils.smoothstep(s, H.s0, H.s0 + 2000) : 1) * (H.openB ? 1 - THREE.MathUtils.smoothstep(s, H.s1 - 2000, H.s1) : 1);
       for (let j = 0; j < cols; j++) {
         const lat = 220 + j * 45;
         const x = p.x + ex * lat, z = p.z;
         const ramp = THREE.MathUtils.smoothstep(lat, 220, 700);
-        let h = (hn(s / 700, lat / 500) * 0.6 + 0.55) * 140 * ramp * fadeIn;
-        h += Math.max(0, hn(s / 200 + 3, lat / 180)) * 25 * ramp * fadeIn;
+        let h = (hn(s / 700, lat / 500) * 0.6 + 0.55) * 140 * ramp * fade;
+        h += Math.max(0, hn(s / 200 + 3, lat / 180)) * 25 * ramp * fade;
         h = Math.max(0, h);
         const k = (i * cols + j) * 3;
         pos[k] = x; pos[k + 1] = h - 0.5; pos[k + 2] = z;
@@ -673,25 +726,27 @@ function buildHillsAndSea(route, scene, chunks, water) {
       g.setIndex(idx);
       g.computeVertexNormals();
     }
-    const hills = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: false }));
+    const hills = new THREE.Mesh(g, mats.hills);
     hills.receiveShadow = true;
-    scene.add(hills);
-    chunks.register(hills, (s0 + s1) / 2, (s1 - s0) / 2 + 3000);
-    void east;
+    ctx.scene.add(hills);
+    ctx.chunks.register(hills, (s0 + s1) / 2, (s1 - s0) / 2 + 3000);
+    yield;
   }
-  if (route.seaS1 > 0) {
+  for (const W of route.seas) {
+    const s0 = Math.max(S0, W.s0), s1 = Math.min(S1, W.s1);
+    if (s1 - s0 < 1) continue;
     const pts = [];
     const p = new THREE.Vector3();
-    for (let s = route.seaS0; s <= Math.min(route.length, route.seaS1); s += 150) {
-      route.pointAt(s, 0, p);
+    for (let s = s0; ; s += 150) {
+      route.pointAt(Math.min(s, s1), 0, p);
       pts.push(new THREE.Vector3(p.x - 5200, 0, p.z));
+      if (s >= s1) break;
     }
-    const seaMat = water.mat.clone();
-    seaMat.color.setHex(0x5f7b84);
-    const sea = new THREE.Mesh(polyRibbon(pts, 7000, 0.25), seaMat);
-    const flats = new THREE.Mesh(polyRibbon(pts.map((v) => v.clone().setX(v.x + 3200)), 1200, 0.1), new THREE.MeshStandardMaterial({ color: 0x8f8a72, roughness: 1 }));
-    scene.add(sea, flats);
-    chunks.register(sea, (route.seaS0 + route.seaS1) / 2, (route.seaS1 - route.seaS0) / 2 + 4000);
-    chunks.register(flats, (route.seaS0 + route.seaS1) / 2, (route.seaS1 - route.seaS0) / 2 + 4000);
+    if (pts.length < 2) continue;
+    const sea = new THREE.Mesh(polyRibbon(pts, 7000, 0.25, s0), mats.sea);
+    const flats = new THREE.Mesh(polyRibbon(pts.map((v) => v.clone().setX(v.x + 3200)), 1200, 0.1, s0), mats.flats);
+    ctx.scene.add(sea, flats);
+    ctx.chunks.register(sea, (s0 + s1) / 2, (s1 - s0) / 2 + 4000);
+    ctx.chunks.register(flats, (s0 + s1) / 2, (s1 - s0) / 2 + 4000);
   }
 }

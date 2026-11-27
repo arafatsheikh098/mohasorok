@@ -5,14 +5,12 @@
 // Sometimes an officer waves the bus over: slow down, pull onto the left shoulder past the cones, stop, show the
 // papers (F, or just wait) and drive on. Ignoring the signal, or speeding through the cones, costs a fine.
 import * as THREE from 'three';
-import { ROAD, REAL_ROUTE_KM } from '../config.js';
+import { ROAD } from '../config.js';
 import { makeCanvas, canvasTexture, BN_FONT, EN_FONT } from '../textures.js';
 import { roadState, jamZones, jamLevel, rushLevel } from '../traffic.js';
 import { voice } from '../voice.js';
 
 const $ = (id) => document.getElementById(id);
-// where the checkpoints go (real km from Dhaka): Meghna approach, Cumilla bypass, Sitakunda
-const SPOTS = [{ km: 15, en: 'Meghna approach' }, { km: 101, en: 'Cumilla bypass' }, { km: 205, en: 'Sitakunda' }];
 // layout along the direction of travel (u, metres; 0 = where the fast lane is fully closed)
 const TAPER_IN = -70, CLOSED_END = 45, TAPER_OUT = 75;
 const PULL = [8, 42];               // pull-over box on the shoulder
@@ -38,8 +36,9 @@ export class Police {
     this.t = 0;
     this._mats();
     const placed = [];
-    for (const sp of SPOTS) {
-      const s = this._find((sp.km / REAL_ROUTE_KM) * route.length, counters, placed);
+    // where the checkpoints go: route.policeSpots, from the roads' data (src/data/bd_network.js)
+    for (const sp of route.policeSpots) {
+      const s = this._find(sp.s, counters, placed);
       if (s === null) { console.warn(`[police] no room for the ${sp.en} checkpoint`); continue; }
       placed.push(s);
       for (const side of [-1, 1]) {
@@ -60,20 +59,19 @@ export class Police {
     const R = this.route, m = 130;
     if (s < 400 || s > R.length - 400) return false;
     if (R.bridgeAt(s) || R.bridgeAt(s - 220) || R.bridgeAt(s + 220)) return false;       // ramps too
-    if (Math.abs(s - R.tollS) < 500) return false;
+    if (R.tollDist(s) < 500) return false;
     if (R.uturns.some((u) => s > u.s0 - m && s < u.s1 + m)) return false;
     if (R.stations.some((x) => s > x.s0 - m && s < x.s1 + m)) return false;
     if (R.rests.some((x) => s > x.s0 - m && s < x.s1 + m)) return false;
     if ((R.terminals || []).some((x) => s > x.s0 - 300 && s < x.s1 + 300)) return false;
     if (counters.some((c) => Math.abs(c.s - s) < 160)) return false;
     if (jamZones(R).some((z) => s > z.s0 - 100 && s < z.s1 + 100)) return false;
-    for (const p of R.places) if (p.town >= 300 && Math.abs(s - (p.s + 40)) < 120) return false;     // town footbridges
-    for (let f = 3000; f < R.length - 500; f += 4200) if (Math.abs(s - f) < 120) return false;
+    for (const f of R.footbridges) if (Math.abs(s - f) < 120) return false;     // footbridges
     if (placed.some((x) => Math.abs(x - s) < 1500)) return false;
     return true;
   }
   _find(s0, counters, placed) {
-    for (let k = 0; k < 60; k++) {
+    for (let k = 0; k < 120; k++) {
       const s = s0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 40;
       if (this._clear(s, counters, placed)) return s;
     }
@@ -240,6 +238,8 @@ export class Police {
   }
 
   _promptEl() {
+    if (this.el) return;
+    this.el = document.getElementById('police-prompt');
     if (this.el) return;
     this.el = document.createElement('div');
     this.el.id = 'police-prompt';

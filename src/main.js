@@ -4,7 +4,9 @@ import '@fontsource/noto-sans-bengali/700.css';
 import { TouchControls, IS_TOUCH, IS_PHONE } from './touch.js';
 import { Route } from './route.js';
 import { ROAD, CHUNK, VIEW_CHUNKS, QUALITY, SPEED_LIMIT, TOLL_FEE, DIESEL_PRICE, TANK_LITRES, START_FUEL, BUS_KM_PER_LITRE, REAL_ROUTE_KM } from './config.js';
-import { buildFacilities } from './world/facilities.js';
+import { initFacilities } from './world/facilities.js';
+import { Network } from './net.js';
+import { Stream, disposeTree } from './world/stream.js';
 import { buildAICams } from './world/aicams.js';
 import { Mirrors } from './mirrors.js';
 import { resolveImpulse, obbOverlap } from './collide.js';
@@ -13,8 +15,8 @@ import { setMaxAnisotropy, makeCanvas, toBn } from './textures.js';
 import { SkySystem, TIMES, TIME_ORDER } from './world/sky.js';
 import { REST_MINUTES } from './config.js';
 const presetMinutes = (k) => { const [h, m] = TIMES[k].clock.split(':').map(Number); return h * 60 + m; };
-import { buildRoad, streetGlowMat } from './world/road.js';
-import { buildScenery } from './world/scenery.js';
+import { initRoad, roadChunk, streetGlowMat } from './world/road.js';
+import { initScenery } from './world/scenery.js';
 import { OPERATORS, paintSide } from './operators.js';
 import { BUS_TYPES, buildBus, setBusLights, drawGauges } from './busModel.js';
 import { BusPhysics } from './physics.js';
@@ -35,7 +37,10 @@ const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 class Chunks {
   constructor() { this.list = []; }
-  register(obj, s, r) { this.list.push({ obj, s, r }); }
+  // tag: the stream block the object belongs to (dropped with it), or undefined for the whole trip
+  register(obj, s, r, tag) { this.list.push({ obj, s, r, tag }); }
+  drop(tag) { this.list = this.list.filter((c) => c.tag !== tag); }
+  clear() { this.list = []; }
   update(s) {
     const R = VIEW_CHUNKS * CHUNK;
     for (const c of this.list) c.obj.visible = Math.abs(c.s - s) < R + c.r;
@@ -78,6 +83,7 @@ function saveSettings() {
   try { localStorage.setItem('mohasorok.settings', JSON.stringify({ v: 2, type, time, traffic, quality, qualityManual, dir, seats, opId: settings.op.id })); } catch { /* private mode */ }
 }
 let route, chunks, sky, road, scenery, hud, traffic, rig, facilities, mirrors, aicams;
+let net, stream, corridorRoot;   // the road network, the world streamer, and the per-trip objects (src/world/stream.js)
 let passengers;   // bus counters, boarding / alighting (src/passengers.js)
 let weather;      // rain, fog, wet road, wipers (src/world/weather.js)
 let police;       // highway police checkpoints + jam warnings (src/world/police.js)
@@ -171,14 +177,48 @@ function resetPlayer(s, d) {
   placeBusModel(0);
 }
 
-// trip start: Sayedabad heading south-east, or A.K. Khan (Chattogram) heading back to Dhaka
-// both start parked in a bay of the bus terminal, nose towards the exit gate
+// trip start: parked in a bay of the origin terminal, nose towards the exit gate
+// (the trip corridor always runs from the origin at s = 0 to the destination)
 function startPoint() {
-  const t = route.terminals.find((x) => x.end === (settings.dir === 'dhk' ? 1 : 0));
-  return [t.bay.s, t.bay.d];
+  const t = route.terminals.find((x) => x.end === 0);
+  return t ? [t.bay.s, t.bay.d] : [20, ROAD.laneCenters[0]];
 }
 // the terminal the trip ends at
-function destTerminal() { return route.terminals.find((x) => x.end === (settings.dir === 'dhk' ? 0 : 1)); }
+function destTerminal() { return route.terminals.find((x) => x.end === 1); }
+
+// the roads of the chosen trip
+function tripPath() { return settings.dir === 'dhk' ? net.path('akkhan', 'sayedabad') : net.path('sayedabad', 'akkhan'); }
+
+// (Re)build everything that belongs to one trip corridor: the route itself, the world streamer, and the
+// trip's eager objects (cameras, police, counters, HUD). Shared materials survive; trip objects are disposed.
+function buildWorld(path) {
+  stream?.disposeAll();
+  if (corridorRoot) { scene.remove(corridorRoot); disposeTree(corridorRoot); }
+  corridorRoot = new THREE.Group();
+  corridorRoot.name = 'corridor';
+  scene.add(corridorRoot);
+  chunks.clear();
+  route = new Route(net, path);
+  road = initRoad(route);
+  scenery = initScenery(route, scene, { treeDensity: (QUALITY[settings.quality] || QUALITY.high).treeDensity }, road.water);
+  facilities = initFacilities(route);
+  aicams = buildAICams(route, corridorRoot, chunks);
+  hud = new HUD(route, road.water);
+  passengers = new Passengers({ route, scene: corridorRoot, chunks, hud, player });
+  passengers.onBreak = onRestBreak;
+  police = new Police({ route, scene: corridorRoot, chunks, obstacles: facilities.obstacles, counters: passengers.counters, hud, player });
+  stream = new Stream({ route, scene, chunks, obstacles: facilities.obstacles, gates: facilities.gates,
+    jobs: [roadChunk, scenery.chunk, facilities.chunk, (r, ctx) => passengers.chunk(r, ctx)] });
+  if (weather) { weather.setRoute(route); weather.hud = hud; }
+  if (rig) rig.route = route;
+  if (traffic) traffic.setRoute(route, facilities.gates);
+}
+// a different trip chosen in the menu
+function changeTrip() {
+  buildWorld(tripPath());
+  restartTrip();
+  stream.buildNow(player.s, 1);
+}
 function restartTrip() {
   resetPlayer(...startPoint());
   Object.assign(player, { elapsed: 0, fines: 0, crashes: 0, rating: 5, lastPlace: null, lastBridge: null, indL: false, indR: false,
@@ -353,7 +393,7 @@ function tollLogic(dt) {
     if (g.holdPlayer && (ahead < -(player.len / 2 + 6) || ahead > 60)) g.holdPlayer = false;
     if (!inLane || g.holdPlayer) continue;
     if (ahead > 0 && ahead < 70 && player.promptCool <= 0) {
-      hud.toast(`<span class="bn">টোল প্লাজা</span> — stop at the barrier to pay ৳${TOLL_FEE}`, '', 3000);
+      hud.toast(`<span class="bn">টোল প্লাজা</span> — stop at the barrier to pay ৳${g.fee || TOLL_FEE}`, '', 3000);
       voice.say('helper.toll');
       player.promptCool = 12;
     }
@@ -362,9 +402,9 @@ function tollLogic(dt) {
       if (player.tollWait > 1.2) {
         player.tollWait = 0;
         g.holdPlayer = true;
-        player.tollCost += TOLL_FEE;
+        player.tollCost += g.fee || TOLL_FEE;
         audio.tick(true);
-        hud.toast(`Toll paid ৳${TOLL_FEE} — <span class="bn">ধন্যবাদ</span>, gate opening`, 'good', 3000);
+        hud.toast(`Toll paid ৳${g.fee || TOLL_FEE} — <span class="bn">ধন্যবাদ</span>, gate opening`, 'good', 3000);
       }
     } else if (Math.abs(ph.v) > 1) player.tollWait = 0;
   }
@@ -373,7 +413,7 @@ function tollLogic(dt) {
 // fuel use and refuelling at filling stations
 function fuelLogic(dt) {
   const ph = player.phys;
-  const realKm = (Math.abs(ph.v) * dt) * (REAL_ROUTE_KM / route.length);
+  const realKm = (Math.abs(ph.v) * dt) * (route.totalKm / route.length);
   if (!player.refuelling) {
     player.fuel = Math.max(0, player.fuel - (realKm / BUS_KM_PER_LITRE) * (0.45 + 0.9 * ph.throttle) - dt * 0.0012);
   }
@@ -485,20 +525,20 @@ function events(dt) {
   // passenger comfort: handled by the mood in src/passengers.js (complaints, rating, tips)
   player.lastS = s;
   // arrival: stop inside the destination terminal (fallback: the very end of the road)
-  const dest = destTerminal(), toCtg = dest.end === 1;
-  const gate = (dest.exitS0 + dest.exitS1) / 2;
-  if (!player.termHint && Math.abs(s - gate) < 450) {
+  const dest = destTerminal();
+  const gate = dest ? (dest.exitS0 + dest.exitS1) / 2 : route.length;
+  if (dest && !player.termHint && Math.abs(s - gate) < 450) {
     player.termHint = true;
     hud.toast(`🚌 <span class="bn">${dest.bn}</span><br><small>Cross at the median opening by the gate, drive into the yard, stop and press G to let the passengers off</small>`, 'good', 5500);
   }
-  const atEnd = toCtg ? s >= route.length - 4 : s <= 4;
+  const atEnd = s >= route.length - 4;
   // in the destination yard the trip ends once everyone has got down (G) and the door is shut
-  const parked = player.inTerminal === dest && Math.abs(player.phys.v) < 0.5;
+  const parked = !!dest && player.inTerminal === dest && Math.abs(player.phys.v) < 0.5;
   player.arriveT = parked && (!passengers || passengers.allOff()) ? (player.arriveT || 0) + dt : 0;
   if (player.arriveT > 0.8 || atEnd) {
     state = 'arrived';
     passengers?.finishTrip();          // everyone still aboard gets down at the terminal
-    hud.arrival(player, settings.op.en, toCtg ? 'Chattogram' : 'Dhaka', career.finishTrip(player, { dir: settings.dir, km: route.realKm(route.length) }));
+    hud.arrival(player, settings.op.en, route.endPlace, career.finishTrip(player, { dir: settings.dir, km: route.totalKm }));
     renderCompany();
     audio.horn(false);
     $('prompt').style.display = 'none';
@@ -743,7 +783,7 @@ function buildMenu() {
   const routeLabel = () => ($('start-route').textContent = settings.dir === 'dhk' ? 'চট্টগ্রাম → ঢাকা' : 'ঢাকা → চট্টগ্রাম');
   routeSeg.querySelectorAll('button').forEach((b) => {
     b.classList.toggle('sel', b.dataset.v === settings.dir);
-    b.onclick = () => { selectSeg(routeSeg, b); settings.dir = b.dataset.v; routeLabel(); saveSettings(); restartTrip(); };
+    b.onclick = () => { selectSeg(routeSeg, b); settings.dir = b.dataset.v; routeLabel(); saveSettings(); changeTrip(); };
   });
   routeLabel();
   for (const id of ['traffic', 'quality']) {
@@ -911,8 +951,10 @@ function startDrive() {
   if (music.auto && music.tracks.length && !music.playing) music.play();
   updateMusicBox();
   perf.t = 0; perf.n = 0; perf.warm = 0; perf.slow = 0;
-  hud.toast(`<span class="bn">${settings.op.bn}</span> · ${BUS_TYPES[settings.type].name}<br><small>${settings.dir === 'dhk' ? 'A.K. Khan → Sayedabad (Dhaka)' : 'Sayedabad → Chattogram'} via N1. Drive on the LEFT.${IS_TOUCH ? ' Turn the wheel, hold GAS / BRAKE.' : ' Mirrors: V · Refuel: F'}</small>`, 'good', 5000);
-  voice.say('helper.depart', { place: settings.dir === 'dhk' ? 'ঢাকা' : 'চট্টগ্রাম', placeEn: settings.dir === 'dhk' ? 'Dhaka' : 'Chattogram' });
+  const nm = (p, k) => p[k].split(' (')[0];
+  const via = [...new Set(route.segs.map((g) => g.chain.ref))].join(', ');
+  hud.toast(`<span class="bn">${settings.op.bn}</span> · ${BUS_TYPES[settings.type].name}<br><small>${nm(route.startPlace, 'en')} → ${nm(route.endPlace, 'en')} via ${via}. Drive on the LEFT.${IS_TOUCH ? ' Turn the wheel, hold GAS / BRAKE.' : ' Mirrors: V · Refuel: F'}</small>`, 'good', 5000);
+  voice.say('helper.depart', { place: nm(route.endPlace, 'bn').split(' ')[0], placeEn: nm(route.endPlace, 'en') });
 }
 
 // ---------- automatic graphics reduction on slow devices ----------
@@ -1028,6 +1070,7 @@ function frame(now) {
   }
 
   const focus = player.bus.root.position;
+  stream.update(player.s, player.side < 0 ? 1 : -1);
   chunks.update(player.s);
   weather?.update(dt, { camera, player, cabin: rig.mode === 'cabin' && state !== 'menu', hour: sky.hour, speed: Math.abs(player.phys.v), running: state !== 'paused' });
   sky.update(dt, focus, camera);
@@ -1066,25 +1109,17 @@ async function boot() {
   OPERATORS.push(...(await loadCustomSkins()));
   await msg('Loading your music…');
   await music.load();
-  await msg('Tracing N1 from real coordinates…');
-  route = new Route();
+  await msg('Tracing the roads from real coordinates…');
+  net = new Network();
   chunks = new Chunks();
   applyQualityBase();
   await msg('Lighting the sky…');
   sky = new SkySystem(renderer, scene, QUALITY[settings.quality] || QUALITY.high);
-  await msg('Paving 4 lanes, bridges over Meghna & Gumti…');
-  road = buildRoad(route, scene, chunks);
-  await msg('Planting paddy, palms and villages…');
-  facilities = buildFacilities(route, scene, chunks);
-  aicams = buildAICams(route, scene, chunks);
-  scenery = buildScenery(route, scene, chunks, { treeDensity: (QUALITY[settings.quality] || QUALITY.high).treeDensity }, road.water);
   mirrors = new Mirrors(renderer, scene);
   if (mirrors_defaultOff) { mirrors.hudOn = false; mirrors.lowRes = true; }
-  hud = new HUD(route, road.water);
+  await msg('Laying out the trip…');
+  buildWorld(tripPath());
   weather = new Weather({ scene, sky, route, audio, hud, road, quality: settings.quality, isTouch: IS_TOUCH });
-  passengers = new Passengers({ route, scene, chunks, hud, player });
-  passengers.onBreak = onRestBreak;
-  police = new Police({ route, scene, chunks, obstacles: facilities.obstacles, counters: passengers.counters, hud, player });
   rig = new CameraRig(camera, route);
   initSeatPanel();
   initMusicUI();
@@ -1094,6 +1129,8 @@ async function boot() {
   traffic = new Traffic(route, scene, settings.traffic, settings.op.id, audio, facilities.gates); traffic.camera = camera;
   traffic.opCount = OPERATORS.length;
   traffic.init(player.s);
+  await msg('Paving the road, planting paddy, palms and villages…');
+  stream.buildNow(player.s, 1);
   mirrors.layoutHUD(innerWidth, innerHeight);
   setTime(settings.time);
   buildMenu();
@@ -1104,8 +1141,8 @@ async function boot() {
   state = 'menu';
   requestAnimationFrame(frame);
   console.info(`[mohasorok] route ${(route.length / 1000).toFixed(1)} km game, ${route.places.length} places, ${route.bridges.length} bridges`);
-  window.__game = { route, player, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
-    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); traffic.init(s); }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; }, get passengers() { return passengers; },
+  window.__game = { get route() { return route; }, player, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
+    teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); stream.buildNow(s, d < 0 ? 1 : -1); traffic.init(s); }, get stream() { return stream; }, get net() { return net; }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; }, get passengers() { return passengers; },
     // debug: which meshes are under screen pixel (px, py)
     pick(px, py) {
       const rc = new THREE.Raycaster(), cam = rig.camera;

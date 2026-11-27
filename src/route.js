@@ -1,146 +1,218 @@
 import * as THREE from 'three';
-import { REST_STOPS, WAYPOINTS, MAP_SCALE, ROAD, REAL_ROUTE_KM, FUEL_STATIONS, UTURN_SPACING, UTURN_GAP, PLAZA } from './config.js';
+import { ROAD, UTURN_GAP, PLAZA } from './config.js';
+import { DS } from './net.js';
 
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+const FILLET = 30;           // m of each road trimmed at a junction, replaced by a smooth curve through the node
+const EXIT = 30;             // terminal exit gap (m)
 
-// The N1 centreline as a uniformly sampled polyline (one sample every DS metres).
+// The trip corridor: the roads of a path (src/net.js) joined end to end into one centreline, sampled every DS
+// metres, with everything along it (towns, bridges, toll plazas, fuel stations, rest stops, terminals, U-turns)
+// in the corridor's own frame: s = metres from the start, d = metres to the right (d < 0 is the left
+// carriageway, the one the trip drives on, since Bangladesh drives on the left).
 export class Route {
-  constructor() {
-    const lat0 = WAYPOINTS.reduce((a, w) => a + w.lat, 0) / WAYPOINTS.length;
-    const lon0 = WAYPOINTS.reduce((a, w) => a + w.lon, 0) / WAYPOINTS.length;
-    const kx = Math.cos((lat0 * Math.PI) / 180) * 111320 * MAP_SCALE;
-    const kz = 110540 * MAP_SCALE;
-    const wp = WAYPOINTS.map((w) => new THREE.Vector2((w.lon - lon0) * kx, -(w.lat - lat0) * kz));
+  // path: [{ road, rev }] from src/net.js Network.path(); rev = the road is driven from its `to` node to its `from` node
+  constructor(net, path) {
+    this.net = net;
+    this.path = path;
+    this.DS = DS;
+    this._centreline();
+    this._features();
+  }
 
-    // add gentle real-road-like bends between waypoints
-    const ctrl = [];
-    let acc = 0;
-    for (let i = 0; i < wp.length - 1; i++) {
-      const a = wp[i], b = wp[i + 1];
-      const seg = a.distanceTo(b);
-      const n = Math.max(2, Math.round(seg / 320));
-      const dir = b.clone().sub(a).normalize();
-      const perp = new THREE.Vector2(-dir.y, dir.x);
-      for (let k = 0; k < n; k++) {
-        const t = k / n;
-        const g = acc + seg * t;
-        const wig = (Math.sin(g / 610) * 38 + Math.sin(g / 233 + 1.3) * 12 + Math.sin(g / 1370 + 0.4) * 55) * Math.sin(Math.PI * t);
-        const p = a.clone().lerp(b, t).addScaledVector(perp, wig);
-        ctrl.push(new THREE.Vector3(p.x, 0, p.y));
+  // ---------------------------------------------------------------- building
+  _centreline() {
+    const X = [], Z = [];
+    this.segs = [];
+    this.path.forEach((step, k) => {
+      const c = this.net.road(step.road), N = c.N;
+      const trim = (on) => (on ? Math.min(FILLET, c.length * 0.3) : 0);
+      const iA = Math.round(trim(k > 0) / DS), iB = N - 1 - Math.round(trim(k < this.path.length - 1) / DS);
+      const pt = (u) => (step.rev ? [c.px[N - 1 - u], c.pz[N - 1 - u]] : [c.px[u], c.pz[u]]);
+      if (k > 0) {
+        // a quadratic curve from the end of the last road to this road, bending through the node they share
+        const [nx, nz] = pt(0), [ex, ez] = pt(iA);
+        const sx = X[X.length - 1], sz = Z[Z.length - 1];
+        const n = Math.max(2, Math.ceil((Math.hypot(nx - sx, nz - sz) + Math.hypot(ex - nx, ez - nz)) / DS));
+        for (let j = 1; j < n; j++) {
+          const t = j / n, a = (1 - t) * (1 - t), b = 2 * t * (1 - t), cc = t * t;
+          X.push(a * sx + b * nx + cc * ex); Z.push(a * sz + b * nz + cc * ez);
+        }
       }
-      acc += seg;
-    }
-    const last = wp[wp.length - 1];
-    ctrl.push(new THREE.Vector3(last.x, 0, last.y));
-
-    const curve = new THREE.CatmullRomCurve3(ctrl, false, 'centripetal');
-    const dense = curve.getPoints(ctrl.length * 60);
-    const cum = [0];
-    for (let i = 1; i < dense.length; i++) cum.push(cum[i - 1] + dense[i].distanceTo(dense[i - 1]));
-    this.length = cum[cum.length - 1];
-    this.DS = 2;
-    const N = Math.floor(this.length / this.DS) + 1;
+      const i0 = X.length;
+      for (let u = iA; u <= iB; u++) { const [x, z] = pt(u); X.push(x); Z.push(z); }
+      this.segs.push({ road: c.id, chain: c, rev: step.rev, i0, u0: iA * DS, u1: iB * DS, from: step.rev ? c.to : c.from, to: step.rev ? c.from : c.to });
+    });
+    // resample at DS (the road samples already are; this only evens out the curves at junctions)
+    const n = X.length, acc = [0];
+    for (let i = 1; i < n; i++) acc.push(acc[i - 1] + Math.hypot(X[i] - X[i - 1], Z[i] - Z[i - 1]));
+    for (const g of this.segs) g.o = acc[g.i0];
+    const N = Math.max(2, Math.floor(acc[n - 1] / DS) + 1);
     this.N = N;
-    this.px = new Float64Array(N);
-    this.pz = new Float64Array(N);
-    this.tx = new Float64Array(N);
-    this.tz = new Float64Array(N);
+    this.px = new Float64Array(N); this.pz = new Float64Array(N);
+    this.tx = new Float64Array(N); this.tz = new Float64Array(N);
     let j = 0;
     for (let i = 0; i < N; i++) {
-      const s = i * this.DS;
-      while (j < cum.length - 2 && cum[j + 1] < s) j++;
-      const f = (s - cum[j]) / Math.max(1e-6, cum[j + 1] - cum[j]);
-      this.px[i] = dense[j].x + (dense[j + 1].x - dense[j].x) * f;
-      this.pz[i] = dense[j].z + (dense[j + 1].z - dense[j].z) * f;
+      const s = i * DS;
+      while (j < n - 2 && acc[j + 1] < s) j++;
+      const f = (s - acc[j]) / Math.max(1e-6, acc[j + 1] - acc[j]);
+      this.px[i] = X[j] + (X[j + 1] - X[j]) * f;
+      this.pz[i] = Z[j] + (Z[j + 1] - Z[j]) * f;
     }
-    // Squeezing the real N1 to 1:12 leaves some hairpin-tight bends (down to ~70 m radius) that
-    // no bus could take at highway speed. Smooth the centreline (Gaussian, ~±90 m) and resample.
-    this.smoothCentreline(150, 3);
-    const N2 = this.N;
-    for (let i = 0; i < N2; i++) {
-      const a = Math.max(0, i - 2), b = Math.min(N2 - 1, i + 2);
+    for (let i = 0; i < N; i++) {
+      const a = Math.max(0, i - 2), b = Math.min(N - 1, i + 2);
       const dx = this.px[b] - this.px[a], dz = this.pz[b] - this.pz[a];
       const l = Math.hypot(dx, dz) || 1;
       this.tx[i] = dx / l;
       this.tz[i] = dz / l;
     }
-    this.length = (N2 - 1) * this.DS;
+    this.length = (N - 1) * DS;
+    // real km along the corridor: each road counts its own real length, junction curves at the same rate
+    this.kmTab = [];
+    let km = 0;
+    this.segs.forEach((g, k) => {
+      const rate = g.chain.km / g.chain.length;
+      if (k > 0) { const p = this.segs[k - 1]; km += (g.o - (p.o + p.u1 - p.u0)) * rate; }
+      g.km0 = km;
+      this.kmTab.push([g.o, km]);
+      km += (g.u1 - g.u0) * rate;
+      this.kmTab.push([Math.min(this.length, g.o + g.u1 - g.u0), km]);
+    });
+    this.totalKm = km;
+  }
 
-    // places along the road
-    this.bridges = [];
-    this.places = WAYPOINTS.map((w, i) => ({ ...w, index: i, s: this.project(wp[i].x, wp[i].y).s }));
-    this.places[0].s = 0;
-    this.places[this.places.length - 1].s = this.length;
+  // corridor s of road s (in the road's own from → to frame) on segment g, or null when that part was trimmed
+  _s(g, s, slack = 0) {
+    const L = g.chain.length, u = g.rev ? L - s : s;
+    if (u < g.u0 - slack || u > g.u1 + slack) return null;
+    return g.o + (u - g.u0);
+  }
 
-    // bridges
-    this.bridges = [];
-    for (const p of this.places) {
-      if (!p.river) continue;
-      const sc = THREE.MathUtils.clamp(p.s + p.river.offset, 600, this.length - 600);
-      const half = p.river.width / 2 + 30;
-      this.bridges.push({ ...p.river, sc, s0: sc - half, s1: sc + half });
+  _features() {
+    const sd = (g, side) => (g.rev ? -side : side);
+    const pair = (g, a, b) => { const x = this._s(g, a, 1e9), y = this._s(g, b, 1e9); return x < y ? [x, y] : [y, x]; };
+    this.places = []; this.bridges = []; this.tolls = []; this.stations = []; this.rests = []; this.terminals = [];
+    this.uturns = []; this.footbridges = []; this.hills = []; this.seas = []; this.policeSpots = [];
+    const seenNode = new Set();
+    for (const g of this.segs) {
+      const c = g.chain;
+      for (const p of c.places) {
+        if (p.node && seenNode.has(p.node)) continue;
+        const s = this._s(g, p.s, FILLET + 1);
+        if (s === null) continue;
+        if (p.node) seenNode.add(p.node);
+        this.places.push({ ...p, s: THREE.MathUtils.clamp(s, 0, this.length), road: c.id });
+      }
+      for (const b of c.bridges) {
+        const sc = this._s(g, b.sc);
+        if (sc === null) continue;
+        const [s0, s1] = pair(g, b.s0, b.s1);
+        this.bridges.push({ ...b, sc, s0, s1 });
+      }
+      for (const t of c.tolls) { const s = this._s(g, t.s); if (s !== null) this.tolls.push({ ...t, s }); }
+      for (const st of c.stations) {
+        const sc = this._s(g, st.sc);
+        if (sc === null) continue;
+        const [s0, s1] = pair(g, st.s0, st.s1);
+        this.stations.push({ ...st, sc, s0, s1, side: sd(g, st.side), dIn: ROAD.half, dOut: ROAD.half + st.depth });
+      }
+      for (const r of c.rests) {
+        const sc = this._s(g, r.sc);
+        if (sc === null) continue;
+        const [s0, s1] = pair(g, r.s0, r.s1);
+        this.rests.push({ ...r, sc, s0, s1, side: sd(g, r.side), dIn: ROAD.half, dOut: ROAD.half + r.depth });
+      }
+      for (const t of c.terminals) {
+        if (this._s(g, t.s0) === null || this._s(g, t.s1) === null) continue;
+        const [s0, s1] = pair(g, t.s0, t.s1);
+        this.terminals.push({ ...t, s0, s1, side: sd(g, t.side) });
+      }
+      for (const u of c.uturns) { const s = this._s(g, u.s); if (s !== null) this.uturns.push({ ...u, s, s0: s - UTURN_GAP / 2, s1: s + UTURN_GAP / 2 }); }
+      for (const f of c.footbridges) { const s = this._s(g, f); if (s !== null) this.footbridges.push(s); }
+      for (const p of c.police) { const s = this._s(g, p.s); if (s !== null) this.policeSpots.push({ ...p, s }); }
+      for (const [key, list] of [['hills', this.hills], ['sea', this.seas]]) {
+        const h = c[key];
+        if (!h) continue;
+        const [s0, s1] = pair(g, h.s0, h.s1);
+        const a = Math.max(0, s0), b = Math.min(this.length, s1);
+        if (b - a > 50) list.push({ s0: a, s1: b, openA: g.rev ? h.openB : h.openA, openB: g.rev ? h.openA : h.openB });
+      }
     }
-    const toll = this.places.find((p) => p.toll);
-    this.tollS = toll ? toll.s : -1e9;
+    const byS = (a, b) => a.s - b.s;
+    this.places.sort(byS);
+    this.places.forEach((p, i) => { p.index = i; });
+    if (this.places.length) { this.places[0].s = 0; this.places[this.places.length - 1].s = this.length; }
+    this.tolls.sort(byS);
+    this.bridges.sort((a, b) => a.sc - b.sc);
+    this.stations.sort((a, b) => a.sc - b.sc);
+    this.rests.sort((a, b) => a.sc - b.sc);
+    this.footbridges.sort((a, b) => a - b);
+    this.policeSpots.sort(byS);
 
-    // fuel stations: a paved forecourt beside the road at road height
-    this.stations = FUEL_STATIONS.map((f) => {
-      let sc = f.f * this.length;
-      while (this.bridgeAt(sc) || this.bridgeAt(sc - 80) || this.bridgeAt(sc + 80) || Math.abs(sc - this.tollS) < 200) sc += 120;
-      return { ...f, sc, s0: sc - 45, s1: sc + 45, dIn: ROAD.half, dOut: ROAD.half + 30 };
-    });
-    // rest stops: a big paved lot with a restaurant, kept clear of bridges, the toll and fuel stations
-    this.rests = REST_STOPS.map((r) => {
-      let sc = r.f * this.length;
-      const busy = (x) => this.bridgeAt(x) || this.bridgeAt(x - 120) || this.bridgeAt(x + 120) || Math.abs(x - this.tollS) < 300 || this.stations.some((st) => Math.abs(x - st.sc) < 260);
-      while (busy(sc)) sc += 120;
-      return { ...r, sc, s0: sc - 75, s1: sc + 75, dIn: ROAD.half, dOut: ROAD.half + 42 };
-    });
-    // bus terminals at both ends of the route: a walled yard beside the carriageway the trip departs on.
-    // Sayedabad (route start) is on side -1, buses leave towards +s; A.K. Khan (route end) on side +1, leaving towards -s.
-    // The exit gap in the roadside wall is at the departure end, with a median opening in front of it so
-    // arriving buses on the other carriageway can cross in.
-    const TL = 120, TD = 42, EXIT = 30;
-    this.terminals = [
-      { id: 'sayedabad', bn: 'সায়েদাবাদ বাস টার্মিনাল', en: 'Sayedabad Bus Terminal', end: 0, side: -1, s0: 8, s1: 8 + TL },
-      { id: 'akkhan', bn: 'এ. কে. খান বাস টার্মিনাল', en: 'A.K. Khan Bus Terminal', end: 1, side: 1, s0: this.length - 8 - TL, s1: this.length - 8 },
-    ].map((t) => {
-      const dir = t.side < 0 ? 1 : -1;                       // direction of travel when leaving
-      const closed = dir > 0 ? t.s0 : t.s1;                  // the walled-off end, away from the exit
+    // bus terminals: a walled yard beside one carriageway, exit gap at the end its own carriageway drives out of,
+    // with a median opening in front of it so buses on the other carriageway can cross in (and out)
+    const startNode = this.segs[0].from, endNode = this.segs[this.segs.length - 1].to;
+    this.startNode = startNode; this.endNode = endNode;
+    this.terminals = this.terminals.map((t) => {
+      const dir = t.side < 0 ? 1 : -1;
+      const closed = dir > 0 ? t.s0 : t.s1;
       const exitS0 = dir > 0 ? t.s1 - EXIT : t.s0, exitS1 = dir > 0 ? t.s1 : t.s0 + EXIT;
-      return { ...t, sc: (t.s0 + t.s1) / 2, dIn: ROAD.half, dOut: ROAD.half + TD, dir, closed, exitS0, exitS1,
+      const end = t.node === startNode ? 0 : t.node === endNode ? 1 : null;
+      return { ...t, end, sc: (t.s0 + t.s1) / 2, dIn: ROAD.half, dOut: ROAD.half + t.depth, dir, closed, exitS0, exitS1,
         // the player's bay: first row, near the closed end, nose towards the exit
         bay: { s: closed + dir * 22, d: t.side * (ROAD.half + 12) } };
     });
-
-    // U-turn openings in the median
-    this.uturns = [];
-    for (let s = 1500; s < this.length - 800; s += UTURN_SPACING) {
-      let u = s;
-      while (this.bridgeAt(u) || this.bridgeAt(u + 200) || this.bridgeAt(u - 200) || Math.abs(u - this.tollS) < 300) u += 150;
-      this.uturns.push({ s: u, s0: u - UTURN_GAP / 2, s1: u + UTURN_GAP / 2 });
-    }
-    // a median opening in front of every filling station, so buses on the far carriageway can cross in
-    // (and back out again after refuelling); skip it where a U-turn already opens onto the forecourt
-    for (const st of this.stations) {
-      if (this.uturns.some((u) => u.s1 > st.s0 && u.s0 < st.s1)) continue;
-      this.uturns.push({ s: st.sc, s0: st.sc - UTURN_GAP / 2, s1: st.sc + UTURN_GAP / 2, station: true });
-    }
     for (const t of this.terminals) {
       const c = (t.exitS0 + t.exitS1) / 2;
       this.uturns.push({ s: c, s0: c - UTURN_GAP / 2, s1: c + UTURN_GAP / 2, terminal: true });
     }
-    this.uturns.sort((a, b) => a.s - b.s);
-
-    // hills / sea ranges
-    const hillStart = this.places.find((p) => p.hills);
-    this.hillS0 = hillStart ? hillStart.s - 1500 : this.length + 1;
-    const seaP = this.places.filter((p) => p.sea);
-    this.seaS0 = seaP.length ? seaP[0].s - 2500 : this.length + 1;
-    this.seaS1 = seaP.length ? seaP[seaP.length - 1].s + 1200 : -1;
+    this.uturns.sort(byS);
   }
 
-  // Sample index helpers
+  // ---------------------------------------------------------------- real kilometres
+  realKm(s) {
+    s = THREE.MathUtils.clamp(s, 0, this.length);
+    const T = this.kmTab;
+    for (let i = 1; i < T.length; i++) {
+      if (s <= T[i][0] || i === T.length - 1) {
+        const [s0, k0] = T[i - 1], [s1, k1] = T[i];
+        return s1 > s0 ? k0 + (k1 - k0) * THREE.MathUtils.clamp((s - s0) / (s1 - s0), 0, 1) : k1;
+      }
+    }
+    return this.totalKm;
+  }
+  sAtKm(km) {
+    const T = this.kmTab;
+    for (let i = 1; i < T.length; i++) {
+      if (km <= T[i][1] || i === T.length - 1) {
+        const [s0, k0] = T[i - 1], [s1, k1] = T[i];
+        return k1 > k0 ? s0 + (s1 - s0) * THREE.MathUtils.clamp((km - k0) / (k1 - k0), 0, 1) : s1;
+      }
+    }
+    return this.length;
+  }
+  // corridor s of real km `km` from the `from` node of road `roadId` (null when the trip does not use it)
+  sAtRoadKm(roadId, km) {
+    for (const g of this.segs) if (g.road === roadId) return this._s(g, g.chain.sAtKm(km), FILLET + 1);
+    return null;
+  }
+  // the road (segment) the corridor follows at s
+  segAt(s) {
+    let best = this.segs[0];
+    for (const g of this.segs) if (s >= g.o - FILLET) best = g;
+    return best;
+  }
+
+  // ---------------------------------------------------------------- toll plazas
+  get tollS() { return this.tolls.length ? this.tolls[0].s : -1e9; }
+  tollNear(s) {
+    let best = null, bd = Infinity;
+    for (const t of this.tolls) { const d = Math.abs(t.s - s); if (d < bd) { bd = d; best = t; } }
+    return best;
+  }
+  tollDist(s) { const t = this.tollNear(s); return t ? Math.abs(t.s - s) : Infinity; }
+
+  // ---------------------------------------------------------------- geometry
   _interp(s) {
     const t = THREE.MathUtils.clamp(s, 0, this.length) / this.DS;
     const i = Math.min(this.N - 2, Math.floor(t));
@@ -208,42 +280,6 @@ export class Route {
     return null;
   }
 
-  smoothCentreline(r, passes) {
-    const w = [];
-    for (let k = -r; k <= r; k++) w.push(Math.exp(-(k * k) / (2 * (r / 3) ** 2)));
-    let X = this.px, Z = this.pz;
-    const n = X.length;
-    for (let pass = 0; pass < passes; pass++) {
-      const nx = new Float64Array(n), nz = new Float64Array(n);
-      for (let i = 0; i < n; i++) {
-        let sx = 0, sz = 0, sw = 0;
-        for (let k = -r; k <= r; k++) {
-          const j = i + k;
-          if (j < 0 || j >= n) continue;          // ends keep their position
-          const g = w[k + r];
-          sx += X[j] * g; sz += Z[j] * g; sw += g;
-        }
-        nx[i] = sx / sw; nz[i] = sz / sw;
-      }
-      X = nx; Z = nz;
-    }
-    // resample at the original spacing
-    const cum = [0];
-    for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(X[i] - X[i - 1], Z[i] - Z[i - 1]));
-    const N = Math.floor(cum[n - 1] / this.DS) + 1;
-    this.px = new Float64Array(N); this.pz = new Float64Array(N);
-    this.tx = new Float64Array(N); this.tz = new Float64Array(N);
-    let j = 0;
-    for (let i = 0; i < N; i++) {
-      const s = i * this.DS;
-      while (j < n - 2 && cum[j + 1] < s) j++;
-      const f = (s - cum[j]) / Math.max(1e-6, cum[j + 1] - cum[j]);
-      this.px[i] = X[j] + (X[j + 1] - X[j]) * f;
-      this.pz[i] = Z[j] + (Z[j + 1] - Z[j]) * f;
-    }
-    this.N = N;
-  }
-
   stationAt(s, d) {
     for (const st of this.stations) {
       if (s > st.s0 && s < st.s1 && Math.sign(d) === Math.sign(st.side) && Math.abs(d) > ROAD.half - 1 && Math.abs(d) < st.dOut) return st;
@@ -257,14 +293,14 @@ export class Route {
     }
     return null;
   }
-  // paved ground beside the road (fuel forecourt or rest-stop lot)
   // the bus terminal yard (s, d) is inside, or null
   terminalAt(s, d) {
-    for (const t of this.terminals || []) {
+    for (const t of this.terminals) {
       if (s > t.s0 && s < t.s1 && Math.sign(d) === Math.sign(t.side) && Math.abs(d) > ROAD.half - 1 && Math.abs(d) < t.dOut) return t;
     }
     return null;
   }
+  // paved ground beside the road (fuel forecourt, rest-stop lot or terminal yard)
   paved(s, d) { return this.stationAt(s, d) || this.restAt(s, d) || this.terminalAt(s, d); }
 
   bridgeAt(s) {
@@ -272,19 +308,20 @@ export class Route {
     return null;
   }
 
-  // 0..1: how far the road has widened for the toll plaza at s
+  // 0..1: how far the road has widened for the nearest toll plaza at s
   plazaW(s) {
-    if (this.tollS === undefined) return 0;   // still building the route
-    const x = Math.abs(s - this.tollS);
+    if (!this.tolls) return 0;   // still building the route
+    const x = this.tollDist(s);
     return x <= PLAZA.flat ? 1 : x >= PLAZA.reach ? 0 : smooth(1 - (x - PLAZA.flat) / PLAZA.taper);
   }
-  // paved half-width of the carriageway pair at s (wider at the toll plaza)
+  // paved half-width of the carriageway pair at s (wider at a toll plaza)
   halfAt(s) { return ROAD.half + (PLAZA.half - ROAD.half) * this.plazaW(s); }
 
   // road surface height (centreline, with bridge ramps)
   roadHeight(s) {
     let h = ROAD.baseHeight;
     for (const b of this.bridges) {
+      if (s < b.s0 - ROAD.rampLen || s > b.s1 + ROAD.rampLen) continue;
       const up = smooth((s - (b.s0 - ROAD.rampLen)) / ROAD.rampLen);
       const down = smooth(((b.s1 + ROAD.rampLen) - s) / ROAD.rampLen);
       h = Math.max(h, ROAD.baseHeight + (ROAD.bridgeHeight - ROAD.baseHeight) * Math.min(up, down));
@@ -304,10 +341,6 @@ export class Route {
     return t >= 1 ? 0 : h * (1 - t);
   }
 
-  realKm(s) {
-    return (THREE.MathUtils.clamp(s, 0, this.length) / this.length) * REAL_ROUTE_KM;
-  }
-
   // +1 if the right-hand side of the road is towards east at s, else -1
   eastSide(s) {
     // right = (-tz, tx) -> its x (east) component is -tz
@@ -323,4 +356,8 @@ export class Route {
     for (const p of this.places) if (p.town && Math.abs(s - p.s) < p.town / 2 + 50) return p;
     return null;
   }
+
+  // the places at the two ends of the trip
+  get startPlace() { return this.places[0]; }
+  get endPlace() { return this.places[this.places.length - 1]; }
 }

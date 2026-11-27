@@ -9,6 +9,7 @@ import { makeCanvas, canvasTexture, concreteTexture, grassTexture, BN_FONT, EN_F
 import { ribbon, streetGlowMat } from './road.js';
 import { buildBus } from '../busModel.js';
 import { OPERATORS } from '../operators.js';
+import { sharedMats } from './stream.js';
 
 const R = (dy) => (s, h) => h + dy;
 const G = (y) => () => y;
@@ -52,8 +53,7 @@ function facadeTexture(ops) {
   return canvasTexture(c, { repeat: false });
 }
 
-export function buildTerminals(route, scene, chunks, obstacles) {
-  const mats = {
+const termMats = sharedMats(() => ({
     pave: new THREE.MeshStandardMaterial({ map: concreteTexture(15, '#8a8984'), roughness: 0.9 }),
     grass: new THREE.MeshStandardMaterial({ map: grassTexture(3), roughness: 1 }),
     wall: new THREE.MeshStandardMaterial({ map: concreteTexture(4, '#c8c2b4'), roughness: 0.85, side: THREE.DoubleSide }),
@@ -63,11 +63,16 @@ export function buildTerminals(route, scene, chunks, obstacles) {
     pole: new THREE.MeshStandardMaterial({ color: 0x8d949a, metalness: 0.6, roughness: 0.45 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x2a2d31, roughness: 0.6 }),
     bench: new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.6 }),
-  };
+}));
+
+// The bus terminal yards whose middle lies in this block (world/stream.js).
+export function* terminalChunk(route, ctx) {
+  const mats = termMats();
   const ops = OPERATORS.filter((o) => !o.custom);
   const H = ROAD.half;
-
-  route.terminals.forEach((t, ti) => {
+  const obstacles = ctx.obstacles;
+  for (const [ti, t] of route.terminals.entries()) {
+    if (!ctx.in((t.s0 + t.s1) / 2)) continue;
     const sd = t.side, dir = t.dir, h = route.roadHeight(t.sc);
     const grp = new THREE.Group();
     // s along the yard measured from the closed end towards the exit
@@ -180,14 +185,15 @@ export function buildTerminals(route, scene, chunks, obstacles) {
 
     // ---- parked buses in the second row, noses towards the exit
     const kinds = ['ak1j', 'local', 'coach', 'ak1j', 'local'];
-    kinds.forEach((kind, k) => {
+    for (const [k, kind] of kinds.entries()) {
       const op = ops[(ti * 5 + k * 3 + 1) % ops.length];
       const b = buildBus(kind, op, { texScale: 0.5, seed: 500 + ti * 11 + k });
       const s = S(18 + k * 16), d = sd * (H + 24);
       put(b.root, s, d, 0, dir > 0 ? 0 : Math.PI);
       b.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       ob(s - dir * (b.spec.rearOH + 0.2), s + dir * (b.spec.front + 0.2), d - 1.35, d + 1.35);
-    });
+      yield;
+    }
 
     // ---- lamp posts along the roadside wall and the row divider
     const lampGeo = new THREE.CylinderGeometry(0.09, 0.13, 8, 8);
@@ -253,7 +259,8 @@ export function buildTerminals(route, scene, chunks, obstacles) {
     sign(gS + dir * 300, arriveSide * (H + 2), advTex('BUS TERMINAL 300 m'), 2.4, 2.4);
     sign(gS + dir * 26, arriveSide * 0.7, advTex('TURN HERE →'), 1.8, 1.8, 1.2);
 
-    scene.add(grp);
-    chunks.register(grp, t.sc, 420);
-  });
+    ctx.scene.add(grp);
+    ctx.chunks.register(grp, t.sc, 420);
+    yield;
+  }
 }

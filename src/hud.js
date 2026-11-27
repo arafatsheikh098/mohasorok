@@ -23,7 +23,7 @@ export class HUD {
       ...route.stations.map((st) => ({ p: route.pointAt(st.sc, st.side * 16), icon: '⛽', col: '#ffb300' })),
       ...route.rests.map((r) => ({ p: route.pointAt(r.sc, r.side * 20), icon: '🍛', col: '#ff7043' })),
       ...route.uturns.map((u) => ({ p: route.pointAt(u.s, 0), icon: 'U', col: '#4aa3ff' })),
-      ...(route.tollS > 0 ? [{ p: route.pointAt(route.tollS, 0), icon: '৳', col: '#ff5252' }] : []),
+      ...route.tolls.map((t) => ({ p: route.pointAt(t.s, 0), icon: '৳', col: '#ff5252' })),
     ];
   }
 
@@ -54,7 +54,10 @@ export class HUD {
     const km = back ? route.realKm(st.s) : route.realKm(route.length) - route.realKm(st.s);
     const next = back ? ([...route.places].reverse().find((p) => p.s < st.s - 20) || route.places[0]) : route.nextPlace(st.s);
     const nextKm = Math.abs(route.realKm(next.s) - route.realKm(st.s));
-    document.querySelector('#trip .route').innerHTML = back ? '<span class="bn">চট্টগ্রাম → ঢাকা</span> · N1' : '<span class="bn">ঢাকা → চট্টগ্রাম</span> · N1';
+    const road = route.segAt(st.s).chain, nm = (p) => p.bn.split(' (')[0];
+    const [A, B] = back ? [route.endPlace, route.startPlace] : [route.startPlace, route.endPlace];
+    const label = `<span class="bn">${nm(A)} → ${nm(B)}</span> · ${road.ref}`;
+    if (label !== this._label) { this._label = label; document.querySelector('#trip .route').innerHTML = label; }
     const ff = st.fuel / st.tank;
     $('trip-fuel').textContent = `${Math.round(ff * 100)}% · ${Math.round(st.fuel)} L`;
     $('trip-fuel').style.color = ff < 0.15 ? '#ff5252' : '';
@@ -71,7 +74,7 @@ export class HUD {
     $('trip-fines').textContent = `৳ ${st.fines.toLocaleString('en-IN')}`;
     $('trip-crashes').textContent = String(st.crashes);
     $('trip-rating').textContent = '★'.repeat(Math.round(st.rating)) + '☆'.repeat(5 - Math.round(st.rating));
-    $('place-now').innerHTML = st.place ? `<span class="bn">${st.place.bn}</span><small>${st.place.en}</small>` : '<small>N1 Dhaka–Chattogram Highway</small>';
+    $('place-now').innerHTML = st.place ? `<span class="bn">${st.place.bn}</span><small>${st.place.en}</small>` : `<small>${road.ref} ${road.en || ''}</small>`;
     $('clock').textContent = st.clock;
     $('cam-label').textContent = st.camLabel;
     $('speed-big').textContent = Math.round(st.kmh);
@@ -214,18 +217,19 @@ export class HUD {
   }
 
   // money = the career settlement for this trip (career.finishTrip), shown as a profit breakdown
-  arrival(st, opName, dest = 'Chattogram', money = null) {
+  arrival(st, opName, dest = this.route.endPlace, money = null) {
     const el = $('arrival');
     el.style.display = 'flex';
-    $('arr-title').textContent = `Arrived in ${dest}`;
-    $('arr-bn').textContent = dest === 'Dhaka' ? 'ঢাকায় স্বাগতম!' : 'চট্টগ্রামে স্বাগতম!';
+    const nm = (p, k) => p[k].split(' (')[0];
+    $('arr-title').textContent = `Arrived in ${nm(dest, 'en')}`;
+    $('arr-bn').textContent = `${nm(dest, 'bn')} — স্বাগতম!`;
     const avg = st.elapsed > 1 ? this.route.realKm(this.route.length) / (st.elapsed / 3600) : 0;
     const row = (k, v, cls = '') => `<div class="row ${cls}"><span>${k}</span><b>${v}</b></div>`;
     const stars = `<b class="stars">${'★'.repeat(Math.round(st.rating))}${'☆'.repeat(5 - Math.round(st.rating))}</b>`;
     let html = `<div class="arr-cols"><div class="arr-col">
       <div class="arr-h">Trip</div>
       ${row('Operator', opName)}
-      ${row('Route', dest === 'Dhaka' ? 'Ctg → Dhaka' : 'Dhaka → Ctg')}
+      ${row('Route', `${nm(this.route.startPlace, 'en')} → ${nm(dest, 'en')}`)}
       ${row('Drive time', `${fmtTime(st.elapsed)}${money?.record && money.prevBest != null ? ' <span class="rec">★ new record</span>' : ''}`)}
       ${row('Average (map) speed', `${avg.toFixed(0)} km/h`)}
       ${row('Collisions', st.crashes)}

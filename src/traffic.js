@@ -38,7 +38,7 @@ export function jamZones(route) {
   const kp = route.places.find((p) => p.en === 'Kanchpur'), cu = route.places.find((p) => p.en === 'Cumilla');
   if (kp) z.push({ id: 'kanchpur', bn: 'কাঁচপুর', en: 'Kanchpur', s0: Math.max(140, kp.s - 380), s1: kp.s + 260, base: 0 });
   if (cu) z.push({ id: 'cumilla', bn: 'কুমিল্লা', en: 'Cumilla', s0: cu.s - 450, s1: cu.s + 360, base: 0 });
-  if (route.tollS > 0) z.push({ id: 'toll', bn: 'টোল প্লাজা', en: 'the toll plaza', s0: route.tollS - 480, s1: route.tollS + 480, base: 0.45, toll: true });
+  for (const t of route.tolls) z.push({ id: `toll${Math.round(t.s)}`, bn: 'টোল প্লাজা', en: 'the toll plaza', s0: t.s - 480, s1: t.s + 480, base: 0.45, toll: true });
   route._jams = z;
   return z;
 }
@@ -90,6 +90,14 @@ export class Traffic {
       });
     }
     void playerOpId;
+  }
+
+  // a new trip corridor (call init() afterwards to place the vehicles on it)
+  setRoute(route, gates) {
+    this.route = route;
+    this.gates = gates;
+    this.places = null;
+    for (const v of this.list) { v.rest = null; v.restSeen = null; v.booth = null; v.plan = null; }
   }
 
   // lane centre d for a vehicle: forward lanes are negative d, oncoming positive
@@ -224,7 +232,8 @@ export class Traffic {
       }
 
       // toll plaza: stop at the barrier, pay, then go
-      const tollDist = (route.tollS - v.s) * v.dir;
+      const T = route.tollNear(v.s);
+      const tollDist = T ? (T.s - v.s) * v.dir : -1e9;
       if (!v.tollPaid && tollDist > -TOLL.gateOff && tollDist < 160) {
         const gateGap = tollDist + TOLL.gateOff - v.len / 2 - 1.5;
         if (gateGap < gap) { gap = Math.max(0.1, gateGap); lv = 0; }
@@ -241,7 +250,7 @@ export class Traffic {
       // pick a booth as the road starts to fan out; after the islands, merge back into the lanes
       if (v.booth === null && tollDist > 25 && tollDist < PLAZA.reach + 60) v.booth = this.pickBooth(v);
       if (v.booth !== null && tollDist < -(PLAZA.islandLen / 2 + v.len / 2)) v.booth = null;
-      const nearToll = Math.abs(v.s - route.tollS) < TOLL_NO_CHANGE;
+      const nearToll = route.tollDist(v.s) < TOLL_NO_CHANGE;
       // the odd bus pulls into a rest-stop lot, parks in a bay for a while, then pulls out again
       const rest = this._restPlan(v, player);
       const resting = !!rest && rest.phase !== 'approach';
@@ -293,7 +302,7 @@ export class Traffic {
       for (const z of jamZones(route)) {
         if (v.s <= z.s0 || v.s >= z.s1) continue;
         jam = jamLevel(z, v.s, roadState.hour);
-        if (z.toll && Math.abs(v.s - route.tollS) < PLAZA.reach + 20) jam = Math.min(jam, 0.3);   // the booths do their own queueing
+        if (z.toll && route.tollDist(v.s) < PLAZA.reach + 20) jam = Math.min(jam, 0.3);   // the booths do their own queueing
         break;
       }
       if (jam > 0.05) {

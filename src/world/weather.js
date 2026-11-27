@@ -44,9 +44,7 @@ export class Weather {
     this.season = 'dry';
     this.timer = 0; this.flash = 0; this.flashT = 20; this.flashSeq = [];
     this.wiperPhase = 0; this.wiperPause = 0; this.wiperRun = false;
-    // the low stretch between the Meghna bridge and Daudkandi: river fog
-    const meghna = route.places.find((p) => p.en === 'Meghna Bridge'), daud = route.places.find((p) => p.en === 'Daudkandi');
-    this.zone = meghna && daud ? [Math.min(meghna.s, daud.s) - 700, Math.max(meghna.s, daud.s) + 300] : null;
+    this.setRoute(route);
     // wet road: the materials we darken and make glossy
     this.wetMats = ['asphalt', 'plaza', 'bridgeConcrete'].map((k) => road?.mats?.[k]).filter(Boolean)
       .map((m) => ({ m, rough: m.roughness, col: m.color.clone() }));
@@ -54,6 +52,14 @@ export class Weather {
     this._buildDropSprite();
     this.reset(12);
     window.__weather = this;      // debug handle, like window.__game
+  }
+
+  // a new trip corridor: find its river-fog stretch again
+  setRoute(route) {
+    this.route = route;
+    // the low stretch between the Meghna bridge and Daudkandi: river fog
+    const meghna = route.places.find((p) => p.en === 'Meghna Bridge'), daud = route.places.find((p) => p.en === 'Daudkandi');
+    this.zone = meghna && daud ? [Math.min(meghna.s, daud.s) - 700, Math.max(meghna.s, daud.s) + 300] : null;
   }
 
   // ------------------------------------------------------------ rain streaks (all motion on the GPU)

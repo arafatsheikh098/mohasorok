@@ -8,7 +8,8 @@ import { ribbon } from './road.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildBus } from '../busModel.js';
 import { OPERATORS } from '../operators.js';
-import { buildTerminals } from './terminal.js';
+import { terminalChunk } from './terminal.js';
+import { share, sharedMats } from './stream.js';
 
 // barrier sits gateOff metres past the booth line (towards the exit)
 export const TOLL = { gateOff: 5 };
@@ -36,23 +37,159 @@ function stripeTexture() {
   return canvasTexture(c, { repeat: false });
 }
 
-export function buildFacilities(route, scene, chunks) {
+const facMats = sharedMats(() => ({
+  concrete: new THREE.MeshStandardMaterial({ map: concreteTexture(12, '#b9b6ae'), roughness: 0.85 }),
+  pave: new THREE.MeshStandardMaterial({ map: concreteTexture(14, '#8f8d88'), roughness: 0.9 }),
+  grass: new THREE.MeshStandardMaterial({ map: grassTexture(3), roughness: 1 }),
+  curb: new THREE.MeshStandardMaterial({ map: curbTexture(), roughness: 0.7 }),
+  white: new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.5 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.6 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x24343d, roughness: 0.1, metalness: 0.4 }),
+  arm: new THREE.MeshStandardMaterial({ map: stripeTexture(), roughness: 0.5 }),
+  rail: new THREE.MeshStandardMaterial({ color: 0xd8d8d2, roughness: 0.5, metalness: 0.5 }),
+  signBack: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }),
+  signLeg: new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }),
+}));
+
+// Toll plazas, fuel stations, U-turn signs, footbridges, town median railings, curve signs, rest stops and
+// bus terminals, built block by block (world/stream.js). Everything solid is also pushed as an (s, d)
+// rectangle to `obstacles` so the bus can collide with it; toll barrier gates go to `gates`.
+export function initFacilities(route) {
   const obstacles = [];
   const gates = [];
-  const mats = {
-    concrete: new THREE.MeshStandardMaterial({ map: concreteTexture(12, '#b9b6ae'), roughness: 0.85 }),
-    pave: new THREE.MeshStandardMaterial({ map: concreteTexture(14, '#8f8d88'), roughness: 0.9 }),
-    grass: new THREE.MeshStandardMaterial({ map: grassTexture(3), roughness: 1 }),
-    curb: new THREE.MeshStandardMaterial({ map: curbTexture(), roughness: 0.7 }),
-    white: new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.5 }),
-    dark: new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.6 }),
-    glass: new THREE.MeshStandardMaterial({ color: 0x24343d, roughness: 0.1, metalness: 0.4 }),
-    arm: new THREE.MeshStandardMaterial({ map: stripeTexture(), roughness: 0.5 }),
-  };
+  const bends = findBends(route);
+  let uTex = null;
+  return {
+    obstacles, gates,
+    *chunk(r, ctx) {
+      const mats = facMats();
+      for (const t of route.tolls) if (ctx.in(t.s)) { buildToll(route, ctx, mats, t); yield; }
+      for (const st of route.stations) if (ctx.in(st.sc)) { buildStation(route, ctx, mats, st); yield; }
+      // U-turn signs 250 m before each opening, for both carriageways
+      uTex ||= share(textPanel(512, 512, '#0d47a1', (x, w) => {
+        x.strokeStyle = '#fff'; x.lineWidth = 12; x.strokeRect(12, 12, w - 24, w - 24);
+        x.strokeStyle = '#fff'; x.lineWidth = 30; x.lineCap = 'round';
+        x.beginPath(); x.moveTo(330, 330); x.lineTo(330, 170); x.arc(255, 170, 75, 0, Math.PI, true); x.lineTo(180, 260); x.stroke();
+        x.fillStyle = '#fff'; x.beginPath(); x.moveTo(140, 250); x.lineTo(220, 250); x.lineTo(180, 310); x.fill();
+        x.font = `bold 58px ${BN_FONT}`; x.fillText('ইউ-টার্ন', w / 2, 400);
+        x.font = `bold 44px ${EN_FONT}`; x.fillText('U-TURN 250 m', w / 2, 460);
+      }));
+      for (const u of route.uturns) {
+        if (u.terminal) continue;          // the terminals put up their own signs
+        if (ctx.in(u.s - 250)) addSign(ctx.scene, ctx.chunks, route, u.s - 250, -(ROAD.half + 2), false, uTex, 2, 2);
+        if (ctx.in(u.s + 250)) addSign(ctx.scene, ctx.chunks, route, u.s + 250, ROAD.half + 2, true, uTex, 2, 2);
+      }
+      yield;
+  // ------------------------------------------------------------ pedestrian footbridges (steel truss, red/white or green)
+  const clear = (sx) => !route.bridgeAt(sx) && !route.bridgeAt(sx - 60) && !route.bridgeAt(sx + 60) && route.tollDist(sx) > 150 &&
+    !route.uturnAt(sx) && !route.stations.some((st) => Math.abs(sx - st.sc) < 120);
+  route.footbridges.forEach((sf, i) => {
+    if (!ctx.in(sf) || !clear(sf)) return;
+    const colour = i % 2 ? 0x2e8b3e : 0xc62828;
+    const paint = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.4 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xe9e9e4, roughness: 0.6, metalness: 0.2 });
+    const conc = mats.concrete;
+    const h = route.roadHeight(sf), half = ROAD.toe + 2, deckY = 5.6;
+    const grp = new THREE.Group();
+    const p = route.pointAt(sf, 0);
+    grp.position.set(p.x, h, p.z);
+    grp.rotation.y = route.yawAt(sf);
+    const red = [], wht = [], grey = [];
+    const box = (arr, w, hh, d, x, y, z, rz = 0) => { const g = new THREE.BoxGeometry(w, hh, d); if (rz) g.rotateZ(rz); g.translate(x, y, z); arr.push(g); };
+    const W = 2.4; // deck width (along the road)
+    // deck and roof
+    box(grey, half * 2, 0.25, W, 0, deckY, 0);
+    box(red, half * 2, 0.12, W + 0.4, 0, deckY + 2.7, 0);
+    // side trusses: chords, verticals, diagonals
+    for (const zz of [-W / 2, W / 2]) {
+      box(red, half * 2, 0.2, 0.15, 0, deckY + 0.15, zz);
+      box(red, half * 2, 0.18, 0.15, 0, deckY + 2.55, zz);
+      const n = Math.round(half / 2);
+      for (let k = -n; k <= n; k++) {
+        const x = (k / n) * (half - 0.2);
+        box(red, 0.14, 2.4, 0.14, x, deckY + 1.35, zz);
+        if (k < n) box(wht, 0.08, 2.9, 0.08, x + half / n / 2, deckY + 1.35, zz, (k % 2 ? 1 : -1) * 0.62);
+      }
+      box(wht, half * 2, 0.06, 0.06, 0, deckY + 1.1, zz);   // hand rail
+    }
+    // columns: both road edges and the median
+    for (const x of [-half + 0.4, half - 0.4, 0]) box(grey, 0.5, deckY, 0.5, x, deckY / 2 - (x === 0 ? 0 : 0.6), 0);
+    // stairs at both ends running along the road
+    for (const sx of [-1, 1]) {
+      const sx0 = sx * (half + 1.4);
+      const stairs = new THREE.BoxGeometry(1.8, 0.2, 9.5);
+      stairs.rotateX(Math.atan2(deckY + 0.6, 9.5));
+      stairs.translate(sx0, (deckY - 0.6) / 2, -W / 2 - 4.2);
+      grey.push(stairs);
+      box(grey, 2.2, 0.25, 2.4, sx * (half + 0.6), deckY, 0);
+      box(red, 0.08, 1.0, 9.8, sx0 + 0.9, deckY / 2 + 0.3, -W / 2 - 4.2, 0);
+    }
+    const m = (arr, mat) => { const mesh = new THREE.Mesh(mergeGeometries(arr), mat); mesh.castShadow = true; mesh.receiveShadow = true; grp.add(mesh); };
+    m(red, paint); m(wht, white); m(grey, conc);
+    // banner on the span (they always carry an ad or a slogan)
+    const ban = textPanel(1024, 128, i % 2 ? '#0b6b3a' : '#ffffff', (x, w, hh) => {
+      x.fillStyle = i % 2 ? '#ffffff' : '#c62828'; x.font = `bold 70px ${BN_FONT}`;
+      x.fillText(i % 2 ? 'নিরাপদ সড়ক — নিরাপদ জীবন' : 'ফুটওভার ব্রিজ ব্যবহার করুন', w / 2, hh / 2 + 4);
+    });
+    for (const zz of [-W / 2 - 0.1, W / 2 + 0.1]) {
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(14, 1.6), new THREE.MeshStandardMaterial({ map: ban, roughness: 0.6 }));
+      pl.position.set(0, deckY + 1.35, zz);
+      if (zz < 0) pl.rotation.y = Math.PI;
+      grp.add(pl);
+    }
+    ctx.scene.add(grp);
+    ctx.chunks.register(grp, sf, 80);
+  });
 
-  // ------------------------------------------------------------ toll plaza
-  if (route.tollS > 0) {
-    const sT = route.tollS, h = route.roadHeight(sT);
+      yield;
+  // ------------------------------------------------------------ median railing through towns (keeps people off the median)
+  const railMat = mats.rail;
+  for (const p of route.places) {
+    if (!p.town) continue;
+    const a = Math.max(20, p.s - p.town / 2, ctx.s0), b = Math.min(route.length - 20, p.s + p.town / 2, ctx.s1);
+    if (b <= a) continue;
+    const geos = [];
+    const q = new THREE.Vector3();
+    for (let sx = a; sx < b; sx += 2.5) {
+      if (route.uturnAt(sx) || route.bridgeAt(sx)) continue;
+      route.pointAt(sx, 0, q);
+      const yaw = route.yawAt(sx), y0 = route.roadHeight(sx) + 0.27;
+      const post = new THREE.BoxGeometry(0.06, 1.1, 0.06); post.translate(q.x, y0 + 0.55, q.z); geos.push(post);
+      for (const ry of [0.55, 1.05]) {
+        const rail = new THREE.BoxGeometry(0.04, 0.05, 2.5); rail.rotateY(yaw); rail.translate(q.x, y0 + ry, q.z); geos.push(rail);
+      }
+    }
+    if (!geos.length) continue;
+    const mesh = new THREE.Mesh(mergeGeometries(geos), railMat);
+    ctx.scene.add(mesh);
+    ctx.chunks.register(mesh, (a + b) / 2, (b - a) / 2 + 50);
+  }
+
+      yield;
+      // curve warnings + chevrons
+      for (const bend of bends) if (ctx.in(bend.at)) buildCurveSigns(route, ctx, bend);
+      yield;
+      // rest stops (highway restaurants)
+      for (const [ri, rs] of route.rests.entries()) if (ctx.in(rs.sc)) { buildRestStop(route, ctx.scene, ctx.chunks, ctx.obstacles, mats, rs, ri); yield; }
+      // bus terminals (trips start and end here)
+      yield* terminalChunk(route, ctx);
+    },
+    update(dt) {
+      for (const g of gates) {
+        g.openT = Math.max(0, g.openT - dt);
+        const target = g.openT > 0 || g.holdPlayer ? 1 : 0;
+        g.open += THREE.MathUtils.clamp(target - g.open, -dt * 1.2, dt * 1.2);
+        g.pivot.rotation.z = g.openSign * g.open * 1.45;
+        g.lamp.emissive.setHex(g.open > 0.8 ? 0x20ff40 : 0xff2020);
+      }
+    },
+  };
+}
+
+function buildToll(route, ctx, mats, T) {
+  {
+    const sT = T.s, h = route.roadHeight(sT), fee = T.fee || TOLL_FEE;
+    const obstacles = ctx.obstacles, gates = ctx.gates, scene = ctx.scene, chunks = ctx.chunks;
     const grp = new THREE.Group();
     const p = route.pointAt(sT, 0);
     grp.position.set(p.x, h, p.z);
@@ -63,8 +200,8 @@ export function buildFacilities(route, scene, chunks) {
     canopy.position.y = 7.2; canopy.castShadow = true;
     grp.add(canopy);
     const signTex = textPanel(2048, 150, '#1f5fa8', (x, w, hh) => {
-      x.fillStyle = '#fff'; x.font = `bold 92px ${BN_FONT}`; x.fillText('মেঘনা–গোমতী সেতু টোল প্লাজা', w * 0.38, hh / 2 + 4);
-      x.font = `bold 60px ${EN_FONT}`; x.fillText(`TOLL PLAZA · BUS ৳${TOLL_FEE}`, w * 0.82, hh / 2 + 2);
+      x.fillStyle = '#fff'; x.font = `bold 92px ${BN_FONT}`; x.fillText(T.bn || 'টোল প্লাজা', w * 0.38, hh / 2 + 4);
+      x.font = `bold 60px ${EN_FONT}`; x.fillText(`TOLL PLAZA · BUS ৳${fee}`, w * 0.82, hh / 2 + 2);
     });
     // one name board over each carriageway, on the face the drivers see
     const span = PLAZA.half - ROAD.median;
@@ -135,7 +272,7 @@ export function buildFacilities(route, scene, chunks) {
         const lampMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.1), lamp);
         lampMesh.position.set(X(sd * PLAZA.laneC(i)), 6.45, approach * 7.6);
         grp.add(lampMesh);
-        const gate = { s: gs, d: sd * PLAZA.laneC(i), dir, side: sd, pivot, lamp, open: 0, openT: 0, holdPlayer: false,
+        const gate = { s: gs, d: sd * PLAZA.laneC(i), dir, side: sd, pivot, lamp, fee, open: 0, openT: 0, holdPlayer: false,
           openSign: sd < 0 ? -1 : 1, d0: sd < 0 ? -from : to, d1: sd < 0 ? -to : from };
         gates.push(gate);
         obstacles.push({ s0: gs - 0.2, s1: gs + 0.2, d0: gate.d0, d1: gate.d1, gate });
@@ -188,13 +325,15 @@ export function buildFacilities(route, scene, chunks) {
         x.strokeStyle = '#fff'; x.lineWidth = 14; x.strokeRect(16, 16, w - 32, hh - 32);
         x.fillStyle = '#fff'; x.font = `bold 120px ${BN_FONT}`; x.fillText('টোল প্লাজা', w / 2, 170);
         x.font = `bold 70px ${EN_FONT}`; x.fillText('TOLL PLAZA  350 m', w / 2, 300);
-        x.fillStyle = '#ffd54f'; x.font = `bold 60px ${BN_FONT}`; x.fillText(`বাস ৳${toBn(TOLL_FEE)} · থামুন`, w / 2, 410);
+        x.fillStyle = '#ffd54f'; x.font = `bold 60px ${BN_FONT}`; x.fillText(`বাস ৳${toBn(fee)} · থামুন`, w / 2, 410);
       }), 4.2, 2.1);
     }
   }
+}
 
-  // ------------------------------------------------------------ fuel stations
-  for (const st of route.stations) {
+function buildStation(route, ctx, mats, st) {
+  const obstacles = ctx.obstacles, scene = ctx.scene, chunks = ctx.chunks;
+  {
     const sd = st.side, h = route.roadHeight(st.sc);
     const cols = sd < 0
       ? [{ d: -st.dOut, y: R(0.03), u: 0 }, { d: -ROAD.half + 0.3, y: R(0.03), u: 4 }]
@@ -291,135 +430,12 @@ export function buildFacilities(route, scene, chunks) {
     scene.add(grp);
     chunks.register(grp, st.sc, 450);
   }
-
-  // ------------------------------------------------------------ U-turn signs
-  const uTex = textPanel(512, 512, '#0d47a1', (x, w) => {
-    x.strokeStyle = '#fff'; x.lineWidth = 12; x.strokeRect(12, 12, w - 24, w - 24);
-    x.strokeStyle = '#fff'; x.lineWidth = 30; x.lineCap = 'round';
-    x.beginPath(); x.moveTo(330, 330); x.lineTo(330, 170); x.arc(255, 170, 75, 0, Math.PI, true); x.lineTo(180, 260); x.stroke();
-    x.fillStyle = '#fff'; x.beginPath(); x.moveTo(140, 250); x.lineTo(220, 250); x.lineTo(180, 310); x.fill();
-    x.font = `bold 58px ${BN_FONT}`; x.fillText('ইউ-টার্ন', w / 2, 400);
-    x.font = `bold 44px ${EN_FONT}`; x.fillText('U-TURN 250 m', w / 2, 460);
-  });
-  for (const u of route.uturns) {
-    if (u.terminal) continue;          // the terminals put up their own signs
-    addSign(scene, chunks, route, u.s - 250, -(ROAD.half + 2), false, uTex, 2, 2);
-    addSign(scene, chunks, route, u.s + 250, ROAD.half + 2, true, uTex, 2, 2);
-  }
-
-  // ------------------------------------------------------------ pedestrian footbridges (steel truss, red/white or green)
-  const fbSpots = [];
-  for (const p of route.places) if (p.town >= 300 && p.s > 200 && p.s < route.length - 200) fbSpots.push(p.s + 40);
-  for (let s0 = 3000; s0 < route.length - 500; s0 += 4200) fbSpots.push(s0);
-  const clear = (sx) => !route.bridgeAt(sx) && !route.bridgeAt(sx - 60) && !route.bridgeAt(sx + 60) && Math.abs(sx - route.tollS) > 150 &&
-    !route.uturnAt(sx) && !route.stations.some((st) => Math.abs(sx - st.sc) < 120);
-  fbSpots.filter(clear).forEach((sf, i) => {
-    const colour = i % 2 ? 0x2e8b3e : 0xc62828;
-    const paint = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, metalness: 0.4 });
-    const white = new THREE.MeshStandardMaterial({ color: 0xe9e9e4, roughness: 0.6, metalness: 0.2 });
-    const conc = mats.concrete;
-    const h = route.roadHeight(sf), half = ROAD.toe + 2, deckY = 5.6;
-    const grp = new THREE.Group();
-    const p = route.pointAt(sf, 0);
-    grp.position.set(p.x, h, p.z);
-    grp.rotation.y = route.yawAt(sf);
-    const red = [], wht = [], grey = [];
-    const box = (arr, w, hh, d, x, y, z, rz = 0) => { const g = new THREE.BoxGeometry(w, hh, d); if (rz) g.rotateZ(rz); g.translate(x, y, z); arr.push(g); };
-    const W = 2.4; // deck width (along the road)
-    // deck and roof
-    box(grey, half * 2, 0.25, W, 0, deckY, 0);
-    box(red, half * 2, 0.12, W + 0.4, 0, deckY + 2.7, 0);
-    // side trusses: chords, verticals, diagonals
-    for (const zz of [-W / 2, W / 2]) {
-      box(red, half * 2, 0.2, 0.15, 0, deckY + 0.15, zz);
-      box(red, half * 2, 0.18, 0.15, 0, deckY + 2.55, zz);
-      const n = Math.round(half / 2);
-      for (let k = -n; k <= n; k++) {
-        const x = (k / n) * (half - 0.2);
-        box(red, 0.14, 2.4, 0.14, x, deckY + 1.35, zz);
-        if (k < n) box(wht, 0.08, 2.9, 0.08, x + half / n / 2, deckY + 1.35, zz, (k % 2 ? 1 : -1) * 0.62);
-      }
-      box(wht, half * 2, 0.06, 0.06, 0, deckY + 1.1, zz);   // hand rail
-    }
-    // columns: both road edges and the median
-    for (const x of [-half + 0.4, half - 0.4, 0]) box(grey, 0.5, deckY, 0.5, x, deckY / 2 - (x === 0 ? 0 : 0.6), 0);
-    // stairs at both ends running along the road
-    for (const sx of [-1, 1]) {
-      const sx0 = sx * (half + 1.4);
-      const stairs = new THREE.BoxGeometry(1.8, 0.2, 9.5);
-      stairs.rotateX(Math.atan2(deckY + 0.6, 9.5));
-      stairs.translate(sx0, (deckY - 0.6) / 2, -W / 2 - 4.2);
-      grey.push(stairs);
-      box(grey, 2.2, 0.25, 2.4, sx * (half + 0.6), deckY, 0);
-      box(red, 0.08, 1.0, 9.8, sx0 + 0.9, deckY / 2 + 0.3, -W / 2 - 4.2, 0);
-    }
-    const m = (arr, mat) => { const mesh = new THREE.Mesh(mergeGeometries(arr), mat); mesh.castShadow = true; mesh.receiveShadow = true; grp.add(mesh); };
-    m(red, paint); m(wht, white); m(grey, conc);
-    // banner on the span (they always carry an ad or a slogan)
-    const ban = textPanel(1024, 128, i % 2 ? '#0b6b3a' : '#ffffff', (x, w, hh) => {
-      x.fillStyle = i % 2 ? '#ffffff' : '#c62828'; x.font = `bold 70px ${BN_FONT}`;
-      x.fillText(i % 2 ? 'নিরাপদ সড়ক — নিরাপদ জীবন' : 'ফুটওভার ব্রিজ ব্যবহার করুন', w / 2, hh / 2 + 4);
-    });
-    for (const zz of [-W / 2 - 0.1, W / 2 + 0.1]) {
-      const pl = new THREE.Mesh(new THREE.PlaneGeometry(14, 1.6), new THREE.MeshStandardMaterial({ map: ban, roughness: 0.6 }));
-      pl.position.set(0, deckY + 1.35, zz);
-      if (zz < 0) pl.rotation.y = Math.PI;
-      grp.add(pl);
-    }
-    scene.add(grp);
-    chunks.register(grp, sf, 80);
-  });
-
-  // ------------------------------------------------------------ median railing through towns (keeps people off the median)
-  const railMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d2, roughness: 0.5, metalness: 0.5 });
-  for (const p of route.places) {
-    if (!p.town) continue;
-    const a = Math.max(20, p.s - p.town / 2), b = Math.min(route.length - 20, p.s + p.town / 2);
-    const geos = [];
-    const q = new THREE.Vector3();
-    for (let sx = a; sx < b; sx += 2.5) {
-      if (route.uturnAt(sx) || route.bridgeAt(sx)) continue;
-      route.pointAt(sx, 0, q);
-      const yaw = route.yawAt(sx), y0 = route.roadHeight(sx) + 0.27;
-      const post = new THREE.BoxGeometry(0.06, 1.1, 0.06); post.translate(q.x, y0 + 0.55, q.z); geos.push(post);
-      for (const ry of [0.55, 1.05]) {
-        const rail = new THREE.BoxGeometry(0.04, 0.05, 2.5); rail.rotateY(yaw); rail.translate(q.x, y0 + ry, q.z); geos.push(rail);
-      }
-    }
-    if (!geos.length) continue;
-    const mesh = new THREE.Mesh(mergeGeometries(geos), railMat);
-    scene.add(mesh);
-    chunks.register(mesh, (a + b) / 2, (b - a) / 2 + 50);
-  }
-
-  // ------------------------------------------------------------ curve warnings + chevrons
-  buildCurveSigns(route, scene, chunks);
-
-  // ------------------------------------------------------------ rest stops (highway restaurants)
-  route.rests.forEach((r, ri) => buildRestStop(route, scene, chunks, obstacles, mats, r, ri));
-
-  // ------------------------------------------------------------ bus terminals at both ends (trips start and end here)
-  buildTerminals(route, scene, chunks, obstacles);
-
-  // ------------------------------------------------------------ runtime
-  return {
-    obstacles, gates,
-    update(dt) {
-      for (const g of gates) {
-        g.openT = Math.max(0, g.openT - dt);
-        const target = g.openT > 0 || g.holdPlayer ? 1 : 0;
-        g.open += THREE.MathUtils.clamp(target - g.open, -dt * 1.2, dt * 1.2);
-        g.pivot.rotation.z = g.openSign * g.open * 1.45;
-        g.lamp.emissive.setHex(g.open > 0.8 ? 0x20ff40 : 0xff2020);
-      }
-    },
-  };
 }
 
 // yellow chevron board / curve warning; dir = +1 arrow points right, -1 left (as the driver sees it)
 const chevTex = {}, warnTex = {};
 function chevronTexture(dir) {
-  return chevTex[dir] ||= textPanel(256, 320, '#ffd400', (x, w, h) => {
+  return chevTex[dir] ||= share(textPanel(256, 320, '#ffd400', (x, w, h) => {
     x.fillStyle = '#111';
     for (const cx of [-45, 45]) {
       const bx = w / 2 + cx * dir;
@@ -428,10 +444,10 @@ function chevronTexture(dir) {
       x.lineTo(bx - dir * 5, h - 50); x.lineTo(bx + dir * 65, h / 2); x.lineTo(bx - dir * 5, 50);
       x.closePath(); x.fill();
     }
-  });
+  }));
 }
 function curveWarnTexture(dir) {
-  return warnTex[dir] ||= textPanel(512, 512, '#f4f4f4', (x, w) => {
+  return warnTex[dir] ||= share(textPanel(512, 512, '#f4f4f4', (x, w) => {
     x.save(); x.translate(w / 2, w / 2); x.rotate(Math.PI / 4);
     x.fillStyle = '#111'; x.fillRect(-170, -170, 340, 340);
     x.fillStyle = '#ffd400'; x.fillRect(-155, -155, 310, 310);
@@ -440,11 +456,11 @@ function curveWarnTexture(dir) {
     x.beginPath(); x.moveTo(w / 2 - dir * 10, 360); x.lineTo(w / 2 - dir * 10, 250); x.quadraticCurveTo(w / 2 - dir * 10, 180, w / 2 + dir * 70, 170); x.stroke();
     x.fillStyle = '#111'; x.beginPath(); x.moveTo(w / 2 + dir * 120, 170); x.lineTo(w / 2 + dir * 60, 125); x.lineTo(w / 2 + dir * 60, 215); x.fill();
     x.font = `bold 44px ${BN_FONT}`; x.fillText('বিপজ্জনক বাঁক', w / 2, 440);
-  });
+  }));
 }
 
-// chevrons on the outside of every bend tighter than ~600 m, and a warning sign 200 m before it
-function buildCurveSigns(route, scene, chunks) {
+// bends tighter than ~600 m radius
+function findBends(route) {
   const R = (s) => { let dy = route.yawAt(s + 15) - route.yawAt(s - 15); dy = Math.atan2(Math.sin(dy), Math.cos(dy)); return 30 / Math.max(1e-6, Math.abs(dy)); };
   const bends = [];
   let cur = null;
@@ -453,9 +469,13 @@ function buildCurveSigns(route, scene, chunks) {
     else if (cur) { bends.push(cur); cur = null; }
   }
   if (cur) bends.push(cur);
-  const busy = (s) => route.bridgeAt(s) || route.uturnAt(s) || Math.abs(s - route.tollS) < 150 ||
+  return bends;
+}
+// chevrons on the outside of the bend, and a warning sign 200 m before it
+function buildCurveSigns(route, ctx, bend) {
+  const busy = (s) => route.bridgeAt(s) || route.uturnAt(s) || route.tollDist(s) < 150 ||
     [...route.stations, ...route.rests].some((st) => s > st.s0 - 30 && s < st.s1 + 30);
-  for (const bend of bends) {
+  {
     // which side is the inside of the bend: the side whose offset point is closer to a point further along
     const ahead = route.pointAt(bend.at + 40, 0), pL = route.pointAt(bend.at, 20), pR = route.pointAt(bend.at, -20);
     const inside = Math.hypot(pL.x - ahead.x, pL.z - ahead.z) < Math.hypot(pR.x - ahead.x, pR.z - ahead.z) ? 1 : -1;
@@ -474,8 +494,8 @@ function buildCurveSigns(route, scene, chunks) {
       const ws = (dirS > 0 ? bend.a : bend.b) - dirS * 200;
       if (!busy(ws)) addSign(grp, null, route, ws, c * (ROAD.half + 2), c > 0, curveWarnTexture(arrow), 1.5, 1.5, 1.6);
     }
-    scene.add(grp);
-    chunks.register(grp, (bend.a + bend.b) / 2, (bend.b - bend.a) / 2 + 300);
+    ctx.scene.add(grp);
+    ctx.chunks.register(grp, (bend.a + bend.b) / 2, (bend.b - bend.a) / 2 + 300);
   }
 }
 
@@ -637,9 +657,9 @@ function addSign(parent, chunks, route, s, d, flip, tex, w, h, lift = 1.8) {
   g.rotation.y = route.yawAt(s) + (flip ? 0 : Math.PI);
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }));
   panel.position.y = lift + h / 2;
-  const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, h + 0.08, 0.06), new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6, roughness: 0.4 }));
+  const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, h + 0.08, 0.06), facMats().signBack);
   back.position.set(0, panel.position.y, -0.05);
-  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, lift + h + 0.5, 8), new THREE.MeshStandardMaterial({ color: 0x9a9a9a, metalness: 0.7, roughness: 0.4 }));
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, lift + h + 0.5, 8), facMats().signLeg);
   leg.position.set(0, (lift + h) / 2 - 0.25, -0.1);
   g.add(panel, back, leg);
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
