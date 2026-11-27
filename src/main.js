@@ -588,7 +588,10 @@ function constrain(dt) {
   if (open) player.side = d > 0 ? 1 : -1;
   const sd = player.side;
   const inner = P.median + 0.1 + halfAcross;
-  const outer = bridge ? P.half - 0.1 - Math.min(halfAcross, 2) : P.toe + 45;
+  // (how far into the fields the bus may stray: near a junction, as far as its side roads go, which can leave at
+  // a sharp angle and so lie far to the side of the trip's road before the trip switches over to them)
+  const nearJ = !bridge && offRoad && route.junctions.some((j) => !j.ic && Math.hypot(cx - j.x, cz - j.z) < j.R + 260);
+  const outer = bridge ? P.half - 0.1 - Math.min(halfAcross, 2) : nearJ ? 1e4 : P.toe + 45;
   let lo, hi;
   // inside an interchange the other ramps are on both sides of the trip's carriageway: no median wall (stay
   // within reach of them up high, where there is only air beyond)

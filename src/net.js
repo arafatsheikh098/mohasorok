@@ -350,7 +350,9 @@ export class Network {
         const c = this.roads.get(e.road);
         if (used.has(e.road) || c.def.link || (c.def.ferry && !onlyFerry)) continue;
         const [dx, dz] = this.leaving(at, e);
-        const dot = dx * hx + dz * hz + (c.lanes >= 4 ? 0.15 : 0);
+        // (bigger roads first, and the same highway on: N8 goes on as N8 where it bends at a junction)
+        const ref = this.roads.get(prev.road).ref;
+        const dot = dx * hx + dz * hz + (c.lanes >= 4 ? 0.15 : 0) + (ref && c.ref === ref && ref !== 'R' ? 1 : 0);
         if (dot > bd) { bd = dot; best = e; }
       }
       if (!best) break;
