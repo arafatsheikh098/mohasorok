@@ -566,6 +566,10 @@ function restartTrip() {
   traffic.init(player.s);
   setTime(settings.time);                       // clock back to the chosen start time
   Object.assign(player, { sinceBreak: 0, breaks: 0, breakWarned: false, resting: 0, restPrompt: false, termHint: false, arriveT: 0, inTerminal: route.terminalAt(player.s, player.d) });
+  // a multiplayer race: no passengers, no passenger voices (a practice / solo trip has them)
+  if (passengers) passengers.race = raceRun;
+  hud.noPax = raceRun;
+  voice.noPax = raceRun;
   passengers?.reset();
   police?.reset();
   weather?.reset(sky.hour);
@@ -573,6 +577,7 @@ function restartTrip() {
 
 // rest stops: stop in the lot and press F for a 20-minute passenger break (clock moves on, passengers happier)
 function restLogic(dt) {
+  if (raceRun) return;                 // a race: no passengers asking for a break
   player.sinceBreak += dt / 5;
   if (player.sinceBreak > 180 && !player.breakWarned) {
     player.breakWarned = true;
@@ -984,7 +989,7 @@ const AI_MASS = { bus: 15000, truck: 14000, car: 1300, micro: 2000, cng: 450 };
 // ---------- racing: one traffic for racers near each other, and solid buses ----------
 // The racer first on the grid of those near each other runs the traffic (with the others' buses in it, so it
 // brakes behind them and cannot drive through them) and sends it; the others drive in that same traffic.
-const RACE_TRAFFIC = 34;          // every racer builds the same pool of vehicles (count and operators)
+const RACE_TRAFFIC = 44;          // every racer builds the same pool of vehicles (count and operators)
 function raceTraffic(dt, night, dim) {
   const ph = player.phys;
   const master = raceRun && race.inRace ? race.trafficMaster(ph.pos.x, ph.pos.z) : null;
@@ -1011,8 +1016,8 @@ function raceOthers() {
   if (!raceRun || !race.inRace) return;
   const ph = player.phys, fol = race.followers();
   let lo = player.s, hi = player.s;
-  for (const o of race.near(ph.pos.x, ph.pos.z, 2600)) {
-    if (!fol.has(o.id) && Math.hypot(o.x - ph.pos.x, o.z - ph.pos.z) > 1600) continue;
+  for (const o of race.near(ph.pos.x, ph.pos.z, 3700)) {          // (REACH + 200 in src/race.js: every follower)
+    if (!fol.has(o.id) && Math.hypot(o.x - ph.pos.x, o.z - ph.pos.z) > 2200) continue;
     const pr = route.project(o.box.x, o.box.z);
     if (Math.abs(pr.d) > route.halfAt(pr.s) + 6) continue;          // not on this road (another road at a junction)
     const [tx, tz] = route.tangentAt(pr.s);

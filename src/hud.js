@@ -91,11 +91,13 @@ export class HUD {
     // (Explore: how far you have driven, not where you are along the road ahead of you)
     $('trip-remaining').textContent = this.free ? `${st.odo.toFixed(1)} km` : `${km.toFixed(1)} km`;
     // (Explore: no passengers, no destination: no seats, fares, stops, ratings or ETA)
-    if (this._freeRows !== this.free) {
-      this._freeRows = this.free;
+    // (a race: no passengers either, but the ETA stays)
+    const rowsKey = `${!!this.free}${!!this.noPax}`;
+    if (this._freeRows !== rowsKey) {
+      this._freeRows = rowsKey;
       for (const id of ['trip-eta', 'trip-seats', 'trip-fares', 'trip-stop', 'trip-rating', 'trip-mood']) {
         const r = $(id)?.parentElement;
-        if (r) r.style.display = this.free ? 'none' : '';
+        if (r) r.style.display = this.free || (this.noPax && id !== 'trip-eta') ? 'none' : '';
       }
     }
     $('trip-next').innerHTML = `<span class="bn">${next.bn}</span> · ${nextKm.toFixed(0)} km`;
@@ -292,7 +294,7 @@ export class HUD {
       ${row('Average (map) speed', `${avg.toFixed(0)} km/h`)}
       ${row('Collisions', st.crashes)}
       ${st.pax ? row('Passengers carried', `${st.pax.carried}${st.pax.missed ? ` · ${st.pax.missed} missed` : ''}`) : ''}
-      <div class="row"><span>Passenger rating</span>${stars}</div>
+      ${st.pax ? `<div class="row"><span>Passenger rating</span>${stars}</div>` : ''}
     </div>`;
     if (money) {
       html += `<div class="arr-col">

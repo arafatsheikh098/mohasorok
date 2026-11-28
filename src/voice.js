@@ -65,6 +65,7 @@ class Voice {
   say(id, vars = {}) {
     const line = LINES[id];
     if (!line || !this.enabled) return false;
+    if (this.noPax && id.startsWith('pax.')) return false;     // a race: no passengers aboard
     const now = performance.now() / 1000;
     if (now - (this.lastAt[id] ?? -1e9) < line.cool) return false;
     if (this.playing?.id === id || this.queue.some((q) => q.id === id)) return false;

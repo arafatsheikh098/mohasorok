@@ -62,6 +62,7 @@ const counterMats = sharedMats(() => ({
 export class Passengers {
   constructor({ route, scene, chunks, hud, player, free = false }) {
     this.freeDrive = free;     // free drive: no passengers, no counters
+    this.race = false;         // a multiplayer race: nobody to pick up or drop, no passenger voices (set before reset())
     this.route = route; this.scene = scene; this.hud = hud; this.player = player;
     this.r = Math.random;
     this.counters = [];
@@ -351,18 +352,18 @@ export class Passengers {
     Object.assign(this.stats, { aboard: 0, capacity: this.capacity(), fares: 0, tips: 0, mood: MOOD.start, carried: 0, boarded: 0, missed: 0 });
     this.mood = MOOD.start;
     this.mt = { joltCool: 0, sayCool: 0, happyCool: 60, stillT: 0, crashes: this.player.crashes || 0, breaks: this.player.breaks || 0 };
-    this.player.pax = this.stats;
+    this.player.pax = this.race ? null : this.stats;     // (a race: no passenger stats on the arrival screen)
     // people waiting at the pickup counters (drop points only see people getting down)
     for (const c of this.counters) {
       c.waiting = []; c.announced = false; c.refillT = this._refillDelay();
-      if (c.role !== 'pickup') continue;
+      if (c.role !== 'pickup' || this.race) continue;
       const n = 4 + Math.floor(this.r() * 6);
       for (let k = 0; k < n; k++) this._addWaiting(c, false);
     }
     // the origin terminal crowd (they appear beside the door when it opens)
     const orig = this.ends[this.originEnd];
     this.originCrowd = [];
-    const n = this.freeDrive ? 0 : Math.round(this.capacity() * (0.55 + this.r() * 0.3));
+    const n = this.freeDrive || this.race ? 0 : Math.round(this.capacity() * (0.55 + this.r() * 0.3));
     for (let k = 0; k < n; k++) this.originCrowd.push(this._newPax(this.tripSide, orig.s));
     this._ui(true);
   }
@@ -450,6 +451,7 @@ export class Passengers {
   update(dt, input) {
     const p = this.player;
     if (!p.bus) return;
+    if (this.race) { this._prompt(false); return; }      // a race: no door, no boarding, no mood
     this.cool -= dt; this.leaveWarn -= dt;
     const still = Math.abs(p.phys.v) < 0.5;
     if (input.hit('KeyG') && !this.brk) {
@@ -740,7 +742,7 @@ export class Passengers {
       row.innerHTML = 'Mood <b id="trip-mood"></b>';
       const after = $('trip-rating')?.parentElement;
       if (after && after.parentElement === trip) after.after(row); else trip.appendChild(row);
-      if (this.freeDrive) row.style.display = 'none';     // (Explore: no passengers)
+      if (this.freeDrive || this.race) row.style.display = 'none';     // (Explore / a race: no passengers)
       el = $('trip-mood');
     }
     const v = this.stats.mood, face = v >= 80 ? '😊' : v >= 60 ? '🙂' : v >= 40 ? '😐' : v >= 20 ? '😟' : '😡';

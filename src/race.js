@@ -19,8 +19,8 @@ const SEND_HZ = 5;
 const clock = () => performance.timeOrigin + performance.now();
 const STALE = 6000;         // no update for this long: the ghost is hidden
 const AHEAD = 1.0;          // s a bus is carried on past its last update at most (0.6 for traffic)
-const LINK = 900, UNLINK = 1400;   // m: racers this close share one traffic (and drift apart past UNLINK)
-const REACH = 2400;                // m: the farthest the racer running the traffic may be (it covers its followers)
+const LINK = 2000, UNLINK = 2500; // m: racers this close share one traffic (and drift apart past UNLINK)
+const REACH = 3500;                // m: the farthest the racer running the traffic may be (it covers its followers)
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O, 1/I
 
 export const newCode = () => Array.from({ length: 5 }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join('');
