@@ -16,6 +16,7 @@ export const RACE_SERVER = import.meta.env?.VITE_RACE_SERVER || (PRIVATE_HOST.te
 
 export const RACE_COLORS = ['#ff8a1c', '#4fc3f7', '#3ddc84', '#ff5c8a', '#ffd54f', '#b388ff', '#80cbc4', '#ff7043'];
 const SEND_HZ = 5;
+const clock = () => performance.timeOrigin + performance.now();
 const STALE = 6000;         // no update for this long: the ghost is hidden
 const AHEAD = 1.0;          // s a bus is carried on past its last update at most (0.6 for traffic)
 const LINK = 900, UNLINK = 1400;   // m: racers this close share one traffic (and drift apart past UNLINK)
@@ -48,6 +49,7 @@ export class Race {
     this.ghosts = new Map();
     this.handlers = {};
     this.offset = 0;              // server clock − local clock (ms)
+    this.offTarget = 0;           // the latest estimate: offset slides there (a jump would jolt every ghost and vehicle)
     this.bestRtt = Infinity;
     this.sendT = 0;
     this.blinkT = 0;
@@ -63,7 +65,9 @@ export class Race {
   // the race is on and this game is in it
   get racing() { return this.room?.phase === 'race' && this.room.grid?.includes(this.you) && !this.results[this.you]; }
   get inRace() { return (this.room?.phase === 'race' || this.room?.phase === 'done') && this.room.grid?.includes(this.you); }
-  serverNow() { return Date.now() + this.offset; }
+  // a smooth sub-millisecond clock (Date.now() ticks in whole ms: at highway speed that alone shakes a shared
+  // vehicle by a couple of cm a frame)
+  serverNow() { return clock() + this.offset; }
   // ms until the green light (negative once the race is running)
   countdown() { return this.room?.startAt ? this.room.startAt - this.serverNow() : Infinity; }
   raceTime() { return Math.max(0, -this.countdown()) / 1000; }
@@ -99,9 +103,9 @@ export class Race {
       if (!this.room) this.emit('status', 'Connected — joining the race…');
       this.send({ t: 'hello', ...this.me });
       this.bestRtt = Infinity;
-      for (let k = 0; k < 5; k++) setTimeout(() => this.send({ t: 'ping', c: Date.now() }), k * 250);
+      for (let k = 0; k < 5; k++) setTimeout(() => this.send({ t: 'ping', c: clock() }), k * 250);
       clearInterval(this.pingTimer);
-      this.pingTimer = setInterval(() => this.send({ t: 'ping', c: Date.now() }), 8000);
+      this.pingTimer = setInterval(() => this.send({ t: 'ping', c: clock() }), 8000);
     };
     ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } this._msg(m); };
     ws.onclose = (e) => {
@@ -152,13 +156,13 @@ export class Race {
     switch (m.t) {
       case 'p': this._pos(m); break;
       case 'pong': {
-        const now = Date.now(), rtt = now - m.c;
+        const now = clock(), rtt = now - m.c;
         // the sample with the shortest round trip gives the best clock estimate
-        if (rtt <= this.bestRtt * 1.5 || rtt < 120) { this.bestRtt = Math.min(this.bestRtt, rtt); this.offset = m.s - (m.c + rtt / 2); }
+        if (rtt <= this.bestRtt * 1.5 || rtt < 120) { this.bestRtt = Math.min(this.bestRtt, rtt); this.offTarget = m.s - (m.c + rtt / 2); }
         break;
       }
       case 'welcome':
-        this.offset = m.now - Date.now();
+        this.offset = this.offTarget = m.now - clock();
         this.room = m.room; this.results = m.room.results || {};
         this.create = false;
         this.emit('change'); this.emit('room', m.room);
@@ -256,6 +260,8 @@ export class Race {
   // every frame: send our bus (while racing), move the ghosts
   update(dt, { bus, phys, flags, remainKm, night, camera, send, traffic }) {
     this.blinkT += dt;
+    const oe = this.offTarget - this.offset;
+    this.offset += Math.abs(oe) > 400 ? oe : THREE.MathUtils.clamp(oe, -30 * dt, 30 * dt);
     if (this.code && send && this.connected) {
       this.sendT -= dt;
       if (this.sendT <= 0) {
@@ -367,8 +373,17 @@ class Ghost {
   // its traffic: the latest snapshot, vehicle by vehicle; a vehicle's jump at a new snapshot is eased in too
   setTraffic(ts, list, now) {
     const m = new Map();
-    for (const a of list) m.set(a[0], { x: a[1] / 10, y: a[2] / 10, z: a[3] / 10, yaw: a[4] / 1000, v: a[5] / 10, f: a[6] });
-    const old = this.tr;
+    const old = this.tr, gap = old ? (ts - old.ts) / 1000 : 0;
+    for (const a of list) {
+      const e = { x: a[1] / 10, y: a[2] / 10, z: a[3] / 10, yaw: a[4] / 1000, v: a[5] / 10, f: a[6], w: 0 };
+      // how fast it is turning (from the last snapshot): carried on between snapshots, so a bus swinging into a
+      // fuel station or round a bend moves along its curve instead of in straight jerks
+      const o = old?.m.get(a[0]);
+      if (o && gap > 0.05 && gap < 0.8 && Math.hypot(e.x - o.x, e.z - o.z) < (Math.max(e.v, o.v) + 2) * gap + 1) {
+        e.w = THREE.MathUtils.clamp(Math.atan2(Math.sin(e.yaw - o.yaw), Math.cos(e.yaw - o.yaw)) / gap, -1.2, 1.2);
+      }
+      m.set(a[0], e);
+    }
     this.tr = { ts, m };
     if (!old) return;
     for (const [i] of m) {
@@ -382,8 +397,10 @@ class Ghost {
   _veh(tr, i, now) {
     const a = tr?.m.get(i);
     if (!a) return null;
-    const ex = THREE.MathUtils.clamp((now - tr.ts) / 1000, 0, 0.6);
-    return { ...a, x: a.x + Math.sin(a.yaw) * a.v * ex, z: a.z + Math.cos(a.yaw) * a.v * ex };
+    const ex = THREE.MathUtils.clamp((now - tr.ts) / 1000, 0, 0.6), w = a.w || 0, h1 = a.yaw + w * ex;
+    if (Math.abs(w * ex) < 1e-3) return { ...a, x: a.x + Math.sin(a.yaw) * a.v * ex, z: a.z + Math.cos(a.yaw) * a.v * ex };
+    // along the arc it is turning on
+    return { ...a, yaw: h1, x: a.x + (a.v / w) * (Math.cos(a.yaw) - Math.cos(h1)), z: a.z + (a.v / w) * (Math.sin(h1) - Math.sin(a.yaw)) };
   }
   vehicle(i, now) {
     const p = this._veh(this.tr, i, now);

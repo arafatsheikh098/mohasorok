@@ -666,7 +666,9 @@ export class Traffic {
       // inside an interchange only the trip's own carriageway exists: oncoming traffic is on other ramps there
       const ghost = v.dir < 0 && route.icZones?.some((z) => v.s > z.s0 - 4 && v.s < z.s1 + 4);
       v.wrap.visible = !ghost;
-      v.wrap.rotation.y = route.yawAt(v.s) + (v.dir < 0 ? Math.PI : 0) - Math.atan2(v.lv, Math.max(v.v, 2)) * v.dir * 0.8;
+      // facing: along the road, turned a little into a lane change; in a lot, along the path it is driving
+      const yo = v.rest && v.rest.phase !== 'approach' ? v.restYaw || 0 : Math.atan2(v.lv, Math.max(v.v, 2)) * 0.8;
+      v.wrap.rotation.y = route.yawAt(v.s) + (v.dir < 0 ? Math.PI : 0) - yo * v.dir;
       v.spin += (v.v / v.wheelR) * dt;
       for (const w of v.wheels) w.rotation.x = v.spin;
 
@@ -857,9 +859,10 @@ export class Traffic {
   }
   // drive along a smooth S from (s0, d0) to (s1, d1); returns the acceleration (for the brake lights)
   _restDrive(v, dt, player) {
-    const R = v.rest, smooth = (x) => x * x * (3 - 2 * x);
+    // the S is a smootherstep: the steering winds on and off gently (no snap at either end)
+    const R = v.rest, ease = (x) => x * x * x * (x * (x * 6 - 15) + 10), slope = (x) => 30 * x * x * (1 - x) * (1 - x);
     if (R.phase === 'park') {
-      v.v = 0; v.lv = 0; v.sig = 0;
+      v.v = 0; v.lv = 0; v.sig = 0; v.restYaw = 0;
       R.t -= dt;
       if (R.t <= 0) {
         const slowD = this.laneD(v.dir, false);
@@ -878,10 +881,12 @@ export class Traffic {
     const vT = R.phase === 'enter' ? Math.min(7.5, Math.sqrt(2 * 1.1 * Math.max(0, left)) + 0.3) : 4 + 6 * Math.min(1, 1 - left / len);
     const acc = THREE.MathUtils.clamp((vT - v.v) * 1.5, -3, 1.4);
     v.v = Math.max(0, v.v + acc * dt);
-    const dOld = v.d;
-    const u = THREE.MathUtils.clamp(((1 - left / len) - R.uA) / (R.uB - R.uA), 0, 1);
-    v.d = R.d0 + (R.d1 - R.d0) * smooth(u);
-    v.lv = (v.d - dOld) / Math.max(dt, 1e-3);
+    const span = Math.max(1, len * (R.uB - R.uA));
+    const x = ((1 - left / len) - R.uA) / (R.uB - R.uA), u = THREE.MathUtils.clamp(x, 0, 1);
+    v.d = R.d0 + (R.d1 - R.d0) * ease(u);
+    // heading straight from the path's slope (not from frame-to-frame steps, which twitch with uneven frame times)
+    const dds = x > 0 && x < 1 ? (R.d1 - R.d0) * slope(u) / span : 0;
+    v.lv = dds * v.v; v.restYaw = Math.atan(dds);
     v.sig = Math.abs(R.d1 - v.d) > 0.4 ? Math.sign((R.d1 - v.d) * v.dir) : 0;
     if (left <= 0.25) {
       if (R.phase === 'enter') {
@@ -891,7 +896,7 @@ export class Traffic {
       } else {
         // back on the highway
         R.slot.v = null; v.rest = null;
-        v.d = v.targetD = v.fromD = R.d1; v.lv = 0; v.sig = 0; v.cool = 3;
+        v.d = v.targetD = v.fromD = R.d1; v.lv = 0; v.sig = 0; v.cool = 3; v.restYaw = 0;
       }
     }
     return acc;
