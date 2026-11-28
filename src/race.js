@@ -1,8 +1,10 @@
 // Race with friends: one room code, the same start terminal and destination, everyone's bus on everyone's road.
 //
 // The room lives on a small relay server (race-server/, a free Cloudflare Worker). Each game sends its own
-// bus 5 times a second; the other buses are drawn as "ghosts" (they pass through you and your traffic),
-// shown about a third of a second in the past so they can be smoothed between updates.
+// bus 5 times a second. The other buses are solid: they are drawn where they are now (carried on from their last
+// update along their heading, any correction eased in), and you can hit them. Racers near each other drive in the
+// same traffic: the one first on the grid runs it and sends it with its bus (`tr`), the others place their own
+// copy of every vehicle there (traffic.js updatePuppets).
 import * as THREE from 'three';
 import { buildBus, setBusLights } from './busModel.js';
 import { OPERATORS } from './operators.js';
@@ -14,8 +16,9 @@ export const RACE_SERVER = import.meta.env?.VITE_RACE_SERVER || (PRIVATE_HOST.te
 
 export const RACE_COLORS = ['#ff8a1c', '#4fc3f7', '#3ddc84', '#ff5c8a', '#ffd54f', '#b388ff', '#80cbc4', '#ff7043'];
 const SEND_HZ = 5;
-const DELAY = 320;          // ms the ghosts are drawn behind real time (a bit more than one update)
 const STALE = 6000;         // no update for this long: the ghost is hidden
+const AHEAD = 1.0;          // s a bus is carried on past its last update at most (0.6 for traffic)
+const LINK = 900, UNLINK = 1400;   // m: racers this close share one traffic (and drift apart past UNLINK)
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O, 1/I
 
 export const newCode = () => Array.from({ length: 5 }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join('');
@@ -192,14 +195,56 @@ export class Race {
   _pos(m) {
     const g = this.ghosts.get(m.id);
     if (!g) return;
+    const now = this.serverNow();
+    const before = g.snaps.length ? g.sample(now) : null;
     g.snaps.push(m);
     if (g.snaps.length > 30) g.snaps.shift();
+    g.snaps.sort((a, b) => a.ts - b.ts);
+    // the new update moves where the bus is drawn: ease that jump in instead of snapping
+    const after = g.sample(now);
+    if (before && after && Math.hypot(before.x - after.x, before.z - after.z) < 8) {
+      g.err.x += before.x - after.x; g.err.z += before.z - after.z; g.err.y += before.y - after.y;
+      g.err.ry += Math.atan2(Math.sin(before.ry - after.ry), Math.cos(before.ry - after.ry));
+    } else g.err = { x: 0, y: 0, z: 0, ry: 0 };
+    if (m.tr) g.setTraffic(m.ts, m.tr, now);
+    g.last = m;
     g.km = m.km;
-    g.seen = this.serverNow();
+    g.seen = now;
+  }
+  // the racer whose traffic this game drives in (null: this game runs its own): the one first on the grid of the
+  // racers near this bus that run their own traffic
+  trafficMaster(x, z) {
+    if (!this.inRace) { this.master = null; return null; }
+    const mine = this.slot(), now = this.serverNow();
+    let best = null;
+    for (const [id, g] of this.ghosts) {
+      if (!g.show || !g.cur || !g.last?.tm || now - (g.seen || 0) > 1500) continue;
+      const k = this.slot(id);
+      if (k >= mine) continue;
+      if (Math.hypot(g.cur.x - x, g.cur.z - z) < (id === this.master ? UNLINK : LINK) && (best === null || k < this.slot(best))) best = id;
+    }
+    this.master = best;
+    return best;
+  }
+  // has that racer's traffic arrived (and is it fresh)? Until it has, this game keeps running its own
+  hasTraffic(id) { const g = this.ghosts.get(id); return !!g?.tr && this.serverNow() - g.tr.ts < 1500; }
+  // vehicle i of the master's traffic, now: { x, y, z, yaw, v, f } or null
+  trafficState(id, i) { return this.ghosts.get(id)?.vehicle(i, this.serverNow()) ?? null; }
+  // the other racers' buses as they are drawn now, within `r` m of (x, z): for collisions and for the traffic
+  near(x, z, r) {
+    const out = [];
+    for (const [id, g] of this.ghosts) {
+      if (!g.show || !g.cur || !g.bus.root.visible) continue;
+      if (Math.hypot(g.cur.x - x, g.cur.z - z) > r) continue;
+      const sp = g.bus.spec;
+      out.push({ id, name: g.name, x: g.cur.x, z: g.cur.z, yaw: g.cur.ry, v: g.cur.v,
+        box: { x: g.cur.x + Math.sin(g.cur.ry) * sp.center, z: g.cur.z + Math.cos(g.cur.ry) * sp.center, yaw: g.cur.ry, hw: sp.W / 2 - 0.04, hl: sp.L / 2 - 0.05 }, len: sp.L });
+    }
+    return out;
   }
 
   // every frame: send our bus (while racing), move the ghosts
-  update(dt, { bus, phys, flags, remainKm, night, camera, send }) {
+  update(dt, { bus, phys, flags, remainKm, night, camera, send, traffic }) {
     this.blinkT += dt;
     if (this.code && send && this.connected) {
       this.sendT -= dt;
@@ -209,15 +254,22 @@ export class Race {
         let f = 0;
         for (const k in F) if (flags[k]) f |= F[k];
         this.send({ t: 'p', ts: Math.round(this.serverNow()), x: r2(r.position.x), y: r2(r.position.y), z: r2(r.position.z),
-          ry: r3(r.rotation.y), rx: r3(r.rotation.x), rz: r3(r.rotation.z), bp: r3(pv.x), br: r3(pv.z), st: r3(phys.steer), v: r2(phys.v), f, km: Math.round(remainKm * 10) / 10 });
+          ry: r3(r.rotation.y), rx: r3(r.rotation.x), rz: r3(r.rotation.z), bp: r3(pv.x), br: r3(pv.z), st: r3(phys.steer), v: r2(phys.v), f, km: Math.round(remainKm * 10) / 10,
+          // tm: this game runs its own traffic; tr: that traffic, while a racer near this bus drives in it
+          tm: this.master ? 0 : 1, ms: this.master || undefined, tr: !this.master && traffic && this._followed(r.position) ? traffic.snapshot() : undefined });
       }
     }
-    const rt = this.serverNow() - DELAY, blink = (this.blinkT % 0.8) < 0.4;
+    const rt = this.serverNow(), blink = (this.blinkT % 0.8) < 0.4;
     const racingPhase = this.room?.phase === 'race' || this.room?.phase === 'done';
     for (const [id, g] of this.ghosts) {
       g.show = racingPhase && this.room.grid?.includes(id) && this.serverNow() - (g.seen || 0) < STALE;
       g.update(dt, rt, { night, blink, camera, color: this.color(id) });
     }
+  }
+  // is a racer near this bus driving in this game's traffic?
+  _followed(p) {
+    for (const g of this.ghosts.values()) if (g.show && g.cur && g.last?.ms === this.you && Math.hypot(g.cur.x - p.x, g.cur.z - p.z) < UNLINK + 200) return true;
+    return false;
   }
   // the others, for the minimap and the big map
   friends() {
@@ -246,6 +298,9 @@ class Ghost {
     this.snaps = [];
     this.spin = 0;
     this.show = false;
+    this.err = { x: 0, y: 0, z: 0, ry: 0 };     // drawn minus predicted, eased away
+    this.cur = null;                             // where it is drawn now
+    this.tr = null; this.trErr = new Map();      // its traffic (when it runs the traffic near us)
     const op = OPERATORS.find((o) => o.id === p.op && !o.custom) || OPERATORS.find((o) => o.en === p.opName && !o.custom) || OPERATORS[0];
     try {
       this.bus = buildBus(p.type || 'ak1j', op, { texScale: 0.5, seed: 300 + Math.floor(Math.random() * 99) });
@@ -289,18 +344,54 @@ class Ghost {
     for (let k = S.length - 1; k >= 0; k--) if (S[k].ts <= rt) { a = S[k]; b = S[k + 1] || null; break; }
     if (rt < S[0].ts) return { ...S[0] };
     if (!b) {
-      // no newer update yet: keep it moving along its heading for up to 0.6 s
-      const ex = Math.min(0.6, (rt - a.ts) / 1000);
+      // no newer update yet (the usual case: it is drawn now): carry it on along its heading
+      const ex = Math.min(AHEAD, (rt - a.ts) / 1000);
       return { ...a, x: a.x + Math.sin(a.ry) * a.v * ex, z: a.z + Math.cos(a.ry) * a.v * ex };
     }
     const t = (rt - a.ts) / Math.max(1, b.ts - a.ts);
     const L = (k) => a[k] + (b[k] - a[k]) * t;
     return { ...b, x: L('x'), y: L('y'), z: L('z'), ry: lerpAngle(a.ry, b.ry, t), rx: L('rx'), rz: L('rz'), bp: L('bp'), br: L('br'), st: L('st'), v: L('v') };
   }
+  // its traffic: the latest snapshot, vehicle by vehicle; a vehicle's jump at a new snapshot is eased in too
+  setTraffic(ts, list, now) {
+    const m = new Map();
+    for (const a of list) m.set(a[0], { x: a[1] / 10, y: a[2] / 10, z: a[3] / 10, yaw: a[4] / 1000, v: a[5] / 10, f: a[6] });
+    const old = this.tr;
+    this.tr = { ts, m };
+    if (!old) return;
+    for (const [i] of m) {
+      const was = this._veh(old, i, now), nw = this._veh(this.tr, i, now);
+      if (!was || !nw || Math.hypot(was.x - nw.x, was.z - nw.z) > 6) { this.trErr.delete(i); continue; }
+      const e = this.trErr.get(i) || { x: 0, z: 0, yaw: 0, t: now };
+      const k = Math.exp(-8 * Math.max(0, now - e.t) / 1000);
+      this.trErr.set(i, { x: e.x * k + was.x - nw.x, z: e.z * k + was.z - nw.z, yaw: e.yaw * k + Math.atan2(Math.sin(was.yaw - nw.yaw), Math.cos(was.yaw - nw.yaw)), t: now });
+    }
+  }
+  _veh(tr, i, now) {
+    const a = tr?.m.get(i);
+    if (!a) return null;
+    const ex = THREE.MathUtils.clamp((now - tr.ts) / 1000, 0, 0.6);
+    return { ...a, x: a.x + Math.sin(a.yaw) * a.v * ex, z: a.z + Math.cos(a.yaw) * a.v * ex };
+  }
+  vehicle(i, now) {
+    const p = this._veh(this.tr, i, now);
+    if (!p) return null;
+    const e = this.trErr.get(i);
+    if (e) {
+      const k = Math.exp(-8 * Math.max(0, now - e.t) / 1000);
+      p.x += e.x * k; p.z += e.z * k; p.yaw += e.yaw * k;
+    }
+    return p;
+  }
   update(dt, rt, { night, blink, camera, color }) {
     const s = this.show ? this.sample(rt) : null;
     const bus = this.bus;
-    if (!s) { bus.root.visible = false; this.tag.visible = false; return; }
+    if (!s) { bus.root.visible = false; this.tag.visible = false; this.cur = null; return; }
+    // the correction from the last update, eased away over ~0.15 s
+    const k = Math.exp(-7 * dt);
+    this.err.x *= k; this.err.y *= k; this.err.z *= k; this.err.ry *= k;
+    s.x += this.err.x; s.y += this.err.y; s.z += this.err.z; s.ry += this.err.ry;
+    this.cur = s;
     const dist = camera ? camera.position.distanceTo(bus.root.position) : 0;
     bus.root.visible = dist < 3200;
     bus.root.position.set(s.x, s.y, s.z);

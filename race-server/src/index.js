@@ -82,7 +82,7 @@ export class RaceRoom extends DurableObject {
   }
 
   async webSocketMessage(ws, raw) {
-    if (typeof raw !== 'string' || raw.length > 2000) return;
+    if (typeof raw !== 'string' || raw.length > 8000) return;      // (a position carries the shared traffic too: ~2 KB)
     let m;
     try { m = JSON.parse(raw); } catch { return; }
     const me = ws.deserializeAttachment();

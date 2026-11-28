@@ -19,7 +19,10 @@ Race your friends from one terminal to another, each on their own phone or PC. I
 4. All the buses start at the same terminal. The first bus to stop in the destination terminal wins. You can turn at any junction and take your own way.
 
 - Up to **8 players** in a room.
-- The other players' buses are ghosts, so you can't crash into each other. Live standings show while you drive, and the arrival card shows the results with times and fines.
+- **Solid buses:** you can bump into each other, with crash damage like any other collision.
+- **The same traffic for everyone:** while you're within about 1 km of each other, every truck, car and bus is in the same place on all your screens. The traffic reacts to every racer's bus.
+- Live standings show while you drive, and the arrival card shows the results with times and fines.
+- Took a wrong turn? "Remaining" counts the real way back, and turning round routes you back to the destination.
 
 ## Features (v2)
 - **The whole country:** all 64 zilla towns (plus Teknaf, Benapole and Kuakata) on the national and regional highways N1–N8 and more, compressed 1:12, with real kilometres shown.

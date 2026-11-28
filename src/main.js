@@ -980,6 +980,58 @@ function events(dt) {
 }
 
 const AI_MASS = { bus: 15000, truck: 14000, car: 1300, micro: 2000, cng: 450 };
+
+// ---------- racing: one traffic for racers near each other, and solid buses ----------
+// The racer first on the grid of those near each other runs the traffic (with the others' buses in it, so it
+// brakes behind them and cannot drive through them) and sends it; the others drive in that same traffic.
+const RACE_TRAFFIC = 34;          // every racer builds the same pool of vehicles (count and operators)
+function raceTraffic(dt, night, dim) {
+  const ph = player.phys;
+  const master = raceRun && race.inRace ? race.trafficMaster(ph.pos.x, ph.pos.z) : null;
+  // (linked as soon as that racer is near; its traffic is used once it arrives, the next update or so)
+  const shared = master && race.hasTraffic(master) ? master : null;
+  if (shared !== player.trafficMaster) {
+    const p = race.players.find((x) => x.id === shared);
+    if (shared && p) hud.toast(`🔗 Same traffic as <b>${p.name}</b> — you both see every vehicle in the same place`, 'good', 3000);
+    player.trafficMaster = shared;
+  }
+  if (shared) {
+    traffic.others = []; traffic.anchors = null;
+    handleCrashes(traffic.updatePuppets(dt, player, night, dim, (i) => race.trafficState(shared, i)));
+  } else {
+    if (traffic.puppet) traffic.release(player.s);
+    raceOthers();
+    handleCrashes(traffic.update(dt, player, night, dim));
+  }
+  if (raceRun && race.inRace) racerCrashes();
+}
+// the other racers' buses on this road, for the traffic (and where the traffic has to be: around all of them)
+function raceOthers() {
+  traffic.others = []; traffic.anchors = null;
+  if (!raceRun || !race.inRace) return;
+  const ph = player.phys;
+  let lo = player.s, hi = player.s;
+  for (const o of race.near(ph.pos.x, ph.pos.z, 1600)) {
+    const pr = route.project(o.box.x, o.box.z);
+    if (Math.abs(pr.d) > route.halfAt(pr.s) + 6) continue;          // not on this road (another road at a junction)
+    const [tx, tz] = route.tangentAt(pr.s);
+    traffic.others.push({ s: pr.s, d: pr.d, len: o.len, v: o.v * (Math.sin(o.yaw) * tx + Math.cos(o.yaw) * tz), box: o.box });
+    lo = Math.min(lo, pr.s); hi = Math.max(hi, pr.s);
+  }
+  if (traffic.others.length) traffic.anchors = { lo, hi };
+}
+// bumping into another racer's bus: both buses are solid (each game moves its own bus out of the other)
+function racerCrashes() {
+  const ph = player.phys;
+  for (const o of race.near(ph.pos.x, ph.pos.z, 40)) {
+    const n = obbOverlap(player.box, o.box);
+    if (!n) continue;
+    const pr = route.project(o.box.x, o.box.z);
+    const [tx, tz] = route.tangentAt(pr.s);
+    const along = Math.sin(o.yaw) * tx + Math.cos(o.yaw) * tz;
+    handleCrashes([{ v: { K: { kind: 'bus' }, label: `${o.name}'s bus`, s: pr.s, d: pr.d, targetD: pr.d, dir: along >= 0 ? 1 : -1, v: Math.abs(o.v * along), len: o.len }, n, box: o.box, racer: true }]);
+  }
+}
 const KIND_NAME = { bus: 'bus', truck: 'truck', car: 'car', micro: 'microbus', cng: 'CNG auto-rickshaw' };
 
 // player bounding box (world x/z) used by the traffic collision test
@@ -1047,7 +1099,7 @@ function handleCrashes(crashes) {
       player.fines += dmg;
       audio.crash(closing);
       rig.shake = Math.min(1, closing / 8);
-      hud.toast(`Collision with a ${KIND_NAME[v.K.kind]} at ${Math.round(kmh)} km/h! Damage ৳ ${dmg.toLocaleString('en-IN')}`, 'bad');
+      hud.toast(`Collision with ${v.label || `a ${KIND_NAME[v.K.kind]}`} at ${Math.round(kmh)} km/h! Damage ৳ ${dmg.toLocaleString('en-IN')}`, 'bad');
       crashVoice();
     }
   }
@@ -1454,10 +1506,12 @@ function startDrive(isRace = false) {
   }
   undoPerfSteps(); gfxLabel();       // (a new drive starts at the full chosen level)
   applyQuality();
-  if (traffic.list.length !== settings.traffic || traffic.opCount !== OPERATORS.length) {
+  // (a race: every racer the same pool, vehicle by vehicle, so they can share one traffic)
+  const want = raceRun ? RACE_TRAFFIC : settings.traffic, opKey = raceRun ? 'race' : OPERATORS.length;
+  if (traffic.list.length !== want || traffic.opCount !== opKey) {
     for (const v of traffic.list) scene.remove(v.wrap);
-    traffic = new Traffic(route, scene, settings.traffic, settings.op.id, audio, facilities.gates); traffic.camera = camera;
-    traffic.opCount = OPERATORS.length;
+    traffic = new Traffic(route, scene, want, settings.op.id, audio, facilities.gates, { builtinOnly: raceRun }); traffic.camera = camera;
+    traffic.opCount = opKey;
     linkTraffic();
   }
   restartTrip();
@@ -1539,7 +1593,7 @@ function raceRemainKm() { return tripLeft(); }
 function raceFrame(dt) {
   if (!race.code) { if (raceRun) raceRun = false; raceUI?.board(false); return; }
   const ph = player.phys, sending = raceRun && race.inRace && (state === 'drive' || state === 'paused' || state === 'arrived');
-  race.update(dt, { bus: player.bus, phys: ph, remainKm: raceRemainKm(), night: sky.night, camera, send: sending,
+  race.update(dt, { bus: player.bus, phys: ph, remainKm: raceRemainKm(), night: sky.night, camera, send: sending, traffic,
     flags: { head: player.lights, high: player.high, fog: player.fog, brake: ph.brake > 0.1 || input.handbrake, indL: player.indL, indR: player.indR, reverse: ph.gear < 0 } });
   if (raceRun) raceUI.countdown(race.countdown(), {
     onBeep: (go) => { audio.tick(true); if (go) setTimeout(() => audio.tick(false), 120); },
@@ -1636,7 +1690,8 @@ function frame(now) {
     indicatorLogic(dt);
     facilities.update(dt);
     updatePlayerBox();
-    handleCrashes(traffic.update(dt, player, night, sky.hour > 17.4 || sky.hour < 6.4 || (player.weather?.fog ?? 0) > 0.45 || (player.weather?.rain ?? 0) > 0.6));   // lights on in fog / heavy rain
+    const dimAI = sky.hour > 17.4 || sky.hour < 6.4 || (player.weather?.fog ?? 0) > 0.45 || (player.weather?.rain ?? 0) > 0.6;   // lights on in fog / heavy rain
+    raceTraffic(dt, night, dimAI);
     audio.horn(input.horn);
     player.blinkT += dt;
     const blink = (player.blinkT % 0.8) < 0.4;
@@ -1674,6 +1729,8 @@ function frame(now) {
   } else if (state === 'menu') {
     // showroom orbit with the bus on the right half of the screen
     menuT += dt;
+    if (traffic.puppet) { traffic.release(player.s); player.trafficMaster = null; }
+    traffic.others = []; traffic.anchors = null;
     traffic.update(dt, player, night, sky.hour > 17.4 || sky.hour < 6.4);
     aicams.update(dt, aiCamVehicles(false));
     setBusLights(player.bus, { head: player.lights, high: player.high, fog: player.fog, night });
@@ -1764,7 +1821,7 @@ async function boot() {
   state = 'menu';
   requestAnimationFrame(frame);
   console.info(`[mohasorok] route ${(route.length / 1000).toFixed(1)} km game, ${route.places.length} places, ${route.bridges.length} bridges`);
-  window.__game = { get route() { return route; }, player, tripLeft, reroute, get state() { return state; }, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
+  window.__game = { get route() { return route; }, player, tripLeft, reroute, race, get state() { return state; }, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
     teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); stream.buildNow(s, d < 0 ? 1 : -1); netRoads.buildNow(player.phys.pos.x, player.phys.pos.z); traffic.init(s); }, get stream() { return stream; }, get netRoads() { return netRoads; }, get net() { return net; }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; }, get passengers() { return passengers; },
     // debug: which meshes are under screen pixel (px, py)
     pick(px, py) {

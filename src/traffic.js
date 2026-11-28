@@ -57,8 +57,12 @@ export function jamLevel(zone, s, hour) {
 }
 
 export class Traffic {
-  constructor(route, scene, count, playerOpId, audio, gates = []) {
+  constructor(route, scene, count, playerOpId, audio, gates = [], opts = {}) {
     this.gates = gates;
+    // shared traffic in a race (see updatePuppets / snapshot): the other racers' buses, and the stretch to cover
+    this.others = [];
+    this.anchors = null;
+    this.puppet = false;
     this.route = route;
     this.scene = scene;
     this.audio = audio;
@@ -66,7 +70,8 @@ export class Traffic {
     this.list = [];
     this.r = rng(4242);
     const r = this.r;
-    const ops = OPERATORS;
+    // (a race: built-in operators only, so every racer's pool of vehicles is the same, vehicle by vehicle)
+    const ops = opts.builtinOnly ? OPERATORS.filter((o) => !o.custom) : OPERATORS;
     const types = Object.keys(BUS_TYPES);
     for (let i = 0; i < count; i++) {
       let x = r(), K = KINDS[0];
@@ -287,6 +292,7 @@ export class Traffic {
     }
     const pds = (player.s - v.s) * v.dir;
     if (player.box && pds > -10 && pds < need && Math.abs(player.d - lane) < 3.2 && (player.side < 0) !== (v.dir > 0)) return false;
+    for (const o of this.others) { const ds = (o.s - v.s) * v.dir; if (ds > -10 && ds < need && Math.abs(o.d - lane) < 3.2 && o.v * v.dir < 0.5) return false; }
     return true;
   }
 
@@ -308,9 +314,10 @@ export class Traffic {
     if (this._jamSpawn(v, playerS, initial)) return this._afterSpawn(v);
     for (let tries = 0; tries < 12; tries++) {
       let s;
+      const hiS = Math.max(playerS, this.anchors?.hi ?? playerS), loS = Math.min(playerS, this.anchors?.lo ?? playerS);
       if (initial) s = playerS + (r() < 0.25 ? -(80 + r() * 700) : 60 + r() * 1500);
-      else if (v.dir > 0) s = r() < 0.8 ? playerS + 1150 + r() * 450 : playerS - 700 - r() * 250;
-      else s = playerS + 1200 + r() * 500;
+      else if (v.dir > 0) s = r() < 0.8 ? hiS + 1150 + r() * 450 : loS - 700 - r() * 250;
+      else s = hiS + 1200 + r() * 500;
       s = THREE.MathUtils.clamp(s, 20, this.route.length - 20);
       if (Math.abs(s - playerS) < 40 || this.route.ferryAt(s)) continue;
       if (this.list.every((o) => o === v || o.dir !== v.dir || Math.abs(o.d - v.d) > 2 || Math.abs(o.s - s) > 30)) { v.s = s; break; }
@@ -323,12 +330,13 @@ export class Traffic {
 
   _jamSpawn(v, ps, initial) {
     const r = this.r, hour = roadState.hour;
+    const hi = Math.max(ps, this.anchors?.hi ?? ps), lo = Math.min(ps, this.anchors?.lo ?? ps);
     for (const z of jamZones(this.route)) {
       const mid = (z.s0 + z.s1) / 2, lvl = Math.max(z.base, rushLevel(hour));
-      if (lvl < 0.3 || z.s1 < ps - 1100 || z.s0 > ps + 1750) continue;
+      if (lvl < 0.3 || z.s1 < lo - 1100 || z.s0 > hi + 1750) continue;
       if (r() > 0.6 * lvl) continue;
       // where in the zone we may pop a vehicle in without the player seeing it
-      const ranges = initial ? [[z.s0, z.s1]] : [[Math.max(z.s0, ps + 900), Math.min(z.s1, ps + 1750)], [Math.max(z.s0, ps - 1050), Math.min(z.s1, ps - 650)]];
+      const ranges = initial ? [[z.s0, z.s1]] : [[Math.max(z.s0, hi + 900), Math.min(z.s1, hi + 1750)], [Math.max(z.s0, lo - 1050), Math.min(z.s1, lo - 650)]];
       const ok = ranges.filter(([a, b]) => b - a > 20);
       if (!ok.length) continue;
       const [a, b] = ok[Math.floor(r() * ok.length)];
@@ -389,6 +397,7 @@ export class Traffic {
       if (Math.abs(o.d - d) < 2.4 || Math.abs(o.targetD - d) < 1.0) look(o.s, o.len, o.v, false, o);
     }
     if (player.box && Math.abs(player.d - d) < 2.6) look(player.s, player.len, (player.vs ?? player.v) * v.dir, true);
+    for (const o of this.others) if (Math.abs(o.d - d) < 2.6) look(o.s, o.len, o.v * v.dir, true);
     return g;
   }
 
@@ -422,8 +431,8 @@ export class Traffic {
       // turning off into a side road / coming in from one: driven along the side road, not the corridor
       if (v.turn || v.merge) { this._sideDrive(v, dt, player, dim, crashes); continue; }
       // recycle
-      const rel = (v.s - ps);
-      if (rel > 1800 || rel < -1100 || v.s <= 5 || v.s >= route.length - 5) this.spawn(v, ps, false);
+      const hiS = Math.max(ps, this.anchors?.hi ?? ps), loS = Math.min(ps, this.anchors?.lo ?? ps);
+      if (v.s - hiS > 1800 || v.s - loS < -1100 || v.s <= 5 || v.s >= route.length - 5) this.spawn(v, ps, false);
       if (v.merge) continue;
 
       // leader: in our lane, or in the lane we are moving into
@@ -605,7 +614,8 @@ export class Traffic {
         const danger = this.list.some((o) => o !== v && o.dir !== v.dir && !o.turn && !o.merge && Math.abs(o.d - lane) < 3 &&
           (o.s - v.s) * v.dir > 0 && (o.s - v.s) * v.dir < (v.v + o.v) * 3.5 + 25) ||
           (player.box && (player.s - v.s) * v.dir > 0 && (player.s - v.s) * v.dir < (v.v + Math.abs(player.v)) * 3.5 + 25 &&
-            Math.abs(player.d - lane) < 3 && (player.side < 0) !== (v.dir > 0));
+            Math.abs(player.d - lane) < 3 && (player.side < 0) !== (v.dir > 0)) ||
+          this.others.some((o) => (o.s - v.s) * v.dir > 0 && (o.s - v.s) * v.dir < (v.v + Math.abs(o.v)) * 3.5 + 25 && Math.abs(o.d - lane) < 3 && o.v * v.dir < 0.5);
         if (danger) { v.plan = null; v.fromD = v.targetD; v.targetD = this.laneD(v.dir, false); v.cool = 2.5; if (v.v > 12) this.flash(v); }
       }
       // in the fast lane behind a slowcoach (often the player): flash the high beam and lean on the horn
@@ -678,6 +688,7 @@ export class Traffic {
       }
       if (v.isBus) setBusLights(v.model, { head: beam > 0, high: beam === 2, brake: braking, indL, indR, night: dim });
       else setVehicleLights(v.model, { head: beam > 0, high: beam === 2, brake: braking, indL, indR });
+      v.lf = (beam > 0 ? 1 : 0) | (beam === 2 ? 2 : 0) | (braking ? 4 : 0) | (v.sig < 0 || hazard ? 8 : 0) | (v.sig > 0 || hazard ? 16 : 0);
       if (this.camera) {
         const fc = facingCamera(v.wrap, this.camera);
         updateLampGlow(v.glow, { beam, night: dim, indL, indR, facing: fc.facing, dist: fc.dist });
@@ -698,8 +709,93 @@ export class Traffic {
         const n = obbOverlap(player.box, box);
         if (n) crashes.push({ v, n, box });
       }
+      for (const o of this.others) {
+        if (ghost || !o.box || Math.abs(v.s - o.s) > (v.len + o.len) / 2 + 3) continue;
+        const box = { x: v.wrap.position.x, z: v.wrap.position.z, yaw: v.wrap.rotation.y, hw: v.wid / 2 - 0.04, hl: v.len / 2 - 0.06 };
+        const n = obbOverlap(o.box, box);
+        if (!n) continue;
+        // pushed back out of the racer's bus, and no faster than it along the road
+        const [tx, tz] = route.tangentAt(v.s);
+        v.s += (n.nx * tx + n.nz * tz) * n.depth; v.d += (n.nx * -tz + n.nz * tx) * n.depth;
+        v.v = Math.min(v.v, Math.max(0, o.v * v.dir));
+      }
     }
     return crashes;
+  }
+
+  // ------------------------------------------------------------ shared traffic (racing)
+  // In a race, racers near each other drive in the same traffic: one game runs it (update, with the other racers'
+  // buses in this.others) and sends where every vehicle is (snapshot); the others place their own copy of each
+  // vehicle there (updatePuppets). Every game builds the same pool, vehicle by vehicle, so only positions travel.
+  snapshot() {
+    const out = [];
+    this.list.forEach((v, i) => {
+      if (!v.wrap.visible) return;
+      const p = v.wrap.position;
+      out.push([i, Math.round(p.x * 10), Math.round(p.y * 10), Math.round(p.z * 10), Math.round(v.wrap.rotation.y * 1000), Math.round(v.v * 10), v.lf || 0]);
+    });
+    return out;
+  }
+  // place every vehicle where the game running the traffic has it. state(i) → { x, y, z, yaw, v, f } or null (not
+  // on the road there). s / d / dir are worked out on this game's own road, for the minimap, mirrors, AI cameras and
+  // the crash response.
+  updatePuppets(dt, player, night, dim, state) {
+    const crashes = [], route = this.route;
+    this.puppet = true;
+    this.list.forEach((v, i) => {
+      const st = state(i);
+      if (!st) { v.wrap.visible = false; v.pHidden = true; v.s = v.prevS = -1e6; v.v = 0; return; }
+      v.wrap.visible = true;
+      v.wrap.position.set(st.x, st.y, st.z);
+      v.wrap.rotation.y = st.yaw;
+      const pr = route.project(st.x, st.z, v.pHint ?? -1);
+      v.pHint = pr.index;
+      v.prevS = v.pHidden || Math.abs(pr.s - v.s) > 60 ? pr.s : v.s;      // (a vehicle just placed never "passes" a camera)
+      v.pHidden = false;
+      v.s = pr.s; v.d = v.targetD = v.fromD = pr.d;
+      const [tx, tz] = route.tangentAt(pr.s);
+      v.dir = Math.sin(st.yaw) * tx + Math.cos(st.yaw) * tz >= 0 ? 1 : -1;
+      v.v = Math.max(0, st.v); v.lv = 0;
+      v.turn = v.merge = v.plan = v.rest = null;
+      v.spin += (v.v / v.wheelR) * dt;
+      for (const w of v.wheels) w.rotation.x = v.spin;
+      const f = st.f, beam = f & 2 ? 2 : f & 1 ? 1 : 0;
+      v.blinkT += dt;
+      const blinkOn = (v.blinkT % v.blinkP) < v.blinkP * 0.5;
+      const indL = !!(f & 8) && blinkOn, indR = !!(f & 16) && blinkOn;
+      v.sig = f & 8 ? -1 : f & 16 ? 1 : 0;
+      if (v.isBus) setBusLights(v.model, { head: beam > 0, high: beam === 2, brake: !!(f & 4), indL, indR, night: dim });
+      else setVehicleLights(v.model, { head: beam > 0, high: beam === 2, brake: !!(f & 4), indL, indR });
+      if (this.camera) {
+        const fc = facingCamera(v.wrap, this.camera);
+        updateLampGlow(v.glow, { beam, night: dim, indL, indR, facing: fc.facing, dist: fc.dist });
+      }
+      if (player.box && Math.hypot(st.x - player.box.x, st.z - player.box.z) < (v.len + player.len) / 2 + 3) {
+        const box = { x: st.x, z: st.z, yaw: st.yaw, hw: v.wid / 2 - 0.04, hl: v.len / 2 - 0.06 };
+        const n = obbOverlap(player.box, box);
+        if (n) crashes.push({ v, n, box, puppet: true });
+      }
+    });
+    void night;
+    return crashes;
+  }
+  // back to running the traffic here: every vehicle carries on from where it was (on this game's road, in the
+  // nearest lane of its direction), or comes in again out of sight if it is not on this road
+  release(ps) {
+    if (!this.puppet) return;
+    this.puppet = false;
+    const route = this.route;
+    for (const v of this.list) {
+      v.wrap.visible = true;
+      const ok = !v.pHidden && v.s > 20 && v.s < route.length - 20 && Math.abs(v.d) < route.halfAt(v.s) &&
+        Math.sign(v.d) === Math.sign(this.laneD(v.dir, false, v.s)) && Math.abs(v.s - ps) < 1700;
+      if (!ok) { this.spawn(v, ps, false); continue; }
+      this._cv = v;
+      const fast = Math.abs(v.d - this.laneD(v.dir, true, v.s)) < Math.abs(v.d - this.laneD(v.dir, false, v.s));
+      v.targetD = v.fromD = this.laneD(v.dir, fast && !route.prof(v.s).two, v.s);
+      v.v0 ||= v.K.v[0]; v.agg ??= 0.5; v.shoulder = false; v.broken = false;
+      this._afterSpawn(v);
+    }
   }
 
   // ------------------------------------------------------------ rest stops & fuel stations
