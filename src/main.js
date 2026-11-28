@@ -989,7 +989,16 @@ const AI_MASS = { bus: 15000, truck: 14000, car: 1300, micro: 2000, cng: 450 };
 // ---------- racing: one traffic for racers near each other, and solid buses ----------
 // The racer first on the grid of those near each other runs the traffic (with the others' buses in it, so it
 // brakes behind them and cannot drive through them) and sends it; the others drive in that same traffic.
-const RACE_TRAFFIC = 44;          // every racer builds the same pool of vehicles (count and operators)
+// Every racer builds the same pool of vehicles (same operators, vehicle by vehicle), and a smaller pool is the start
+// of a bigger one, so each device takes what it can carry: a racer with fewer vehicles shows the first ones of the
+// shared traffic, and the vehicles a smaller pool lacks are just not on the road for the others.
+const LOW_MEM = IS_PHONE || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+const RACE_TRAFFIC = LOW_MEM ? 24 : IS_TOUCH ? 32 : 44;
+const RACE_TRAFFIC_MIN = 14;      // the automatic easing (autoPerf) trims a slow race down to this
+// drop the last vehicles of the pool (and free their meshes and textures)
+function trimTraffic(n) {
+  for (const v of traffic.list.splice(n)) { scene.remove(v.wrap); disposeTree(v.wrap); }
+}
 function raceTraffic(dt, night, dim) {
   const ph = player.phys;
   const master = raceRun && race.inRace ? race.trafficMaster(ph.pos.x, ph.pos.z) : null;
@@ -1515,7 +1524,7 @@ function startDrive(isRace = false) {
   // (a race: every racer the same pool, vehicle by vehicle, so they can share one traffic)
   const want = raceRun ? RACE_TRAFFIC : settings.traffic, opKey = raceRun ? 'race' : OPERATORS.length;
   if (traffic.list.length !== want || traffic.opCount !== opKey) {
-    for (const v of traffic.list) scene.remove(v.wrap);
+    trimTraffic(0);                 // (free the old vehicles: rebuilding without this filled up a phone's memory)
     traffic = new Traffic(route, scene, want, settings.op.id, audio, facilities.gates, { builtinOnly: raceRun }); traffic.camera = camera;
     traffic.opCount = opKey;
     linkTraffic();
@@ -1585,6 +1594,8 @@ function gfxAuto(text) { const gb = document.getElementById('gfx-btn'); if (gb) 
 const setShadow = (n) => { if (sky.sun.shadow.mapSize.x === n) return; sky.sun.shadow.mapSize.set(n, n); sky.sun.shadow.map?.dispose(); sky.sun.shadow.map = null; };
 const setPR = (r) => { renderer.setPixelRatio(r); renderer.setSize(innerWidth, innerHeight); };
 const PERF_STEPS = [
+  // a race: fewer vehicles first (they cost the most), 8 at a time; the next race starts with the full pool again
+  ...[0, 1, 2].map(() => ({ applies: () => raceRun && traffic.list.length > RACE_TRAFFIC_MIN, do() { trimTraffic(Math.max(RACE_TRAFFIC_MIN, traffic.list.length - 8)); }, undo() {} })),
   { applies: () => !mirrors.lowRes, do() { mirrors.lowRes = true; }, undo() { mirrors.lowRes = mirrors_defaultOff; } },
   { applies: () => sky.sun.shadow.mapSize.x > 2048, do() { this.was = sky.sun.shadow.mapSize.x; setShadow(2048); }, undo() { setShadow(this.was); } },
   { applies: () => sky.sun.shadow.mapSize.x > 1024, do() { this.was = sky.sun.shadow.mapSize.x; setShadow(1024); }, undo() { setShadow(this.was); } },

@@ -347,6 +347,7 @@ export class Passengers {
     this.tripSide = -1;
     this.aboard = [];
     this.stop = null; this.door = false; this.cool = 0; this.leaveWarn = 0; this.promptKey = '';
+    const pe = $('paxprompt'); if (pe) { pe.innerHTML = ''; pe.style.display = 'none'; }     // (the last trip's prompt)
     this.finished = false; this.doorT = 0; this.brk = null;
     setBusDoor(this.player.bus, 0);
     Object.assign(this.stats, { aboard: 0, capacity: this.capacity(), fares: 0, tips: 0, mood: MOOD.start, carried: 0, boarded: 0, missed: 0 });
