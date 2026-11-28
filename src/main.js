@@ -1009,9 +1009,10 @@ function raceTraffic(dt, night, dim) {
 function raceOthers() {
   traffic.others = []; traffic.anchors = null;
   if (!raceRun || !race.inRace) return;
-  const ph = player.phys;
+  const ph = player.phys, fol = race.followers();
   let lo = player.s, hi = player.s;
-  for (const o of race.near(ph.pos.x, ph.pos.z, 1600)) {
+  for (const o of race.near(ph.pos.x, ph.pos.z, 2600)) {
+    if (!fol.has(o.id) && Math.hypot(o.x - ph.pos.x, o.z - ph.pos.z) > 1600) continue;
     const pr = route.project(o.box.x, o.box.z);
     if (Math.abs(pr.d) > route.halfAt(pr.s) + 6) continue;          // not on this road (another road at a junction)
     const [tx, tz] = route.tangentAt(pr.s);
@@ -1593,7 +1594,7 @@ function raceRemainKm() { return tripLeft(); }
 function raceFrame(dt) {
   if (!race.code) { if (raceRun) raceRun = false; raceUI?.board(false); return; }
   const ph = player.phys, sending = raceRun && race.inRace && (state === 'drive' || state === 'paused' || state === 'arrived');
-  race.update(dt, { bus: player.bus, phys: ph, remainKm: raceRemainKm(), night: sky.night, camera, send: sending, traffic,
+  race.update(dt, { bus: player.bus, phys: ph, remainKm: raceRemainKm(), night: sky.night, camera, send: sending, traffic: state === 'drive' ? traffic : null,
     flags: { head: player.lights, high: player.high, fog: player.fog, brake: ph.brake > 0.1 || input.handbrake, indL: player.indL, indR: player.indR, reverse: ph.gear < 0 } });
   if (raceRun) raceUI.countdown(race.countdown(), {
     onBeep: (go) => { audio.tick(true); if (go) setTimeout(() => audio.tick(false), 120); },

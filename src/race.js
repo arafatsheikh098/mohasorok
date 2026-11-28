@@ -19,6 +19,7 @@ const SEND_HZ = 5;
 const STALE = 6000;         // no update for this long: the ghost is hidden
 const AHEAD = 1.0;          // s a bus is carried on past its last update at most (0.6 for traffic)
 const LINK = 900, UNLINK = 1400;   // m: racers this close share one traffic (and drift apart past UNLINK)
+const REACH = 2400;                // m: the farthest the racer running the traffic may be (it covers its followers)
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O, 1/I
 
 export const newCode = () => Array.from({ length: 5 }, () => ALPHABET[Math.floor(Math.random() * ALPHABET.length)]).join('');
@@ -212,16 +213,25 @@ export class Race {
     g.seen = now;
   }
   // the racer whose traffic this game drives in (null: this game runs its own): the one first on the grid of the
-  // racers near this bus that run their own traffic
+  // racers near this bus that run their own traffic, or whose traffic a racer near this bus drives in (a line of
+  // three or more racers: all in the first one's traffic, as long as it is within REACH)
   trafficMaster(x, z) {
     if (!this.inRace) { this.master = null; return null; }
     const mine = this.slot(), now = this.serverNow();
+    const live = (g) => g && g.show && g.cur && now - (g.seen || 0) < 1500;
     let best = null;
+    const consider = (id) => {
+      const k = this.slot(id), g = this.ghosts.get(id);
+      if (k >= mine || !live(g) || !g.last?.tm) return;
+      if (Math.hypot(g.cur.x - x, g.cur.z - z) > REACH) return;
+      if (best === null || k < this.slot(best)) best = id;
+    };
     for (const [id, g] of this.ghosts) {
-      if (!g.show || !g.cur || !g.last?.tm || now - (g.seen || 0) > 1500) continue;
-      const k = this.slot(id);
-      if (k >= mine) continue;
-      if (Math.hypot(g.cur.x - x, g.cur.z - z) < (id === this.master ? UNLINK : LINK) && (best === null || k < this.slot(best))) best = id;
+      if (!live(g)) continue;
+      const d = Math.hypot(g.cur.x - x, g.cur.z - z), R = id === this.master || g.last?.ms === this.master ? UNLINK : LINK;
+      if (d > R) continue;
+      consider(id);                                   // a racer near this bus that runs its own traffic
+      if (g.last?.ms) consider(g.last.ms);            // ... or the one whose traffic it drives in
     }
     this.master = best;
     return best;
@@ -255,8 +265,8 @@ export class Race {
         for (const k in F) if (flags[k]) f |= F[k];
         this.send({ t: 'p', ts: Math.round(this.serverNow()), x: r2(r.position.x), y: r2(r.position.y), z: r2(r.position.z),
           ry: r3(r.rotation.y), rx: r3(r.rotation.x), rz: r3(r.rotation.z), bp: r3(pv.x), br: r3(pv.z), st: r3(phys.steer), v: r2(phys.v), f, km: Math.round(remainKm * 10) / 10,
-          // tm: this game runs its own traffic; tr: that traffic, while a racer near this bus drives in it
-          tm: this.master ? 0 : 1, ms: this.master || undefined, tr: !this.master && traffic && this._followed(r.position) ? traffic.snapshot() : undefined });
+          // tm: this game runs its own traffic now (driving: not paused, not finished); tr: that traffic, while a racer drives in it
+          tm: this.master || !traffic ? 0 : 1, ms: this.master || undefined, tr: !this.master && traffic && this._followed(r.position) ? traffic.snapshot() : undefined });
       }
     }
     const rt = this.serverNow(), blink = (this.blinkT % 0.8) < 0.4;
@@ -266,11 +276,13 @@ export class Race {
       g.update(dt, rt, { night, blink, camera, color: this.color(id) });
     }
   }
-  // is a racer near this bus driving in this game's traffic?
+  // is a racer driving in this game's traffic?
   _followed(p) {
-    for (const g of this.ghosts.values()) if (g.show && g.cur && g.last?.ms === this.you && Math.hypot(g.cur.x - p.x, g.cur.z - p.z) < UNLINK + 200) return true;
+    for (const g of this.ghosts.values()) if (g.show && g.cur && g.last?.ms === this.you && Math.hypot(g.cur.x - p.x, g.cur.z - p.z) < REACH + 200) return true;
     return false;
   }
+  // the racers driving in this game's traffic (it has to cover them all)
+  followers() { const out = new Set(); for (const [id, g] of this.ghosts) if (g.show && g.last?.ms === this.you) out.add(id); return out; }
   // the others, for the minimap and the big map
   friends() {
     const out = [];
