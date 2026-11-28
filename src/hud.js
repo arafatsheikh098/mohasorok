@@ -67,7 +67,7 @@ export class HUD {
   update(st) {
     const { route } = this;
     const back = st.side > 0;
-    const km = back ? route.realKm(st.s) : route.realKm(route.length) - route.realKm(st.s);
+    const km = st.left != null ? st.left : back ? route.realKm(st.s) : route.realKm(route.length) - route.realKm(st.s);
     const next = back ? ([...route.places].reverse().find((p) => p.s < st.s - 20) || route.places[0]) : route.nextPlace(st.s);
     const nextKm = Math.abs(route.realKm(next.s) - route.realKm(st.s));
     // (on a link road or a junction curve without a number of its own: still the highway you were on, so the card
@@ -101,7 +101,7 @@ export class HUD {
     $('trip-next').innerHTML = `<span class="bn">${next.bn}</span> · ${nextKm.toFixed(0)} km`;
     $('trip-time').textContent = fmtTime(st.elapsed);
     const avg = st.elapsed > 1 ? route.realKm(st.s) / (st.elapsed / 3600) : 0;
-    $('trip-eta').textContent = st.kmh > 5 ? fmtTime((back ? st.s : route.length - st.s) / Math.max(8, st.kmh / 3.6)) : '--:--';
+    $('trip-eta').textContent = st.kmh > 5 ? fmtTime((st.left != null ? st.left / (st.kmPerM || 1) : back ? st.s : route.length - st.s) / Math.max(8, st.kmh / 3.6)) : '--:--';
     $('trip-fines').textContent = `৳ ${st.fines.toLocaleString('en-IN')}`;
     $('trip-crashes').textContent = String(st.crashes);
     $('trip-rating').textContent = '★'.repeat(Math.round(st.rating)) + '☆'.repeat(5 - Math.round(st.rating));

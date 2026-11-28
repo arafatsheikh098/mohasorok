@@ -265,6 +265,39 @@ function destTerminal() {
   const goals = net.zillas.get(settings.trip.to)?.terminals || [];
   return route.terminals.find((x) => x.end === 1 && goals.includes(x.node));
 }
+// real km still to drive to the trip's destination. After a wrong turn the road you are on does not lead there:
+// then it is the way back to the best junction on this road, plus the way on from that junction.
+// (route._back: every node of the corridor with its km along it and the km from there to the destination)
+function tripLeft() {
+  if (!route) return 0;
+  if (settings.mode === 'free' || destTerminal()) return Math.max(0, route.totalKm - route.realKm(player.s));
+  const goals = net.zillas.get(settings.trip.to)?.terminals || [];
+  if (!route._back) {
+    route._back = [];
+    const pts = route.segs.map((g) => [g.from, g.km0]);
+    pts.push([route.segs[route.segs.length - 1].to, route.totalKm]);
+    for (const [node, km] of pts) { const p = net.path(node, goals); if (p) route._back.push({ node, km, rest: net.pathKm(p) }); }
+  }
+  const here = route.realKm(player.s);
+  let best = Infinity;
+  route._via = null;
+  for (const b of route._back) { const v = Math.abs(here - b.km) + b.rest; if (v < best) { best = v; route._via = b; } }
+  return Number.isFinite(best) ? best : 0;
+}
+// a trip on a road that does not go to the destination: say so now and then, and plainly where the road ends
+function wrongRoadHint(dt) {
+  if (settings.mode === 'free' || destTerminal() || !route._back) { player.wrongT = 0; return; }
+  const left = tripLeft(), via = route._via && net.nodes[route._via.node];
+  const atEnd = player.side < 0 && player.s > route.length - 300;
+  player.wrongT = (player.wrongT || 0) - dt;
+  if (player.wrongT > 0 && !(atEnd && !player.wrongEnd)) return;
+  player.wrongT = 25;
+  if (atEnd) player.wrongEnd = true;
+  const to = net.zillas.get(settings.trip.to), where = via ? ` via <b>${via.en.split(' (')[0]}</b>` : '';
+  hud.toast(atEnd
+    ? `🚧 <span class="bn">রাস্তা শেষ</span> — this road does not go to <b>${to?.en}</b>. Turn around: <b>${left.toFixed(0)} km</b> to go${where}`
+    : `⚠️ <span class="bn">ভুল রাস্তা</span> — this road does not go to <b>${to?.en}</b>. Turn around: <b>${left.toFixed(0)} km</b> to go${where}`, 'bad', 6000);
+}
 
 // the roads of the chosen trip
 function tripPath() {
@@ -402,6 +435,8 @@ function reroute(path, fromS, msg) {
   traffic.rebase(fromS, keepS);
   player.hint = -1;
   player.termHint = false;
+  player.wrongT = 4; player.wrongEnd = false;
+  if (settings.mode !== 'free' && !destTerminal()) tripLeft();      // a wrong road: work out the way back now
   // which carriageway the bus is on, on the new road: after driving back the way it came and turning off, it is
   // on the new road's own left carriageway (the side only changes in median openings otherwise, so the median
   // wall would push it across to the other one)
@@ -491,6 +526,24 @@ function pathDist(p, x, z) {
     best = Math.min(best, Math.hypot(ax + bx * t - x, az + bz * t - z));
   }
   return best;
+}
+// a trip on a wrong road, and the driver has turned round: the trip is rebuilt from here, back along this road
+// and on to the destination (so the way back works through interchanges too, and the HUD counts down again)
+function turnBack(dt) {
+  const ph = player.phys;
+  if (settings.mode === 'free' || destTerminal() || player.side < 0 || ph.v < 3 || player.inTerminal
+    || route.junctions.some((j) => Math.abs(player.s - j.s) < (j.ic ? j.R : j.R + 60) + 60)) { player.backT = 0; return; }
+  player.backT = (player.backT || 0) + dt;
+  if (player.backT < 1.5) return;
+  player.backT = -30;                              // (once; again only after half a minute if it found no way)
+  const at = busPosition();
+  if (!at?.road) return;
+  const c = net.road(at.road), rev = at.dir < 0;
+  const cut = THREE.MathUtils.clamp(rev ? c.length - at.s : at.s, 0, c.length - 90);
+  const node = rev ? c.from : c.to, goals = net.zillas.get(settings.trip.to)?.terminals || [];
+  const rest = goals.includes(node) ? [] : net.path(node, goals, { avoid: new Set([c.id]) });
+  if (!rest) return;
+  reroute([{ road: c.id, rev, cut }, ...rest], 0, `🔄 <span class="bn">রুট বদল</span> — back to ${settings.trip.to} via ${net.nodes[node].en.split(' (')[0]}`);
 }
 // free drive: keep the road going ahead of the bus
 function extendFree() {
@@ -646,6 +699,21 @@ function constrain(dt) {
       // rubbing along the barrier: gentle, steady scrape (~0.8 m/s²)
       phys.v = Math.sign(phys.v) * Math.max(0, Math.abs(phys.v) - 0.8 * dt);
     }
+  }
+  // off the road (verge, fields): the wheels sink into the soft ground and the bus slows down gently, more the
+  // faster it goes (not on anything paved: junction pads and side roads, plazas, forecourts, yards, service roads)
+  const ad = Math.abs(d);
+  const soft = !bridge && !inIC && ad > (P.express ? P.toe - 2 : P.half + 1.2)
+    && !route.paved(s, d)
+    && !route.junctions.some((j) => Math.abs(s - j.s) < (j.ic ? j.R + 40 : j.R + 200))
+    && !route.tolls.some((t) => Math.abs(s - t.s) < 500)
+    && !route.ferries.some((f) => s > f.s0 - 300 && s < f.s1 + 300);
+  player.offRoad = soft;
+  if (soft && phys.v !== 0) {
+    // m/s²: 0.5 at a crawl, ~2 at 80 km/h, at most 3 (full throttle holds about 50 km/h out there)
+    const v = Math.abs(phys.v), slow = Math.min(3, 0.5 + 0.05 * Math.max(0, v - 8) ** 1.3);
+    phys.v = Math.sign(phys.v) * Math.max(0, v - slow * dt);
+    if (v > 12 && !(player.offRoadT > player.elapsed)) { player.offRoadT = player.elapsed + 30; hud.toast('🌾 Off the road — the bus slows down in the soft ground', '', 2500); }
   }
   // solid objects: toll islands & gates, fuel-station pillars, pumps and shop
   // The bus is tested as a rotated box in (d, s) space. (An axis-aligned box around an angled bus is far
@@ -886,6 +954,7 @@ function events(dt) {
     player.termHint = true;
     hud.toast(`🚌 <span class="bn">${dest.bn}</span><br><small>Cross at the median opening by the gate, drive into the yard, stop and press G to let the passengers off</small>`, 'good', 5500);
   }
+  wrongRoadHint(dt);
   const atEnd = !!dest && s >= route.length - 4;
   // in the destination yard the trip ends once everyone has got down (G) and the door is shut
   const parked = !!dest && player.inTerminal === dest && Math.abs(player.phys.v) < 0.5;
@@ -1036,7 +1105,7 @@ function mapCtx() {
   const dir = player.side < 0 ? 1 : -1;
   const stops = settings.mode === 'free' ? [] : passengers?.counters.filter((c) => c.side === -1) || [];
   const next = stops.find((c) => (c.s - player.s) * dir > 20);
-  const left = Math.max(0, route.totalKm - route.realKm(player.s));
+  const left = tripLeft();
   const refs = [...new Set(route.segs.map((g) => g.chain.ref).filter((r) => r && !['DHK', 'CTG'].includes(r)))].join(', ');
   const free = settings.mode === 'free';
   return {
@@ -1466,7 +1535,7 @@ const PERF_STEPS = [
 
 // ---------- racing with friends ----------
 let raceT = 0, raceMapT = 0;
-function raceRemainKm() { return route ? Math.max(0, route.totalKm - route.realKm(player.s)) : 0; }
+function raceRemainKm() { return tripLeft(); }
 function raceFrame(dt) {
   if (!race.code) { if (raceRun) raceRun = false; raceUI?.board(false); return; }
   const ph = player.phys, sending = raceRun && race.inRace && (state === 'drive' || state === 'paused' || state === 'arrived');
@@ -1556,6 +1625,7 @@ function frame(now) {
     placeBusModel(dt);
     junctionLogic();
     extendFree();
+    turnBack(dt);
     tollLogic(dt);
     fuelLogic(dt);
     ferryLogic();
@@ -1595,6 +1665,8 @@ function frame(now) {
         lights: player.lights, high: player.high, fog: player.fog, cruise: ph.cruise != null, cruiseKmh: (ph.cruise || 0) * 3.6, traffic: traffic.list,
         side: player.side, heading: player.heading, fuel: player.fuel, tank: TANK_LITRES, costs: player.fuelCost + player.tollCost, mirrorsHud: mirrors.hudOn,
         friends: race.friends(),
+        // a wrong road: the real way to the destination (back and on), not the end of this road
+        left: settings.mode !== 'free' && !destTerminal() ? tripLeft() : null, kmPerM: route.totalKm / route.length,
       };
       hud.update(st);
       if (rig.mode === 'cabin') drawGauges(player.bus, { kmh, rpm: ph.rpm, gear: st.gear, cruise: st.cruise, lights: player.lights, high: player.high, fog: player.fog, indL: player.indL && blink, indR: player.indR && blink, limit: SPEED_LIMIT, odo: route.realKm(player.s), fuel: player.fuel / TANK_LITRES, temp: 0.45 + ph.throttle * 0.1, clock });
@@ -1692,7 +1764,7 @@ async function boot() {
   state = 'menu';
   requestAnimationFrame(frame);
   console.info(`[mohasorok] route ${(route.length / 1000).toFixed(1)} km game, ${route.places.length} places, ${route.bridges.length} bridges`);
-  window.__game = { get route() { return route; }, player, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
+  window.__game = { get route() { return route; }, player, tripLeft, reroute, get state() { return state; }, get traffic() { return traffic; }, scene, renderer, settings, toBn, setTime,
     teleport(s, d = ROAD.laneCenters[0]) { resetPlayer(s, d); stream.buildNow(s, d < 0 ? 1 : -1); netRoads.buildNow(player.phys.pos.x, player.phys.pos.z); traffic.init(s); }, get stream() { return stream; }, get netRoads() { return netRoads; }, get net() { return net; }, get facilities() { return facilities; }, get mirrors() { return mirrors; }, get rig() { return rig; }, get aicams() { return aicams; }, get passengers() { return passengers; },
     // debug: which meshes are under screen pixel (px, py)
     pick(px, py) {
